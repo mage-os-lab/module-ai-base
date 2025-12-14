@@ -30,6 +30,8 @@ class MyAiFunctionality {
     
     public function doSomething() {
     	$openAiCredentials = $this->aiServiceConfiguration->getByCode('openai');
+
+        // $openAiCredentials = an array of \MageOS\AiBase\Api\Data\AiServiceInterface objects
     }
 }
 ```
