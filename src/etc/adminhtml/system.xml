@@ -1,0 +1,23 @@
+<?xml version="1.0"?>
+<config xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:noNamespaceSchemaLocation="urn:magento:module:Magento_Config:etc/system_file.xsd">
+
+    <system>
+        <section id="mageos_ai" translate="label" type="text" sortOrder="100" showInDefault="1" showInWebsite="1" showInStore="1">
+            <label>AI Configuration</label>
+            <tab>service</tab>
+            <resource>MageOS_AiBase::configuration</resource>
+
+            <group id="services" translate="label" type="text" sortOrder="10" showInDefault="1" showInWebsite="1" showInStore="1">
+                <label>Services</label>
+                <attribute type="expanded">1</attribute>
+                <field id="configuration" translate="label comment" type="text" sortOrder="20" showInDefault="1" showInWebsite="1" showInStore="1">
+                    <label>Configured Services</label>
+                    <backend_model>Magento\Config\Model\Config\Backend\Serialized\ArraySerialized</backend_model>
+                    <comment>Define one or more AI services using the Add Service button.</comment>
+                    <frontend_model>MageOS\AiBase\Block\Adminhtml\Configuration\Services</frontend_model>
+                </field>
+            </group>
+        </section>
+    </system>
+</config>

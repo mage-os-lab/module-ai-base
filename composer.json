@@ -1,0 +1,15 @@
+{
+    "name": "mage-os/module-ai-base",
+    "description": "Base AI module for Mage-OS",
+    "type": "magento2-module",
+    "minimum-stability": "dev",
+    "require": {
+        "magento/framework": "*"
+    },
+    "autoload": {
+        "files": ["src/registration.php"],
+        "psr-4": {
+            "MageOS\\AiBase\\": "src/"
+        }
+    }
+}

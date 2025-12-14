@@ -1,0 +1,40 @@
+.add-ai-service {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 8px 14px;
+    border-radius: 4px;
+    border: 1px solid #1a5f90;
+    background: linear-gradient(180deg, #2d8cd6 0%, #1f6ead 100%);
+    color: #fff;
+    font-weight: 600;
+    text-decoration: none;
+    cursor: pointer;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, .16);
+    transition: background-color .15s ease, border-color .15s ease, box-shadow .15s ease;
+
+    &:hover,
+    &:focus {
+        background: linear-gradient(180deg, #349be9 0%, #267fc2 100%);
+        border-color: #14527d;
+        text-decoration: none;
+        box-shadow: 0 2px 6px rgba(0, 0, 0, .2);
+    }
+
+    &:active {
+        box-shadow: inset 0 1px 2px rgba(0, 0, 0, .25);
+    }
+
+    &__icon {
+        font-size: 14px;
+        line-height: 1;
+    }
+
+    &__label {
+        line-height: 1;
+    }
+}
+
+.add-ai-service + .add-ai-service {
+    margin-left: 8px;
+}

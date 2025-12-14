@@ -1,0 +1,111 @@
+<?php
+/** @var \Magento\Framework\View\Helper\SecureHtmlRenderer $secureRenderer */
+/** @var \MageOS\AiBase\Block\Adminhtml\Configuration\Services $block */
+/** @var \Magento\Framework\Escaper $escaper */
+
+$_htmlId = $block->getHtmlId() ? $block->getHtmlId() : '_' . uniqid();
+$_colspan = $block->isAddAfter() ? 2 : 1;
+?>
+<div class="ai-services-configurator design_theme_ua_regexp" id="grid<?= $escaper->escapeHtmlAttr($_htmlId) ?>">
+    <div class="admin__control-table-wrapper">
+        <table class="admin__control-table" id="<?= $escaper->escapeHtmlAttr($block->getElement()->getId()) ?>">
+            <thead>
+            <tr>
+                <?php foreach ($block->getColumns() as $columnName => $column): ?>
+                    <th><?= $escaper->escapeHtml($column['label']) ?></th>
+                <?php endforeach; ?>
+                <th class="col-actions" colspan="<?= (int)$_colspan ?>"><?= $block->escapeHtml(__('Action')) ?></th>
+            </tr>
+            </thead>
+            <tfoot>
+            <tr>
+                <td colspan="<?= count($block->getColumns()) + $_colspan ?>" class="col-actions-add">
+                    <ul>
+                    <?php foreach ($block->getServicesButtons() as $button): ?>
+                        <li data-ai-service="<?= $escaper->escapeHtmlAttr($button['code']); ?>"
+                            class="add-ai-service ai-service-<?= $escaper->escapeHtmlAttr($button['code']); ?>"
+                        >
+                            <?= $button['name'] ?>
+                        </li>
+                    <?php endforeach; ?>
+                    </ul>
+                </td>
+            </tr>
+            </tfoot>
+            <tbody id="addRow<?= $escaper->escapeHtmlAttr($_htmlId) ?>"></tbody>
+        </table>
+    </div>
+    <input type="hidden" name="<?= $escaper->escapeHtmlAttr($block->getElement()->getName()) ?>[__empty]" value="" />
+
+    <script>
+        require([
+            'mage/template',
+            'prototype'
+        ], function (mageTemplate) {
+            var templates = {
+                <?php foreach ($block->getServicesTemplates() as $service): ?>
+                    <?= $escaper->escapeJs($service['code']); ?>: '<?= $escaper->escapeJs($service['template']); ?>',
+                <?php endforeach; ?>
+            };
+
+            var addRow = function(service, values) {
+                let output = mageTemplate(
+                    '<tr id="<%- _id %>">'
+                    + '<td>'
+                    + templates[service]
+                    + '<\/td>'
+
+                    + '<td class="col-actions"><button '
+                    + 'class="action-delete" data-row-id="<%- _id %>" type="button">'
+                    + '<span><?= $escaper->escapeJs(__('Delete')) ?><\/span><\/button><\/td>'
+                    + '<\/tr>'
+                );
+
+                var d = new Date();
+                var _id = '_' + d.getTime() + '_' + d.getMilliseconds()
+                let templateValues = {
+                    _id: _id,
+                    _fieldName: '<?= $block->getElement()->getName(); ?>[' + _id + ']',
+                }
+
+                Element.insert($('addRow<?= $escaper->escapeJs($_htmlId) ?>'), {
+                    bottom: output(templateValues)
+                });
+
+                if (values) {
+                    for (let key in values) {
+                        var fieldSelector = '<?= $block->getElement()->getName(); ?>[' + _id + '][' + service + '][' + key + ']';
+                        document.querySelector('[name="' + fieldSelector + '"]').value = values[key];
+                    }
+                }
+            }
+
+            // Add button
+            document.querySelectorAll('.ai-services-configurator .add-ai-service').forEach(function(item) {
+                item.addEventListener('click', element => {
+                    let service = element.target.dataset.aiService
+
+                    addRow(service)
+                })
+            })
+
+            // Delete button
+            document.querySelector('.ai-services-configurator').addEventListener('click', element => {
+                const btn = element.target
+                if (!btn.classList.contains('action-delete')) return;
+
+                document.getElementById(btn.dataset.rowId).remove();
+            });
+
+            <?php foreach ($block->getArrayRows() as $_rowId => $_row) { ?>
+                <?php $service = array_first(array_keys($_row->getData())) ?>
+                addRow('<?= $escaper->escapeJs($service) ?>', <?= json_encode($_row->getData($service)) ?>);
+            <?php } ?>
+        });
+    </script>
+
+    <?php //$scriptString = <<<script
+//        script;
+    ?>
+<!--    --><?php //= /* @noEscape */ $secureRenderer->renderTag('script', [], $scriptString, false) ?>
+</div>
