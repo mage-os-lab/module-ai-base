@@ -9,6 +9,7 @@ use MageOS\AiBase\Api\Data\AiServiceInterface;
 use MageOS\AiBase\Api\Data\AiServiceInterfaceFactory;
 use MageOS\AiBase\Model\AiService;
 use MageOS\AiBase\Model\AiServiceSelector;
+use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\MockObject\MockObject;
 use PHPUnit\Framework\TestCase;
 
@@ -57,6 +58,30 @@ final class AiServiceSelectorTest extends TestCase
         self::assertContainsOnlyInstancesOf(AiServiceInterface::class, $result);
         self::assertSame('openai', $result[0]->getCode());
         self::assertSame('anthropic', $result[1]->getCode());
+    }
+
+    /**
+     * @param array<mixed> $decoded
+     */
+    #[DataProvider('malformed_decoded_shapes')]
+    public function test_get_all_silently_skips_malformed_rows(array $decoded): void
+    {
+        $this->scopeConfig->method('getValue')->willReturn(json_encode($decoded, JSON_THROW_ON_ERROR));
+
+        self::assertSame([], $this->subject->getAll());
+    }
+
+    /**
+     * @return array<string, array{0: array<mixed>}>
+     */
+    public static function malformed_decoded_shapes(): array
+    {
+        return [
+            'row is a bare string'         => [['_row1' => 'not-an-array']],
+            'row is an empty array'        => [['_row1' => []]],
+            'row value is non-array'       => [['_row1' => ['openai' => 'not-an-array']]],
+            'row key is integer (not code)'=> [['_row1' => [0 => ['apikey' => 'k1']]]],
+        ];
     }
 
     public function test_get_by_code_filters_to_matching_services_only(): void
