@@ -1322,6 +1322,7 @@ Before tagging:
   ```
   (Keeps dev scaffolding out of the dist tarball that composer serves from a tagged release.)
 - Decide on LICENSE presentation: either keep the single `LICENSE.md` with both texts, or split into `LICENSE_OSL.md` + `LICENSE_AFL.md` to match the Mage-OS core convention and make GitHub's license detector show "Other (OSL-3.0 OR AFL-3.0)" correctly. Current choice: keep single file (documented here).
+- Decide on model-list freshness for `AiServices/*`. Task 7 shipped "curated baseline" lists — Google's `gemini-2.0-pro` is a plausible typo (catalog jumped `1.5-pro` → `2.0-flash` → `2.5-pro` without a `2.0-pro` general release), and several other entries (`grok-2`, `o1-mini`) are superseded by newer releases in the 2026-04-20 catalog. Admins can override via `<preference>` per service, so these are defaults, not contracts. Options: (a) refresh every provider's list against their live catalog before tagging, (b) ship as-is and frame them in `CHANGELOG.md` as "seed defaults, override per-install", (c) thin the lists to only a single verified baseline model per provider + free-text for everything else. Recommended default for v1.0.0: option (b) — declarative config is the right place for admins to customise, and overclaiming "latest" in docs is the only real failure mode.
 
 Commit these together before Step 1 with message `chore: release-polish per code review (gitattributes, changelog hygiene)`.
 
