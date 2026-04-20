@@ -1295,6 +1295,34 @@ git commit -m "chore: wire path repo for mage-os/module-ai-base"
 
 ## Task 12: Tag `v1.0.0`
 
+**Step 0: Apply release-polish deferred from Task 1 code review**
+
+Before tagging:
+- Add a `## [Unreleased]` section to `CHANGELOG.md` at the top (gives future PRs a clear landing spot).
+- Add Keep-a-Changelog preamble lines after the intro:
+  ```
+  The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
+  and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+  ```
+- Add a compare-link footer to `CHANGELOG.md`:
+  ```
+  [Unreleased]: https://github.com/mage-os/module-ai-base/compare/v1.0.0...HEAD
+  [1.0.0]: https://github.com/mage-os/module-ai-base/releases/tag/v1.0.0
+  ```
+- Create `.gitattributes` at repo root:
+  ```
+  /.github         export-ignore
+  /docs            export-ignore
+  /src/Test        export-ignore
+  /phpcs.xml.dist  export-ignore
+  /phpunit.xml.dist export-ignore
+  /CLAUDE.md       export-ignore
+  ```
+  (Keeps dev scaffolding out of the dist tarball that composer serves from a tagged release.)
+- Decide on LICENSE presentation: either keep the single `LICENSE.md` with both texts, or split into `LICENSE_OSL.md` + `LICENSE_AFL.md` to match the Mage-OS core convention and make GitHub's license detector show "Other (OSL-3.0 OR AFL-3.0)" correctly. Current choice: keep single file (documented here).
+
+Commit these together before Step 1 with message `chore: release-polish per code review (gitattributes, changelog hygiene)`.
+
 **Step 1: Final verification**
 
 Run all pre-release checks:
