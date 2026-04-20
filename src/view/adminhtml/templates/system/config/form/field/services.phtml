@@ -5,7 +5,7 @@
 $_htmlId = $block->getHtmlId() ?: '_' . uniqid();
 $_colspan = $block->isAddAfter() ? 2 : 1;
 ?>
-<div class="ai-services-configurator" id="grid<?= $escaper->escapeHtmlAttr($_htmlId) ?>">
+<div class="ai-services-configurator design_theme_ua_regexp" id="grid<?= $escaper->escapeHtmlAttr($_htmlId) ?>">
     <div class="admin__control-table-wrapper">
         <table class="admin__control-table" id="<?= $escaper->escapeHtmlAttr($block->getElement()->getId()) ?>">
             <thead>
@@ -44,17 +44,28 @@ $_colspan = $block->isAddAfter() ? 2 : 1;
             const schema = <?= /* @noEscape */ $block->getServicesSchemaJson() ?>;
             const fieldNameBase = '<?= $escaper->escapeJs($block->getElement()->getName()) ?>';
 
+            function escapeHtml(value) {
+                if (value === null || value === undefined) return '';
+                return String(value)
+                    .replace(/&/g, '&amp;')
+                    .replace(/</g, '&lt;')
+                    .replace(/>/g, '&gt;')
+                    .replace(/"/g, '&quot;')
+                    .replace(/'/g, '&#39;');
+            }
+
             function buildField(serviceCode, fieldName, field) {
                 const base = fieldNameBase + '[' + fieldName + '][' + serviceCode + '][' + field.name + ']';
                 if (field.type === 'select') {
                     const options = field.options.map(function (opt) {
                         const selected = (field.default === opt.value) ? ' selected' : '';
-                        return '<option value="' + opt.value + '"' + selected + '>' + opt.label + '</option>';
+                        return '<option value="' + escapeHtml(opt.value) + '"' + selected + '>' + escapeHtml(opt.label) + '</option>';
                     }).join('');
-                    return '<select name="' + base + '">' + options + '</select>';
+                    return '<select name="' + escapeHtml(base) + '">' + options + '</select>';
                 }
-                const defaultAttr = field.default ? ' value="' + field.default + '"' : '';
-                return '<input type="' + field.type + '" name="' + base + '"' + defaultAttr + '/>';
+                const defaultAttr = field.default ? ' value="' + escapeHtml(field.default) + '"' : '';
+                const type = (field.type === 'password' || field.type === 'text') ? field.type : 'text';
+                return '<input type="' + type + '" name="' + escapeHtml(base) + '"' + defaultAttr + '/>';
             }
 
             function addRow(serviceCode, values) {
@@ -66,7 +77,7 @@ $_colspan = $block->isAddAfter() ? 2 : 1;
 
                 const rows = fields.map(function (field) {
                     return '<tr>'
-                        + '<th>' + field.label + '</th>'
+                        + '<th>' + escapeHtml(field.label) + '</th>'
                         + '<td>' + buildField(serviceCode, rowId, field) + '</td>'
                         + '</tr>';
                 }).join('');
@@ -84,7 +95,17 @@ $_colspan = $block->isAddAfter() ? 2 : 1;
                     Object.keys(values).forEach(function (key) {
                         const selector = '[name="' + fieldNameBase + '[' + rowId + '][' + serviceCode + '][' + key + ']"]';
                         const el = document.querySelector(selector);
-                        if (el) el.value = values[key];
+                        if (!el) return;
+                        if (el.tagName === 'SELECT') {
+                            const hasOption = Array.from(el.options).some(function (opt) { return opt.value === values[key]; });
+                            if (!hasOption && values[key] !== undefined && values[key] !== null && values[key] !== '') {
+                                const legacyOpt = document.createElement('option');
+                                legacyOpt.value = values[key];
+                                legacyOpt.text = values[key] + ' (legacy)';
+                                el.insertBefore(legacyOpt, el.firstChild);
+                            }
+                        }
+                        el.value = values[key];
                     });
                 }
             }

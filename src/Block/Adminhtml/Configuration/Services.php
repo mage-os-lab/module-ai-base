@@ -9,8 +9,9 @@ use Magento\Config\Block\System\Config\Form\Field\FieldArray\AbstractFieldArray;
 use Magento\Framework\Serialize\Serializer\Json;
 use Magento\Framework\View\Helper\SecureHtmlRenderer;
 use MageOS\AiBase\Api\Data\AiServiceConfigurationInterface;
+use MageOS\AiBase\Api\Data\FieldDescriptorInterface;
 
-class Services extends AbstractFieldArray
+final class Services extends AbstractFieldArray
 {
     protected $_template = 'MageOS_AiBase::system/config/form/field/services.phtml';
 
@@ -23,6 +24,16 @@ class Services extends AbstractFieldArray
         ?SecureHtmlRenderer $secureRenderer = null,
     ) {
         parent::__construct($context, $data, $secureRenderer);
+
+        foreach ($this->services as $service) {
+            if (!$service instanceof AiServiceConfigurationInterface) {
+                throw new \InvalidArgumentException(sprintf(
+                    'Each registered service must implement %s, got %s',
+                    AiServiceConfigurationInterface::class,
+                    get_debug_type($service),
+                ));
+            }
+        }
     }
 
     /**
@@ -47,7 +58,7 @@ class Services extends AbstractFieldArray
         $schema = [];
         foreach ($this->services as $service) {
             $schema[$service->getCode()] = array_map(
-                fn ($field) => [
+                fn (FieldDescriptorInterface $field) => [
                     'name'    => $field->getName(),
                     'label'   => $field->getLabel(),
                     'type'    => $field->getType(),
