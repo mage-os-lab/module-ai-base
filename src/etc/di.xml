@@ -3,6 +3,7 @@
         xsi:noNamespaceSchemaLocation="urn:magento:framework:ObjectManager/etc/config.xsd">
     <preference for="MageOS\AiBase\Api\AiServiceSelectorInterface" type="MageOS\AiBase\Model\AiServiceSelector" />
     <preference for="MageOS\AiBase\Api\Data\AiServiceInterface" type="MageOS\AiBase\Model\AiService" />
+    <preference for="MageOS\AiBase\Api\Data\FieldDescriptorInterface" type="MageOS\AiBase\Model\FieldDescriptor"/>
 
     <type name="MageOS\AiBase\Block\Adminhtml\Configuration\Services">
         <arguments>
