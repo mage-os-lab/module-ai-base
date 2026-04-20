@@ -1,10 +1,12 @@
 <?php
 
+declare(strict_types=1);
+
 namespace MageOS\AiBase\Model;
 
 use MageOS\AiBase\Api\Data\AiServiceInterface;
 
-class AiService implements AiServiceInterface
+final class AiService implements AiServiceInterface
 {
     public function __construct(
         private readonly string $code,
