@@ -1,11 +1,20 @@
 <?php
 
+declare(strict_types=1);
+
 namespace MageOS\AiBase\AiServices;
 
 use MageOS\AiBase\Api\Data\AiServiceConfigurationInterface;
+use MageOS\AiBase\Api\Data\FieldDescriptorInterfaceFactory;
 
-class OpenRouter implements AiServiceConfigurationInterface
+final class OpenRouter implements AiServiceConfigurationInterface
 {
+    use FieldFactoryTrait;
+
+    public function __construct(
+        private readonly FieldDescriptorInterfaceFactory $fieldFactory,
+    ) {}
+
     public function getCode(): string
     {
         return 'openrouter';
@@ -16,24 +25,16 @@ class OpenRouter implements AiServiceConfigurationInterface
         return 'OpenRouter';
     }
 
-    public function getConfigurationTemplate(): string
+    public function getSupportedModels(): array
     {
-        return <<<TABLE
-            <table>
-                <tr>
-                    <th>API Key</th>
-                    <td><input type="password" name="<%- _fieldName %>[openrouter][apikey]" /></td>
-                </tr>
-                <tr>
-                    <th>Model</th>
-                    <td>
-                        <select name="<%- _fieldName %>[openrouter][model]">
-                            <option value="openrouter/auto">openrouter/auto</option>
-                            <option value="anthropic/claude-3-opus">anthropic/claude-3-opus</option>
-                        </select>
-                    </td>
-                </tr>
-            </table>
-        TABLE;
+        return [];
+    }
+
+    public function getConfigurationFields(): array
+    {
+        return [
+            $this->apiKeyField($this->fieldFactory),
+            $this->freeTextModelField($this->fieldFactory),
+        ];
     }
 }

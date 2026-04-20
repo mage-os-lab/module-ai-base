@@ -1,11 +1,20 @@
 <?php
 
+declare(strict_types=1);
+
 namespace MageOS\AiBase\AiServices;
 
 use MageOS\AiBase\Api\Data\AiServiceConfigurationInterface;
+use MageOS\AiBase\Api\Data\FieldDescriptorInterfaceFactory;
 
-class Grok implements AiServiceConfigurationInterface
+final class Grok implements AiServiceConfigurationInterface
 {
+    use FieldFactoryTrait;
+
+    public function __construct(
+        private readonly FieldDescriptorInterfaceFactory $fieldFactory,
+    ) {}
+
     public function getCode(): string
     {
         return 'grok';
@@ -16,19 +25,19 @@ class Grok implements AiServiceConfigurationInterface
         return 'Grok';
     }
 
-    public function getConfigurationTemplate(): string
+    public function getSupportedModels(): array
     {
-        return <<<TABLE
-            <table>
-                <tr>
-                    <th>API Key</th>
-                    <td><input type="password" name="<%- _fieldName %>[grok][apikey]" /></td>
-                </tr>
-                <tr>
-                    <th>Model</th>
-                    <td><input type="text" name="<%- _fieldName %>[grok][model]" value="grok-beta" /></td>
-                </tr>
-            </table>
-        TABLE;
+        return [
+            'grok-2'      => 'Grok 2',
+            'grok-2-mini' => 'Grok 2 mini',
+        ];
+    }
+
+    public function getConfigurationFields(): array
+    {
+        return [
+            $this->apiKeyField($this->fieldFactory),
+            $this->modelField($this->fieldFactory, $this->getSupportedModels()),
+        ];
     }
 }

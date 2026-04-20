@@ -1,11 +1,20 @@
 <?php
 
+declare(strict_types=1);
+
 namespace MageOS\AiBase\AiServices;
 
 use MageOS\AiBase\Api\Data\AiServiceConfigurationInterface;
+use MageOS\AiBase\Api\Data\FieldDescriptorInterfaceFactory;
 
-class Ollama implements AiServiceConfigurationInterface
+final class Ollama implements AiServiceConfigurationInterface
 {
+    use FieldFactoryTrait;
+
+    public function __construct(
+        private readonly FieldDescriptorInterfaceFactory $fieldFactory,
+    ) {}
+
     public function getCode(): string
     {
         return 'ollama';
@@ -16,24 +25,16 @@ class Ollama implements AiServiceConfigurationInterface
         return 'Ollama';
     }
 
-    public function getConfigurationTemplate(): string
+    public function getSupportedModels(): array
     {
-        return <<<TABLE
-            <table>
-                <tr>
-                    <th>Base URL</th>
-                    <td><input type="text" name="<%- _fieldName %>[ollama][base_url]" value="http://localhost:11434" /></td>
-                </tr>
-                <tr>
-                    <th>Model</th>
-                    <td>
-                        <select name="<%- _fieldName %>[ollama][model]">
-                            <option value="llama3">llama3</option>
-                            <option value="phi3">phi3</option>
-                        </select>
-                    </td>
-                </tr>
-            </table>
-        TABLE;
+        return [];
+    }
+
+    public function getConfigurationFields(): array
+    {
+        return [
+            $this->baseUrlField($this->fieldFactory, 'http://localhost:11434'),
+            $this->freeTextModelField($this->fieldFactory),
+        ];
     }
 }

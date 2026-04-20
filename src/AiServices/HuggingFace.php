@@ -1,11 +1,20 @@
 <?php
 
+declare(strict_types=1);
+
 namespace MageOS\AiBase\AiServices;
 
 use MageOS\AiBase\Api\Data\AiServiceConfigurationInterface;
+use MageOS\AiBase\Api\Data\FieldDescriptorInterfaceFactory;
 
-class HuggingFace implements AiServiceConfigurationInterface
+final class HuggingFace implements AiServiceConfigurationInterface
 {
+    use FieldFactoryTrait;
+
+    public function __construct(
+        private readonly FieldDescriptorInterfaceFactory $fieldFactory,
+    ) {}
+
     public function getCode(): string
     {
         return 'huggingface';
@@ -16,19 +25,16 @@ class HuggingFace implements AiServiceConfigurationInterface
         return 'Hugging Face';
     }
 
-    public function getConfigurationTemplate(): string
+    public function getSupportedModels(): array
     {
-        return <<<TABLE
-            <table>
-                <tr>
-                    <th>API Key</th>
-                    <td><input type="password" name="<%- _fieldName %>[huggingface][apikey]" /></td>
-                </tr>
-                <tr>
-                    <th>Model</th>
-                    <td><input type="text" name="<%- _fieldName %>[huggingface][model]" value="meta-llama/Llama-3-8b" /></td>
-                </tr>
-            </table>
-        TABLE;
+        return [];
+    }
+
+    public function getConfigurationFields(): array
+    {
+        return [
+            $this->apiKeyField($this->fieldFactory),
+            $this->freeTextModelField($this->fieldFactory),
+        ];
     }
 }
