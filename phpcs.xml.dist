@@ -1,0 +1,7 @@
+<?xml version="1.0"?>
+<ruleset name="MageOS_AiBase">
+    <arg name="extensions" value="php,phtml"/>
+    <file>src</file>
+    <exclude-pattern>src/Test/</exclude-pattern>
+    <rule ref="Magento2"/>
+</ruleset>
