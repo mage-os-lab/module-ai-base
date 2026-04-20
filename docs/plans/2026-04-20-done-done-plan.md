@@ -34,7 +34,6 @@
         "issues": "https://github.com/mage-os/module-ai-base/issues",
         "source": "https://github.com/mage-os/module-ai-base"
     },
-    "version": "1.0.0",
     "require": {
         "php": "^8.2",
         "magento/framework": "^103.0 || ^104.0"
@@ -86,7 +85,7 @@ All notable changes to this project will be documented in this file.
 **Step 4: Verify composer sanity**
 
 Run: `composer validate --no-check-publish --strict`
-Expected: `./composer.json is valid` (no errors, no warnings other than version/publish notices which are muted by the flag).
+Expected: `./composer.json is valid` with exit code 0. The `version` field is intentionally omitted — Packagist derives it from git tags (see Task 12), and leaving it in would trigger a warning that `--strict` escalates to a failure.
 
 **Step 5: Commit**
 

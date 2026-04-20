@@ -166,7 +166,6 @@ Single test `round_trips_configuration_through_scope_config`:
         "issues": "https://github.com/mage-os/module-ai-base/issues",
         "source": "https://github.com/mage-os/module-ai-base"
     },
-    "version": "1.0.0",
     "require": {
         "php": "^8.2",
         "magento/framework": "^103.0 || ^104.0"
