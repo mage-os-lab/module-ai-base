@@ -11,6 +11,10 @@
         "source": "https://github.com/mage-os-lab/module-ai-base"
     },
     "repositories": {
+        "mage-os-mirror": {
+            "type": "composer",
+            "url": "https://mirror.mage-os.org/"
+        },
         "mage-os": {
             "type": "composer",
             "url": "https://repo.mage-os.org/"
