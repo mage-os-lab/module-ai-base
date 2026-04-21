@@ -34,5 +34,12 @@
     },
     "autoload-dev": {
         "psr-4": { "MageOS\\AiBase\\Test\\": "Test/" }
+    },
+    "config": {
+        "allow-plugins": {
+            "dealerdirect/phpcodesniffer-composer-installer": true,
+            "magento/composer-dependency-version-audit-plugin": true,
+            "magento/composer-root-update-plugin": true
+        }
     }
 }
