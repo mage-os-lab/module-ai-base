@@ -23,3 +23,8 @@ jobs:
     uses: graycoreio/github-actions-magento2/.github/workflows/check-extension.yaml@v5.1.0
     with:
       matrix: ${{ needs.compute-matrix.outputs.matrix }}
+      # The default mirror (https://mirror.mage-os.org/) only proxies magento/*
+      # packages; the mage-os/project-community-edition metapackage is published
+      # to https://repo.mage-os.org/. Without this override, composer fails with
+      # "Could not find package mage-os/project-community-edition".
+      magento_repository: https://repo.mage-os.org/
