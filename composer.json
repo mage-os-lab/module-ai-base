@@ -10,6 +10,12 @@
         "issues": "https://github.com/mage-os-lab/module-ai-base/issues",
         "source": "https://github.com/mage-os-lab/module-ai-base"
     },
+    "repositories": {
+        "mage-os": {
+            "type": "composer",
+            "url": "https://repo.mage-os.org/"
+        }
+    },
     "require": {
         "php": "^8.2",
         "magento/framework": "^103.0 || ^104.0"
@@ -23,6 +29,6 @@
         "psr-4": { "MageOS\\AiBase\\": "src/" }
     },
     "autoload-dev": {
-        "psr-4": { "MageOS\\AiBase\\Test\\": "src/Test/" }
+        "psr-4": { "MageOS\\AiBase\\Test\\": "Test/" }
     }
 }
