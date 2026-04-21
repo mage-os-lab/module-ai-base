@@ -1,0 +1,7 @@
+/.github          export-ignore
+/docs             export-ignore
+/src/Test         export-ignore
+/phpcs.xml.dist   export-ignore
+/phpunit.xml.dist export-ignore
+/CLAUDE.md        export-ignore
+/.gitattributes   export-ignore

@@ -7,8 +7,8 @@
         { "name": "David Lambauer", "email": "david@run-as-root.sh" }
     ],
     "support": {
-        "issues": "https://github.com/mage-os/module-ai-base/issues",
-        "source": "https://github.com/mage-os/module-ai-base"
+        "issues": "https://github.com/mage-os-lab/module-ai-base/issues",
+        "source": "https://github.com/mage-os-lab/module-ai-base"
     },
     "require": {
         "php": "^8.2",
