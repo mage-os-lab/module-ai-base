@@ -44,3 +44,12 @@ final class MyAiFunctionality
     }
 }
 ```
+
+## Contributing
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) and our [Code of Conduct](CODE_OF_CONDUCT.md).
+
+## Security
+
+Security issues: see [SECURITY.md](SECURITY.md). Please do **not** file public issues for vulnerabilities.
+
