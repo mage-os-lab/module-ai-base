@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace MageOS\AiBase\AiServices;
 
 use MageOS\AiBase\Api\Data\AiServiceConfigurationInterface;
+use MageOS\AiBase\Api\Data\FieldDescriptorInterface;
 use MageOS\AiBase\Api\Data\FieldDescriptorInterfaceFactory;
 
 class Azure implements AiServiceConfigurationInterface
@@ -56,6 +57,12 @@ class Azure implements AiServiceConfigurationInterface
     {
         return [
             $this->apiKeyField($this->fieldFactory),
+            $this->fieldFactory->create([
+                'name'    => 'endpoint',
+                'label'   => 'Endpoint',
+                'type'    => FieldDescriptorInterface::TYPE_TEXT,
+                'default' => 'https://<resource>.openai.azure.com',
+            ]),
             $this->modelField($this->fieldFactory, $this->getSupportedModels()),
         ];
     }
