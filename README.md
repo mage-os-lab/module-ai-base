@@ -39,7 +39,7 @@ final class MyAiFunctionality
 
         foreach ($openAiServices as $service) {
             $config = $service->getConfiguration();
-            // $config = ['apikey' => '...', 'model' => 'gpt-4o', ...]
+            // $config = ['api_key' => '...', 'model' => 'gpt-4o', ...]
         }
     }
 }
@@ -82,10 +82,15 @@ providers there, or replace the implementation entirely by preferencing
 
 ### Credential encryption
 
-API keys and other credential fields (`apikey`, `api_key`, `token`, `secret`) are
-encrypted at rest with Magento's `EncryptorInterface` when the configuration is saved.
+API keys and other credential fields (`api_key`, `token`, `secret`, plus the legacy
+`apikey` spelling for third-party providers) are encrypted at rest with Magento's
+`EncryptorInterface` when the configuration is saved.
 Values saved before encryption was introduced are detected and returned as-is, and are
 re-encrypted the next time the configuration is saved in the admin.
+
+In the admin form, stored credentials are displayed as an obscured `******` placeholder
+instead of the real value. Saving the form without retyping a credential keeps the
+previously stored value; entering a new value replaces it.
 
 ## Contributing
 
