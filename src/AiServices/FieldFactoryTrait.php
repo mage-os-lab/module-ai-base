@@ -18,7 +18,7 @@ trait FieldFactoryTrait
     private function apiKeyField(FieldDescriptorInterfaceFactory $factory): FieldDescriptorInterface
     {
         return $factory->create([
-            'name'  => 'apikey',
+            'name'  => 'api_key',
             'label' => 'API Key',
             'type'  => FieldDescriptorInterface::TYPE_PASSWORD,
         ]);
