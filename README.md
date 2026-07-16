@@ -98,6 +98,15 @@ In the admin form, stored credentials are displayed as an obscured `******` plac
 instead of the real value. Saving the form without retyping a credential keeps the
 previously stored value; entering a new value replaces it.
 
+### Testing a connection
+
+Each saved service row in the admin form shows a **Test Connection** button that sends a
+minimal prompt to the provider and reports the latency and response (or the error) inline.
+Only saved rows can be tested, because the client factory reads saved configuration; when
+several rows share a service code, the first configured row of that code is used. The
+feature relies on the client layer, so it requires `symfony/ai-platform` — if the library
+is not installed, the error message shown by the button explains what to install.
+
 ## Contributing
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) and our [Code of Conduct](CODE_OF_CONDUCT.md).

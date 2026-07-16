@@ -5,6 +5,8 @@
 @add-ai-service__hover__gradient-start: #349be9;
 @add-ai-service__hover__gradient-end: #267fc2;
 @add-ai-service__hover__border-color: #14527d;
+@ai-test-result__success__color: #006400;
+@ai-test-result__error__color: #e22626;
 
 .add-ai-service {
     align-items: center;
@@ -45,4 +47,24 @@
 
 .add-ai-service + .add-ai-service {
     margin-left: 8px;
+}
+
+.action-test-connection {
+    display: block;
+    margin-top: 8px;
+}
+
+.ai-test-result {
+    display: block;
+    margin-top: 6px;
+    max-width: 260px;
+    word-break: break-word;
+}
+
+.ai-test-result-success {
+    color: @ai-test-result__success__color;
+}
+
+.ai-test-result-error {
+    color: @ai-test-result__error__color;
 }
