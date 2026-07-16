@@ -7,7 +7,9 @@ namespace MageOS\AiBase\Test\Unit\AiServices;
 use MageOS\AiBase\Api\Data\AiServiceConfigurationInterface;
 use MageOS\AiBase\Api\Data\FieldDescriptorInterface;
 use MageOS\AiBase\Api\Data\FieldDescriptorInterfaceFactory;
+use MageOS\AiBase\Api\ModelListProviderInterface;
 use MageOS\AiBase\Model\FieldDescriptor;
+use MageOS\AiBase\Model\ModelList\HttpFetcher;
 use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
 
@@ -34,8 +36,12 @@ final class ServicesTest extends TestCase
     #[DataProvider('service_classes')]
     public function test_service_exposes_required_metadata(string $className): void
     {
+        $args = [$this->fieldFactory];
+        if (is_subclass_of($className, ModelListProviderInterface::class)) {
+            $args[] = $this->createMock(HttpFetcher::class);
+        }
         /** @var AiServiceConfigurationInterface $service */
-        $service = new $className($this->fieldFactory);
+        $service = new $className(...$args);
 
         self::assertNotEmpty($service->getCode(), "$className::getCode() must be non-empty");
         self::assertNotEmpty($service->getName(), "$className::getName() must be non-empty");
