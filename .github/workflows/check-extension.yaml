@@ -13,14 +13,14 @@ jobs:
       matrix: ${{ steps.supported.outputs.matrix }}
     steps:
       - uses: actions/checkout@v4
-      - uses: graycoreio/github-actions-magento2/supported-version@v5.1.0
+      - uses: graycoreio/github-actions-magento2/supported-version@v8.9.0
         id: supported
         with:
           project: mage-os
 
   check-extension:
     needs: compute-matrix
-    uses: graycoreio/github-actions-magento2/.github/workflows/check-extension.yaml@v5.1.0
+    uses: graycoreio/github-actions-magento2/.github/workflows/check-extension.yaml@v8.9.0
     with:
       matrix: ${{ needs.compute-matrix.outputs.matrix }}
       # The default mirror (https://mirror.mage-os.org/) only proxies magento/*
