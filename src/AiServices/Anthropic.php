@@ -1,39 +1,60 @@
 <?php
 
+declare(strict_types=1);
+
 namespace MageOS\AiBase\AiServices;
 
 use MageOS\AiBase\Api\Data\AiServiceConfigurationInterface;
+use MageOS\AiBase\Api\Data\FieldDescriptorInterfaceFactory;
 
 class Anthropic implements AiServiceConfigurationInterface
 {
+    use FieldFactoryTrait;
+
+    /**
+     * @param FieldDescriptorInterfaceFactory $fieldFactory
+     */
+    public function __construct(
+        private readonly FieldDescriptorInterfaceFactory $fieldFactory,
+    ) {
+    }
+
+    /**
+     * @inheritdoc
+     */
     public function getCode(): string
     {
         return 'anthropic';
     }
 
+    /**
+     * @inheritdoc
+     */
     public function getName(): string
     {
         return 'Anthropic';
     }
 
-    public function getConfigurationTemplate(): string
+    /**
+     * @inheritdoc
+     */
+    public function getSupportedModels(): array
     {
-        return <<<TABLE
-            <table>
-                <tr>
-                    <th>API Key</th>
-                    <td><input type="password" name="<%- _fieldName %>[anthropic][apikey]" /></td>
-                </tr>
-                <tr>
-                    <th>Model</th>
-                    <td>
-                        <select name="<%- _fieldName %>[anthropic][model]">
-                            <option value="claude-3-opus">claude-3-opus</option>
-                            <option value="claude-3-sonnet">claude-3-sonnet</option>
-                        </select>
-                    </td>
-                </tr>
-            </table>
-        TABLE;
+        return [
+            'claude-opus-4-7'           => 'Claude Opus 4.7',
+            'claude-sonnet-4-6'         => 'Claude Sonnet 4.6',
+            'claude-haiku-4-5-20251001' => 'Claude Haiku 4.5',
+        ];
+    }
+
+    /**
+     * @inheritdoc
+     */
+    public function getConfigurationFields(): array
+    {
+        return [
+            $this->apiKeyField($this->fieldFactory),
+            $this->modelField($this->fieldFactory, $this->getSupportedModels()),
+        ];
     }
 }

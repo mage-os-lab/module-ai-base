@@ -1,0 +1,30 @@
+name: Check Extension
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  compute-matrix:
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.supported.outputs.matrix }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: graycoreio/github-actions-magento2/supported-version@v8.9.0
+        id: supported
+        with:
+          project: mage-os
+
+  check-extension:
+    needs: compute-matrix
+    uses: graycoreio/github-actions-magento2/.github/workflows/check-extension.yaml@v8.9.0
+    with:
+      matrix: ${{ needs.compute-matrix.outputs.matrix }}
+      # The default mirror (https://mirror.mage-os.org/) only proxies magento/*
+      # packages; the mage-os/project-community-edition metapackage is published
+      # to https://repo.mage-os.org/. Without this override, composer fails with
+      # "Could not find package mage-os/project-community-edition".
+      magento_repository: https://repo.mage-os.org/

@@ -13,25 +13,43 @@ You can find the new configuration option in System > Configuration > Services -
 
 ## Usage
 
-If you have configured AI backends, you can fetch the configuration using these methods: 
+If you have configured AI backends, you can fetch the configuration using these methods:
 
 ```php
-AiServiceConfigurationInterface::getAll($code): array
-AiServiceConfigurationInterface::getByCode($code): array
+use MageOS\AiBase\Api\AiServiceSelectorInterface;
+
+AiServiceSelectorInterface::getAll(): array
+AiServiceSelectorInterface::getByCode(string $code): array
 ```
 
-Both methods return an array of `\MageOS\AiBase\Api\Data\AiServiceInterface` objects.
+Both methods return an array of `\MageOS\AiBase\Api\Data\AiServiceInterface` objects (multiple entries per code are possible because admins can register the same backend more than once).
 
 ```php
-class MyAiFunctionality {
-    public function __construct(AiServiceConfigurationInterface $aiServiceConfiguration) {
-        $this->aiServiceConfiguration = $aiServiceConfiguration;
-    }
-    
-    public function doSomething() {
-    	$openAiCredentials = $this->aiServiceConfiguration->getByCode('openai');
+use MageOS\AiBase\Api\AiServiceSelectorInterface;
 
-        // $openAiCredentials = an array of \MageOS\AiBase\Api\Data\AiServiceInterface objects
+final class MyAiFunctionality
+{
+    public function __construct(
+        private readonly AiServiceSelectorInterface $aiServiceSelector,
+    ) {}
+
+    public function doSomething(): void
+    {
+        $openAiServices = $this->aiServiceSelector->getByCode('openai');
+
+        foreach ($openAiServices as $service) {
+            $config = $service->getConfiguration();
+            // $config = ['apikey' => '...', 'model' => 'gpt-4o', ...]
+        }
     }
 }
 ```
+
+## Contributing
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) and our [Code of Conduct](CODE_OF_CONDUCT.md).
+
+## Security
+
+Security issues: see [SECURITY.md](SECURITY.md). Please do **not** file public issues for vulnerabilities.
+

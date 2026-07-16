@@ -1,38 +1,62 @@
 <?php
 
+declare(strict_types=1);
+
 namespace MageOS\AiBase\AiServices;
 
 use MageOS\AiBase\Api\Data\AiServiceConfigurationInterface;
+use MageOS\AiBase\Api\Data\FieldDescriptorInterfaceFactory;
 
 class OpenAi implements AiServiceConfigurationInterface
 {
+    use FieldFactoryTrait;
+
+    /**
+     * @param FieldDescriptorInterfaceFactory $fieldFactory
+     */
+    public function __construct(
+        private readonly FieldDescriptorInterfaceFactory $fieldFactory,
+    ) {
+    }
+
+    /**
+     * @inheritdoc
+     */
     public function getCode(): string
     {
         return 'openai';
     }
 
+    /**
+     * @inheritdoc
+     */
     public function getName(): string
     {
         return 'OpenAI';
     }
 
-    public function getConfigurationTemplate(): string
+    /**
+     * @inheritdoc
+     */
+    public function getSupportedModels(): array
     {
-        return <<<TABLE
-            <table>
-                <tr>
-                    <th>API Key</th>
-                    <td><input type="password" name="<%- _fieldName %>[openai][apikey]" /></td>
-                </tr>
-                <tr>
-                    <th>Model</th>
-                    <td>
-                        <select name="<%- _fieldName %>[openai][model]">
-                            <option value="gpt-3.5-turbo">gpt-3.5-turbo</option>
-                        </select>
-                    </td>
-                </tr>
-            </table>
-        TABLE;
+        return [
+            'gpt-4o'      => 'GPT-4o',
+            'gpt-4o-mini' => 'GPT-4o mini',
+            'gpt-4-turbo' => 'GPT-4 Turbo',
+            'o1'          => 'o1',
+            'o1-mini'     => 'o1 mini',
+        ];
+    }
+
+    /**
+     * @inheritdoc
+     */
+    public function getConfigurationFields(): array
+    {
+        return [
+            $this->apiKeyField($this->fieldFactory),
+            $this->modelField($this->fieldFactory, $this->getSupportedModels()),
+        ];
     }
 }

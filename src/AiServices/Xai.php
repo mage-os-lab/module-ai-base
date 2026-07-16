@@ -1,34 +1,59 @@
 <?php
 
+declare(strict_types=1);
+
 namespace MageOS\AiBase\AiServices;
 
 use MageOS\AiBase\Api\Data\AiServiceConfigurationInterface;
+use MageOS\AiBase\Api\Data\FieldDescriptorInterfaceFactory;
 
 class Xai implements AiServiceConfigurationInterface
 {
+    use FieldFactoryTrait;
+
+    /**
+     * @param FieldDescriptorInterfaceFactory $fieldFactory
+     */
+    public function __construct(
+        private readonly FieldDescriptorInterfaceFactory $fieldFactory,
+    ) {
+    }
+
+    /**
+     * @inheritdoc
+     */
     public function getCode(): string
     {
         return 'xai';
     }
 
+    /**
+     * @inheritdoc
+     */
     public function getName(): string
     {
         return 'xAI';
     }
 
-    public function getConfigurationTemplate(): string
+    /**
+     * @inheritdoc
+     */
+    public function getSupportedModels(): array
     {
-        return <<<TABLE
-            <table>
-                <tr>
-                    <th>API Key</th>
-                    <td><input type="password" name="<%- _fieldName %>[xai][apikey]" /></td>
-                </tr>
-                <tr>
-                    <th>Model</th>
-                    <td><input type="text" name="<%- _fieldName %>[xai][model]" value="grok-beta" /></td>
-                </tr>
-            </table>
-        TABLE;
+        return [
+            'grok-2'      => 'Grok 2',
+            'grok-2-mini' => 'Grok 2 mini',
+        ];
+    }
+
+    /**
+     * @inheritdoc
+     */
+    public function getConfigurationFields(): array
+    {
+        return [
+            $this->apiKeyField($this->fieldFactory),
+            $this->modelField($this->fieldFactory, $this->getSupportedModels()),
+        ];
     }
 }

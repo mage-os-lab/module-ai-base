@@ -1,39 +1,60 @@
 <?php
 
+declare(strict_types=1);
+
 namespace MageOS\AiBase\AiServices;
 
 use MageOS\AiBase\Api\Data\AiServiceConfigurationInterface;
+use MageOS\AiBase\Api\Data\FieldDescriptorInterfaceFactory;
 
 class Google implements AiServiceConfigurationInterface
 {
+    use FieldFactoryTrait;
+
+    /**
+     * @param FieldDescriptorInterfaceFactory $fieldFactory
+     */
+    public function __construct(
+        private readonly FieldDescriptorInterfaceFactory $fieldFactory,
+    ) {
+    }
+
+    /**
+     * @inheritdoc
+     */
     public function getCode(): string
     {
         return 'google';
     }
 
+    /**
+     * @inheritdoc
+     */
     public function getName(): string
     {
-        return 'Google';
+        return 'Google Gemini';
     }
 
-    public function getConfigurationTemplate(): string
+    /**
+     * @inheritdoc
+     */
+    public function getSupportedModels(): array
     {
-        return <<<TABLE
-            <table>
-                <tr>
-                    <th>API Key</th>
-                    <td><input type="password" name="<%- _fieldName %>[google][apikey]" /></td>
-                </tr>
-                <tr>
-                    <th>Model</th>
-                    <td>
-                        <select name="<%- _fieldName %>[google][model]">
-                            <option value="gemini-pro">gemini-pro</option>
-                            <option value="gemini-1.5-pro">gemini-1.5-pro</option>
-                        </select>
-                    </td>
-                </tr>
-            </table>
-        TABLE;
+        return [
+            'gemini-2.0-pro'   => 'Gemini 2.0 Pro',
+            'gemini-2.0-flash' => 'Gemini 2.0 Flash',
+            'gemini-1.5-pro'   => 'Gemini 1.5 Pro',
+        ];
+    }
+
+    /**
+     * @inheritdoc
+     */
+    public function getConfigurationFields(): array
+    {
+        return [
+            $this->apiKeyField($this->fieldFactory),
+            $this->modelField($this->fieldFactory, $this->getSupportedModels()),
+        ];
     }
 }

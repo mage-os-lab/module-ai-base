@@ -1,24 +1,32 @@
+@add-ai-service__border-color: #1a5f90;
+@add-ai-service__gradient-start: #2d8cd6;
+@add-ai-service__gradient-end: #1f6ead;
+@add-ai-service__color: #fff;
+@add-ai-service__hover__gradient-start: #349be9;
+@add-ai-service__hover__gradient-end: #267fc2;
+@add-ai-service__hover__border-color: #14527d;
+
 .add-ai-service {
-    display: inline-flex;
     align-items: center;
+    background: linear-gradient(180deg, @add-ai-service__gradient-start 0%, @add-ai-service__gradient-end 100%);
+    border: 1px solid @add-ai-service__border-color;
+    border-radius: 4px;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, .16);
+    color: @add-ai-service__color;
+    cursor: pointer;
+    display: inline-flex;
+    font-weight: 600;
     gap: 6px;
     padding: 8px 14px;
-    border-radius: 4px;
-    border: 1px solid #1a5f90;
-    background: linear-gradient(180deg, #2d8cd6 0%, #1f6ead 100%);
-    color: #fff;
-    font-weight: 600;
     text-decoration: none;
-    cursor: pointer;
-    box-shadow: 0 1px 3px rgba(0, 0, 0, .16);
     transition: background-color .15s ease, border-color .15s ease, box-shadow .15s ease;
 
     &:hover,
     &:focus {
-        background: linear-gradient(180deg, #349be9 0%, #267fc2 100%);
-        border-color: #14527d;
-        text-decoration: none;
+        background: linear-gradient(180deg, @add-ai-service__hover__gradient-start 0%, @add-ai-service__hover__gradient-end 100%);
+        border-color: @add-ai-service__hover__border-color;
         box-shadow: 0 2px 6px rgba(0, 0, 0, .2);
+        text-decoration: none;
     }
 
     &:active {

@@ -1,0 +1,14 @@
+<?xml version="1.0"?>
+<ruleset name="MageOS_AiBase">
+    <!--
+        Declare standards paths in the ruleset: on Mage-OS installs the packages span
+        vendor/magento, vendor/mage-os and vendor/phpcsstandards, while the Graycore
+        coding-standard action writes a single-vendor installed_paths config that
+        misses the PHPCompatibility fork. Ruleset config wins over CodeSniffer.conf.
+    -->
+    <config name="installed_paths" value="vendor/magento/magento-coding-standard,vendor/mage-os/php-compatibility-fork,vendor/phpcsstandards/phpcsutils"/>
+    <arg name="extensions" value="php,phtml"/>
+    <file>src</file>
+    <exclude-pattern>src/Test/</exclude-pattern>
+    <rule ref="Magento2"/>
+</ruleset>
