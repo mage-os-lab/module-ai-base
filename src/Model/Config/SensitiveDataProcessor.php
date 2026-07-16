@@ -13,6 +13,15 @@ use Magento\Framework\Encryption\EncryptorInterface;
  */
 class SensitiveDataProcessor
 {
+    /**
+     * Placeholder shown in the admin form instead of a stored credential.
+     */
+    public const OBSCURED_PLACEHOLDER = '******';
+
+    /**
+     * The canonical credential key is "api_key"; the legacy "apikey" spelling is kept
+     * defensively for third-party providers that may still use it.
+     */
     private const SENSITIVE_KEYS = ['apikey', 'api_key', 'token', 'secret'];
 
     /**
@@ -57,6 +66,43 @@ class SensitiveDataProcessor
             $configuration,
             fn (string $value) => $this->isEncrypted($value) ? $this->encryptor->decrypt($value) : $value,
         );
+    }
+
+    /**
+     * Replace sensitive values with the obscured placeholder for admin form display.
+     *
+     * @param array $configuration
+     * @return array
+     */
+    public function maskRow(array $configuration): array
+    {
+        return $this->processRow(
+            $configuration,
+            static fn (): string => self::OBSCURED_PLACEHOLDER,
+        );
+    }
+
+    /**
+     * Restore previously stored credentials where the submitted value is the placeholder.
+     *
+     * A submitted placeholder means "keep the stored value"; if no stored value exists
+     * for the key (e.g. the row is new), the placeholder is discarded to avoid persisting
+     * the literal placeholder as a credential.
+     *
+     * @param array $configuration Submitted service configuration row
+     * @param array $previous Previously stored (still encrypted) configuration row
+     * @return array
+     */
+    public function restoreRow(array $configuration, array $previous): array
+    {
+        foreach ($configuration as $key => $value) {
+            if ($value === self::OBSCURED_PLACEHOLDER && $this->isSensitive((string)$key)) {
+                $stored = $previous[$key] ?? '';
+                $configuration[$key] = is_string($stored) ? $stored : '';
+            }
+        }
+
+        return $configuration;
     }
 
     /**

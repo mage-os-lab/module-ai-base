@@ -7,6 +7,7 @@ namespace MageOS\AiBase\Model\Config\Backend;
 use Magento\Config\Model\Config\Backend\Serialized\ArraySerialized;
 use Magento\Framework\App\Cache\TypeListInterface;
 use Magento\Framework\App\Config\ScopeConfigInterface;
+use Magento\Framework\App\ObjectManager;
 use Magento\Framework\Data\Collection\AbstractDb;
 use Magento\Framework\Model\Context;
 use Magento\Framework\Model\ResourceModel\AbstractResource;
@@ -17,10 +18,20 @@ use MageOS\AiBase\Model\Config\SensitiveDataProcessor;
 /**
  * Serialized services config with credential fields encrypted at rest.
  *
+ * Credentials are never decrypted into the admin form: after load, sensitive
+ * values are replaced with an obscured placeholder. On save, a submitted
+ * placeholder restores the previously stored (encrypted) value, so admins can
+ * save the form without retyping credentials.
+ *
  * Row shape: [rowId => [serviceCode => [field => value, ...]]]
  */
 class EncryptedServices extends ArraySerialized
 {
+    /**
+     * @var Json
+     */
+    private readonly Json $jsonSerializer;
+
     /**
      * @param Context $context
      * @param Registry $registry
@@ -53,10 +64,11 @@ class EncryptedServices extends ArraySerialized
             $data,
             $serializer
         );
+        $this->jsonSerializer = $serializer ?? ObjectManager::getInstance()->get(Json::class);
     }
 
     /**
-     * Encrypt credential fields before persisting.
+     * Restore placeholder-masked credentials from stored config, then encrypt before persisting.
      *
      * @return $this
      */
@@ -64,14 +76,20 @@ class EncryptedServices extends ArraySerialized
     {
         $value = $this->getValue();
         if (is_array($value)) {
-            $this->setValue($this->mapRows($value, [$this->sensitiveDataProcessor, 'encryptRow']));
+            $stored = $this->getStoredRows();
+            $this->setValue($this->mapRows(
+                $value,
+                fn (array $row, string $rowId, string $service): array => $this->sensitiveDataProcessor->encryptRow(
+                    $this->sensitiveDataProcessor->restoreRow($row, $this->storedRow($stored, $rowId, $service))
+                ),
+            ));
         }
 
         return parent::beforeSave();
     }
 
     /**
-     * Decrypt credential fields after loading for the admin form.
+     * Mask credential fields with the obscured placeholder for the admin form.
      *
      * @return $this
      */
@@ -81,7 +99,10 @@ class EncryptedServices extends ArraySerialized
 
         $value = $this->getValue();
         if (is_array($value)) {
-            $this->setValue($this->mapRows($value, [$this->sensitiveDataProcessor, 'decryptRow']));
+            $this->setValue($this->mapRows(
+                $value,
+                fn (array $row): array => $this->sensitiveDataProcessor->maskRow($row),
+            ));
         }
 
         return $this;
@@ -89,6 +110,8 @@ class EncryptedServices extends ArraySerialized
 
     /**
      * Apply a row processor to each service configuration row.
+     *
+     * The processor is called with the row configuration, the row ID and the service code.
      *
      * @param array $value
      * @param callable $processor
@@ -102,10 +125,45 @@ class EncryptedServices extends ArraySerialized
             }
             $service = array_key_first($row);
             if ($service !== null && is_array($row[$service])) {
-                $value[$rowId][$service] = $processor($row[$service]);
+                $value[$rowId][$service] = $processor($row[$service], (string)$rowId, (string)$service);
             }
         }
 
         return $value;
+    }
+
+    /**
+     * Previously stored service rows, decoded from the old (raw, still encrypted) config value.
+     *
+     * @return array
+     */
+    private function getStoredRows(): array
+    {
+        $old = $this->getOldValue();
+        if ($old === '') {
+            return [];
+        }
+        try {
+            $decoded = $this->jsonSerializer->unserialize($old);
+        } catch (\InvalidArgumentException) {
+            return [];
+        }
+
+        return is_array($decoded) ? $decoded : [];
+    }
+
+    /**
+     * Extract a single stored service configuration row, if present.
+     *
+     * @param array $stored
+     * @param string $rowId
+     * @param string $service
+     * @return array
+     */
+    private function storedRow(array $stored, string $rowId, string $service): array
+    {
+        $row = $stored[$rowId][$service] ?? [];
+
+        return is_array($row) ? $row : [];
     }
 }
