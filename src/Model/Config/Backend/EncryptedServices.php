@@ -7,7 +7,6 @@ namespace MageOS\AiBase\Model\Config\Backend;
 use Magento\Config\Model\Config\Backend\Serialized\ArraySerialized;
 use Magento\Framework\App\Cache\TypeListInterface;
 use Magento\Framework\App\Config\ScopeConfigInterface;
-use Magento\Framework\App\ObjectManager;
 use Magento\Framework\Data\Collection\AbstractDb;
 use Magento\Framework\Model\Context;
 use Magento\Framework\Model\ResourceModel\AbstractResource;
@@ -28,20 +27,15 @@ use MageOS\AiBase\Model\Config\SensitiveDataProcessor;
 class EncryptedServices extends ArraySerialized
 {
     /**
-     * @var Json
-     */
-    private readonly Json $jsonSerializer;
-
-    /**
      * @param Context $context
      * @param Registry $registry
      * @param ScopeConfigInterface $config
      * @param TypeListInterface $cacheTypeList
      * @param SensitiveDataProcessor $sensitiveDataProcessor
+     * @param Json $jsonSerializer
      * @param AbstractResource|null $resource
      * @param AbstractDb|null $resourceCollection
      * @param array $data
-     * @param Json|null $serializer
      */
     public function __construct(
         Context $context,
@@ -49,10 +43,10 @@ class EncryptedServices extends ArraySerialized
         ScopeConfigInterface $config,
         TypeListInterface $cacheTypeList,
         private readonly SensitiveDataProcessor $sensitiveDataProcessor,
+        private readonly Json $jsonSerializer,
         ?AbstractResource $resource = null,
         ?AbstractDb $resourceCollection = null,
-        array $data = [],
-        ?Json $serializer = null
+        array $data = []
     ) {
         parent::__construct(
             $context,
@@ -62,9 +56,8 @@ class EncryptedServices extends ArraySerialized
             $resource,
             $resourceCollection,
             $data,
-            $serializer
+            $jsonSerializer
         );
-        $this->jsonSerializer = $serializer ?? ObjectManager::getInstance()->get(Json::class);
     }
 
     /**

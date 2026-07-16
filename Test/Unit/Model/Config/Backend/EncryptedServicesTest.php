@@ -40,7 +40,7 @@ final class EncryptedServicesTest extends TestCase
         $this->subject = (new ObjectManager($this))->getObject(EncryptedServices::class, [
             'config' => $this->scopeConfig,
             'sensitiveDataProcessor' => new SensitiveDataProcessor($encryptor),
-            'serializer' => $this->serializer,
+            'jsonSerializer' => $this->serializer,
         ]);
         $this->subject->setPath(self::CONFIG_PATH);
     }
