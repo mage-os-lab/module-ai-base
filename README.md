@@ -45,6 +45,48 @@ final class MyAiFunctionality
 }
 ```
 
+### Making AI calls
+
+Instead of reading raw configuration, consumer modules can request a ready-to-use,
+provider-agnostic client. The bundled implementation is backed by
+[symfony/ai-platform](https://github.com/symfony/ai), which is a *soft* dependency —
+install it only if you use the client layer:
+
+```bash
+composer require symfony/ai-platform
+```
+
+```php
+use MageOS\AiBase\Api\AiClientFactoryInterface;
+
+final class MyAiFunctionality
+{
+    public function __construct(
+        private readonly AiClientFactoryInterface $aiClientFactory,
+    ) {}
+
+    public function doSomething(): string
+    {
+        // First configured service, or pass a code: create('openai')
+        $client = $this->aiClientFactory->create();
+
+        return $client->complete('Summarize this product description: ...');
+    }
+}
+```
+
+Provider bridges are mapped per service code in `etc/di.xml` (`platformFactories`
+argument of `Model\Client\ClientFactory`); third-party modules can register additional
+providers there, or replace the implementation entirely by preferencing
+`AiClientFactoryInterface`.
+
+### Credential encryption
+
+API keys and other credential fields (`apikey`, `api_key`, `token`, `secret`) are
+encrypted at rest with Magento's `EncryptorInterface` when the configuration is saved.
+Values saved before encryption was introduced are detected and returned as-is, and are
+re-encrypted the next time the configuration is saved in the admin.
+
 ## Contributing
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) and our [Code of Conduct](CODE_OF_CONDUCT.md).

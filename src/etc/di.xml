@@ -4,6 +4,27 @@
     <preference for="MageOS\AiBase\Api\AiServiceSelectorInterface" type="MageOS\AiBase\Model\AiServiceSelector"/>
     <preference for="MageOS\AiBase\Api\Data\AiServiceInterface" type="MageOS\AiBase\Model\AiService"/>
     <preference for="MageOS\AiBase\Api\Data\FieldDescriptorInterface" type="MageOS\AiBase\Model\FieldDescriptor"/>
+    <preference for="MageOS\AiBase\Api\AiClientFactoryInterface" type="MageOS\AiBase\Model\Client\ClientFactory"/>
+
+    <!-- Symfony AI provider bridges (soft dependency: FQCN strings, resolved only when a client is created).
+         Codes marked "OpenAI-compatible" fall back to the OpenAI bridge until a dedicated bridge is verified. -->
+    <type name="MageOS\AiBase\Model\Client\ClientFactory">
+        <arguments>
+            <argument name="platformFactories" xsi:type="array">
+                <item name="anthropic" xsi:type="string">Symfony\AI\Platform\Bridge\Anthropic\PlatformFactory</item>
+                <item name="azure" xsi:type="string">Symfony\AI\Platform\Bridge\Azure\OpenAi\PlatformFactory</item>
+                <item name="deepseek" xsi:type="string">Symfony\AI\Platform\Bridge\DeepSeek\PlatformFactory</item>
+                <item name="google" xsi:type="string">Symfony\AI\Platform\Bridge\Gemini\PlatformFactory</item>
+                <item name="grok" xsi:type="string">Symfony\AI\Platform\Bridge\OpenAi\PlatformFactory</item>
+                <item name="huggingface" xsi:type="string">Symfony\AI\Platform\Bridge\HuggingFace\PlatformFactory</item>
+                <item name="lmstudio" xsi:type="string">Symfony\AI\Platform\Bridge\LmStudio\PlatformFactory</item>
+                <item name="ollama" xsi:type="string">Symfony\AI\Platform\Bridge\Ollama\PlatformFactory</item>
+                <item name="openrouter" xsi:type="string">Symfony\AI\Platform\Bridge\OpenRouter\PlatformFactory</item>
+                <item name="openai" xsi:type="string">Symfony\AI\Platform\Bridge\OpenAi\PlatformFactory</item>
+                <item name="xai" xsi:type="string">Symfony\AI\Platform\Bridge\OpenAi\PlatformFactory</item>
+            </argument>
+        </arguments>
+    </type>
 
     <type name="MageOS\AiBase\Block\Adminhtml\Configuration\Services">
         <arguments>

@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- `AiClientInterface` / `AiClientFactoryInterface`: provider-agnostic client layer backed by symfony/ai-platform bridges (soft dependency; bridge FQCNs mapped per service code in `di.xml`, guarded by `class_exists`). Third-party modules can register additional bridges or replace the implementation via `<preference>`.
+- Credential fields (`apikey`, `api_key`, `token`, `secret`) are now encrypted at rest via `EncryptedServices` config backend + `SensitiveDataProcessor`. Plaintext rows saved before this change are detected and keep working; they are re-encrypted on the next admin save.
+- Azure service: `endpoint` configuration field (required by the Azure OpenAI bridge).
+- Unit tests for `SensitiveDataProcessor` and `ClientFactory`.
+
+### Changed
+- `AiServiceSelector` reads configuration with store scope (`ScopeInterface::SCOPE_STORE`), enabling per-store service configuration.
+- `composer.json`: declare `magento/module-backend`, `module-config`, `module-store` requirements; suggest `symfony/ai-platform`; exclude `registration.php` from the classmap.
+
 ## [1.0.0] - 2026-04-21
 
 ### Added
