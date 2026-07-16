@@ -12,7 +12,7 @@ use MageOS\AiBase\Api\AiClientInterface;
  *
  * The Symfony AI classes are referenced lazily (string FQCNs, guarded by
  * class_exists in ClientFactory) so this module does not hard-require
- * symfony/ai-platform. Written against symfony/ai-platform v0.10; the
+ * symfony/ai-platform. Written against symfony/ai-platform v0.11.0; the
  * component is experimental and not covered by Symfony's BC promise, so
  * pin the version and re-verify on upgrade.
  */

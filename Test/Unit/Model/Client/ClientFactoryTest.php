@@ -49,12 +49,15 @@ final class ClientFactoryTest extends TestCase
 
     public function test_create_throws_when_bridge_class_is_not_installed(): void
     {
+        // Note: Magento's unit-test autoloader fabricates any missing "*Factory"
+        // class with a non-static create() and no createPlatform(), which is
+        // exactly the shape the method_exists guard must reject.
         $this->serviceSelector->method('getByCode')->with('openai')
             ->willReturn([new AiService('openai', ['apikey' => 'k'])]);
         $subject = new ClientFactory(
             $this->serviceSelector,
             $this->clientFactory,
-            ['openai' => '\Symfony\AI\Platform\Bridge\OpenAi\PlatformFactory'],
+            ['openai' => 'MageOS\AiBase\Test\Unit\Model\Client\AbsentBridgeFactory'],
         );
 
         $this->expectException(LocalizedException::class);
@@ -88,11 +91,11 @@ final class ClientFactoryTest extends TestCase
 }
 
 /**
- * Stand-in for a Symfony AI bridge PlatformFactory.
+ * Stand-in for a Symfony AI bridge Factory.
  */
 final class FakePlatformFactory
 {
-    public static function create(string $apiKey): object
+    public static function createPlatform(string $apiKey): object
     {
         return new \stdClass();
     }

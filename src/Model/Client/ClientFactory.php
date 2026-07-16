@@ -74,7 +74,7 @@ class ClientFactory implements AiClientFactoryInterface
                 __('No Symfony AI platform bridge registered for service "%1".', $code)
             );
         }
-        if (!class_exists($factoryClass)) {
+        if (!class_exists($factoryClass) || !method_exists($factoryClass, 'createPlatform')) {
             throw new LocalizedException(
                 __(
                     'The Symfony AI bridge for "%1" is not installed. '
@@ -86,18 +86,20 @@ class ClientFactory implements AiClientFactoryInterface
 
         $config = $service->getConfiguration();
 
-        // Bridge factory signatures vary by provider (verified against v0.10):
-        // hosted providers take an API key; local runtimes take a base URL.
-        // Azure additionally needs endpoint + deployment (the selected model).
+        // Bridge Factory::createPlatform() signatures vary by provider (verified
+        // against symfony/ai-platform v0.11.0): hosted providers take an API key;
+        // local runtimes take an endpoint/base URL; Azure takes endpoint +
+        // deployment (the selected model) + API version + key.
         return match ($code) {
-            'ollama', 'lmstudio' => $factoryClass::create($config['base_url'] ?? ''),
-            'azure' => $factoryClass::create(
+            'ollama' => $factoryClass::createPlatform($config['base_url'] ?? null),
+            'lmstudio' => $factoryClass::createPlatform($config['base_url'] ?? 'http://localhost:1234'),
+            'azure' => $factoryClass::createPlatform(
                 $config['endpoint'] ?? '',
                 $config['deployment'] ?? $config['model'] ?? '',
-                $config['api_version'] ?? '2024-02-01',
+                $config['api_version'] ?? '2024-10-21',
                 $config['apikey'] ?? ''
             ),
-            default => $factoryClass::create($config['apikey'] ?? ''),
+            default => $factoryClass::createPlatform($config['apikey'] ?? ''),
         };
     }
 }

@@ -7,21 +7,20 @@
     <preference for="MageOS\AiBase\Api\AiClientFactoryInterface" type="MageOS\AiBase\Model\Client\ClientFactory"/>
 
     <!-- Symfony AI provider bridges (soft dependency: FQCN strings, resolved only when a client is created).
-         Codes marked "OpenAI-compatible" fall back to the OpenAI bridge until a dedicated bridge is verified. -->
+         Verified against symfony/ai-platform v0.11.0. Grok/xAI have no dedicated bridge yet; register one
+         here (or via a consumer module) once available upstream. -->
     <type name="MageOS\AiBase\Model\Client\ClientFactory">
         <arguments>
             <argument name="platformFactories" xsi:type="array">
-                <item name="anthropic" xsi:type="string">Symfony\AI\Platform\Bridge\Anthropic\PlatformFactory</item>
-                <item name="azure" xsi:type="string">Symfony\AI\Platform\Bridge\Azure\OpenAi\PlatformFactory</item>
-                <item name="deepseek" xsi:type="string">Symfony\AI\Platform\Bridge\DeepSeek\PlatformFactory</item>
-                <item name="google" xsi:type="string">Symfony\AI\Platform\Bridge\Gemini\PlatformFactory</item>
-                <item name="grok" xsi:type="string">Symfony\AI\Platform\Bridge\OpenAi\PlatformFactory</item>
-                <item name="huggingface" xsi:type="string">Symfony\AI\Platform\Bridge\HuggingFace\PlatformFactory</item>
-                <item name="lmstudio" xsi:type="string">Symfony\AI\Platform\Bridge\LmStudio\PlatformFactory</item>
-                <item name="ollama" xsi:type="string">Symfony\AI\Platform\Bridge\Ollama\PlatformFactory</item>
-                <item name="openrouter" xsi:type="string">Symfony\AI\Platform\Bridge\OpenRouter\PlatformFactory</item>
-                <item name="openai" xsi:type="string">Symfony\AI\Platform\Bridge\OpenAi\PlatformFactory</item>
-                <item name="xai" xsi:type="string">Symfony\AI\Platform\Bridge\OpenAi\PlatformFactory</item>
+                <item name="anthropic" xsi:type="string">Symfony\AI\Platform\Bridge\Anthropic\Factory</item>
+                <item name="azure" xsi:type="string">Symfony\AI\Platform\Bridge\Azure\OpenAi\Factory</item>
+                <item name="deepseek" xsi:type="string">Symfony\AI\Platform\Bridge\DeepSeek\Factory</item>
+                <item name="google" xsi:type="string">Symfony\AI\Platform\Bridge\Gemini\Factory</item>
+                <item name="huggingface" xsi:type="string">Symfony\AI\Platform\Bridge\HuggingFace\Factory</item>
+                <item name="lmstudio" xsi:type="string">Symfony\AI\Platform\Bridge\LmStudio\Factory</item>
+                <item name="ollama" xsi:type="string">Symfony\AI\Platform\Bridge\Ollama\Factory</item>
+                <item name="openrouter" xsi:type="string">Symfony\AI\Platform\Bridge\OpenRouter\Factory</item>
+                <item name="openai" xsi:type="string">Symfony\AI\Platform\Bridge\OpenAi\Factory</item>
             </argument>
         </arguments>
     </type>
