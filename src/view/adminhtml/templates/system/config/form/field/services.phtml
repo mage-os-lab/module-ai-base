@@ -1,5 +1,6 @@
 <?php
 /** @var \Magento\Framework\Escaper $escaper */
+/** @var \Magento\Framework\View\Helper\SecureHtmlRenderer $secureRenderer */
 /** @var \MageOS\AiBase\Block\Adminhtml\Configuration\Services $block */
 
 $_htmlId = $block->getHtmlId() ?: '_' . uniqid();
@@ -39,101 +40,110 @@ $_colspan = $block->isAddAfter() ? 2 : 1;
            name="<?= $escaper->escapeHtmlAttr($block->getElement()->getName()) ?>[__empty]"
            value=""/>
 
-    <script>
-        require(['prototype'], function () {
-            const schema = <?= /* @noEscape */ $block->getServicesSchemaJson() ?>;
-            const fieldNameBase = '<?= $escaper->escapeJs($block->getElement()->getName()) ?>';
+    <?php
+    $schemaJson = $block->getServicesSchemaJson();
+    $fieldNameJs = $escaper->escapeJs($block->getElement()->getName());
+    $deleteLabelJs = $escaper->escapeJs(__('Delete'));
+    $htmlIdJs = $escaper->escapeJs($_htmlId);
+    $existingRowsJs = '';
+    foreach ($block->getArrayRows() as $_row) {
+        $rowData = $_row->getData();
+        $serviceCode = array_key_first($rowData);
+        $existingRowsJs .= sprintf(
+            "    addRow('%s', %s, '%s');\n",
+            $escaper->escapeJs($serviceCode),
+            json_encode($rowData[$serviceCode]),
+            $escaper->escapeJs((string) $_row->getData('_id'))
+        );
+    }
+    $scriptString = <<<script
+require(['prototype'], function () {
+    const schema = {$schemaJson};
+    const fieldNameBase = '{$fieldNameJs}';
 
-            function escapeHtml(value) {
-                if (value === null || value === undefined) return '';
-                return String(value)
-                    .replace(/&/g, '&amp;')
-                    .replace(/</g, '&lt;')
-                    .replace(/>/g, '&gt;')
-                    .replace(/"/g, '&quot;')
-                    .replace(/'/g, '&#39;');
-            }
+    function escapeHtml(value) {
+        if (value === null || value === undefined) return '';
+        return String(value)
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;')
+            .replace(/'/g, '&#39;');
+    }
 
-            function buildField(serviceCode, fieldName, field) {
-                const base = fieldNameBase + '[' + fieldName + '][' + serviceCode + '][' + field.name + ']';
-                if (field.type === 'select') {
-                    const options = field.options.map(function (opt) {
-                        const selected = (field.default === opt.value) ? ' selected' : '';
-                        return '<option value="' + escapeHtml(opt.value) + '"' + selected + '>'
-                            + escapeHtml(opt.label) + '</option>';
-                    }).join('');
-                    return '<select name="' + escapeHtml(base) + '">' + options + '</select>';
-                }
-                const defaultAttr = field.default ? ' value="' + escapeHtml(field.default) + '"' : '';
-                const type = (field.type === 'password' || field.type === 'text') ? field.type : 'text';
-                return '<input type="' + type + '" name="' + escapeHtml(base) + '"' + defaultAttr + '/>';
-            }
+    function buildField(serviceCode, fieldName, field) {
+        const base = fieldNameBase + '[' + fieldName + '][' + serviceCode + '][' + field.name + ']';
+        if (field.type === 'select') {
+            const options = field.options.map(function (opt) {
+                const selected = (field.default === opt.value) ? ' selected' : '';
+                return '<option value="' + escapeHtml(opt.value) + '"' + selected + '>'
+                    + escapeHtml(opt.label) + '</option>';
+            }).join('');
+            return '<select name="' + escapeHtml(base) + '">' + options + '</select>';
+        }
+        const defaultAttr = field.default ? ' value="' + escapeHtml(field.default) + '"' : '';
+        const type = (field.type === 'password' || field.type === 'text') ? field.type : 'text';
+        return '<input type="' + type + '" name="' + escapeHtml(base) + '"' + defaultAttr + '/>';
+    }
 
-            function addRow(serviceCode, values, existingRowId) {
-                const fields = schema[serviceCode];
-                if (!fields) return;
+    function addRow(serviceCode, values, existingRowId) {
+        const fields = schema[serviceCode];
+        if (!fields) return;
 
-                const d = new Date();
-                const rowId = existingRowId || ('_' + d.getTime() + '_' + d.getMilliseconds());
+        const d = new Date();
+        const rowId = existingRowId || ('_' + d.getTime() + '_' + d.getMilliseconds());
 
-                const rows = fields.map(function (field) {
-                    return '<tr>'
-                        + '<th>' + escapeHtml(field.label) + '</th>'
-                        + '<td>' + buildField(serviceCode, rowId, field) + '</td>'
-                        + '</tr>';
-                }).join('');
+        const rows = fields.map(function (field) {
+            return '<tr>'
+                + '<th>' + escapeHtml(field.label) + '</th>'
+                + '<td>' + buildField(serviceCode, rowId, field) + '</td>'
+                + '</tr>';
+        }).join('');
 
-                const rowHtml = '<tr id="' + rowId + '">'
-                    + '<td><table>' + rows + '</table></td>'
-                    + '<td class="col-actions">'
-                    + '<button class="action-delete" data-row-id="' + rowId + '" type="button">'
-                    + '<span><?= $escaper->escapeJs(__('Delete')) ?></span></button></td>'
-                    + '</tr>';
+        const rowHtml = '<tr id="' + rowId + '">'
+            + '<td><table>' + rows + '</table></td>'
+            + '<td class="col-actions">'
+            + '<button class="action-delete" data-row-id="' + rowId + '" type="button">'
+            + '<span>{$deleteLabelJs}</span></button></td>'
+            + '</tr>';
 
-                Element.insert($('addRow<?= $escaper->escapeJs($_htmlId) ?>'), { bottom: rowHtml });
+        Element.insert($('addRow{$htmlIdJs}'), { bottom: rowHtml });
 
-                if (values) {
-                    Object.keys(values).forEach(function (key) {
-                        const selector = '[name="' + fieldNameBase + '[' + rowId + ']['
-                            + serviceCode + '][' + key + ']"]';
-                        const el = document.querySelector(selector);
-                        if (!el) return;
-                        if (el.tagName === 'SELECT') {
-                            const hasOption = Array.from(el.options).some(function (opt) {
-                                return opt.value === values[key];
-                            });
-                            if (!hasOption && values[key] !== undefined && values[key] !== null && values[key] !== '') {
-                                const legacyOpt = document.createElement('option');
-                                legacyOpt.value = values[key];
-                                legacyOpt.text = values[key] + ' (legacy)';
-                                el.insertBefore(legacyOpt, el.firstChild);
-                            }
-                        }
-                        el.value = values[key];
+        if (values) {
+            Object.keys(values).forEach(function (key) {
+                const selector = '[name="' + fieldNameBase + '[' + rowId + ']['
+                    + serviceCode + '][' + key + ']"]';
+                const el = document.querySelector(selector);
+                if (!el) return;
+                if (el.tagName === 'SELECT') {
+                    const hasOption = Array.from(el.options).some(function (opt) {
+                        return opt.value === values[key];
                     });
+                    if (!hasOption && values[key] !== undefined && values[key] !== null && values[key] !== '') {
+                        const legacyOpt = document.createElement('option');
+                        legacyOpt.value = values[key];
+                        legacyOpt.text = values[key] + ' (legacy)';
+                        el.insertBefore(legacyOpt, el.firstChild);
+                    }
                 }
-            }
-
-            document.querySelectorAll('.ai-services-configurator .add-ai-service').forEach(function (btn) {
-                btn.addEventListener('click', function (e) {
-                    addRow(e.target.dataset.aiService);
-                });
+                el.value = values[key];
             });
+        }
+    }
 
-            document.querySelector('.ai-services-configurator').addEventListener('click', function (e) {
-                if (!e.target.classList.contains('action-delete')) return;
-                document.getElementById(e.target.dataset.rowId).remove();
-            });
-
-            <?php foreach ($block->getArrayRows() as $_row): ?>
-                <?php $rowData = $_row->getData(); ?>
-                <?php $serviceCode = array_key_first($rowData); ?>
-                addRow(
-                    '<?= $escaper->escapeJs($serviceCode) ?>',
-                    <?= /* @noEscape */ json_encode($rowData[$serviceCode]) ?>,
-                    '<?= $escaper->escapeJs((string) $_row->getData('_id')) ?>'
-                );
-            <?php endforeach; ?>
+    document.querySelectorAll('.ai-services-configurator .add-ai-service').forEach(function (btn) {
+        btn.addEventListener('click', function (e) {
+            addRow(e.target.dataset.aiService);
         });
-    </script>
+    });
+
+    document.querySelector('.ai-services-configurator').addEventListener('click', function (e) {
+        if (!e.target.classList.contains('action-delete')) return;
+        document.getElementById(e.target.dataset.rowId).remove();
+    });
+
+{$existingRowsJs}});
+script;
+    ?>
+    <?= /* @noEscape */ $secureRenderer->renderTag('script', [], $scriptString, false) ?>
 </div>
