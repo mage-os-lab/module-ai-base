@@ -59,7 +59,8 @@ $_colspan = $block->isAddAfter() ? 2 : 1;
                 if (field.type === 'select') {
                     const options = field.options.map(function (opt) {
                         const selected = (field.default === opt.value) ? ' selected' : '';
-                        return '<option value="' + escapeHtml(opt.value) + '"' + selected + '>' + escapeHtml(opt.label) + '</option>';
+                        return '<option value="' + escapeHtml(opt.value) + '"' + selected + '>'
+                            + escapeHtml(opt.label) + '</option>';
                     }).join('');
                     return '<select name="' + escapeHtml(base) + '">' + options + '</select>';
                 }
@@ -93,11 +94,14 @@ $_colspan = $block->isAddAfter() ? 2 : 1;
 
                 if (values) {
                     Object.keys(values).forEach(function (key) {
-                        const selector = '[name="' + fieldNameBase + '[' + rowId + '][' + serviceCode + '][' + key + ']"]';
+                        const selector = '[name="' + fieldNameBase + '[' + rowId + ']['
+                            + serviceCode + '][' + key + ']"]';
                         const el = document.querySelector(selector);
                         if (!el) return;
                         if (el.tagName === 'SELECT') {
-                            const hasOption = Array.from(el.options).some(function (opt) { return opt.value === values[key]; });
+                            const hasOption = Array.from(el.options).some(function (opt) {
+                                return opt.value === values[key];
+                            });
                             if (!hasOption && values[key] !== undefined && values[key] !== null && values[key] !== '') {
                                 const legacyOpt = document.createElement('option');
                                 legacyOpt.value = values[key];

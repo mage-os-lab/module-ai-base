@@ -11,20 +11,33 @@ class Anthropic implements AiServiceConfigurationInterface
 {
     use FieldFactoryTrait;
 
+    /**
+     * @param FieldDescriptorInterfaceFactory $fieldFactory
+     */
     public function __construct(
         private readonly FieldDescriptorInterfaceFactory $fieldFactory,
-    ) {}
+    ) {
+    }
 
+    /**
+     * @inheritdoc
+     */
     public function getCode(): string
     {
         return 'anthropic';
     }
 
+    /**
+     * @inheritdoc
+     */
     public function getName(): string
     {
         return 'Anthropic';
     }
 
+    /**
+     * @inheritdoc
+     */
     public function getSupportedModels(): array
     {
         return [
@@ -34,6 +47,9 @@ class Anthropic implements AiServiceConfigurationInterface
         ];
     }
 
+    /**
+     * @inheritdoc
+     */
     public function getConfigurationFields(): array
     {
         return [

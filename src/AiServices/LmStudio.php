@@ -11,25 +11,41 @@ class LmStudio implements AiServiceConfigurationInterface
 {
     use FieldFactoryTrait;
 
+    /**
+     * @param FieldDescriptorInterfaceFactory $fieldFactory
+     */
     public function __construct(
         private readonly FieldDescriptorInterfaceFactory $fieldFactory,
-    ) {}
+    ) {
+    }
 
+    /**
+     * @inheritdoc
+     */
     public function getCode(): string
     {
         return 'lmstudio';
     }
 
+    /**
+     * @inheritdoc
+     */
     public function getName(): string
     {
         return 'LM Studio';
     }
 
+    /**
+     * @inheritdoc
+     */
     public function getSupportedModels(): array
     {
         return [];
     }
 
+    /**
+     * @inheritdoc
+     */
     public function getConfigurationFields(): array
     {
         return [

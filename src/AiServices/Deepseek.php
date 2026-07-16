@@ -11,20 +11,33 @@ class Deepseek implements AiServiceConfigurationInterface
 {
     use FieldFactoryTrait;
 
+    /**
+     * @param FieldDescriptorInterfaceFactory $fieldFactory
+     */
     public function __construct(
         private readonly FieldDescriptorInterfaceFactory $fieldFactory,
-    ) {}
+    ) {
+    }
 
+    /**
+     * @inheritdoc
+     */
     public function getCode(): string
     {
         return 'deepseek';
     }
 
+    /**
+     * @inheritdoc
+     */
     public function getName(): string
     {
         return 'DeepSeek';
     }
 
+    /**
+     * @inheritdoc
+     */
     public function getSupportedModels(): array
     {
         return [
@@ -33,6 +46,9 @@ class Deepseek implements AiServiceConfigurationInterface
         ];
     }
 
+    /**
+     * @inheritdoc
+     */
     public function getConfigurationFields(): array
     {
         return [

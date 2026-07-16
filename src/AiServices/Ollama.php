@@ -11,25 +11,41 @@ class Ollama implements AiServiceConfigurationInterface
 {
     use FieldFactoryTrait;
 
+    /**
+     * @param FieldDescriptorInterfaceFactory $fieldFactory
+     */
     public function __construct(
         private readonly FieldDescriptorInterfaceFactory $fieldFactory,
-    ) {}
+    ) {
+    }
 
+    /**
+     * @inheritdoc
+     */
     public function getCode(): string
     {
         return 'ollama';
     }
 
+    /**
+     * @inheritdoc
+     */
     public function getName(): string
     {
         return 'Ollama';
     }
 
+    /**
+     * @inheritdoc
+     */
     public function getSupportedModels(): array
     {
         return [];
     }
 
+    /**
+     * @inheritdoc
+     */
     public function getConfigurationFields(): array
     {
         return [

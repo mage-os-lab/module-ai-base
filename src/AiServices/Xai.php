@@ -11,20 +11,33 @@ class Xai implements AiServiceConfigurationInterface
 {
     use FieldFactoryTrait;
 
+    /**
+     * @param FieldDescriptorInterfaceFactory $fieldFactory
+     */
     public function __construct(
         private readonly FieldDescriptorInterfaceFactory $fieldFactory,
-    ) {}
+    ) {
+    }
 
+    /**
+     * @inheritdoc
+     */
     public function getCode(): string
     {
         return 'xai';
     }
 
+    /**
+     * @inheritdoc
+     */
     public function getName(): string
     {
         return 'xAI';
     }
 
+    /**
+     * @inheritdoc
+     */
     public function getSupportedModels(): array
     {
         return [
@@ -33,6 +46,9 @@ class Xai implements AiServiceConfigurationInterface
         ];
     }
 
+    /**
+     * @inheritdoc
+     */
     public function getConfigurationFields(): array
     {
         return [

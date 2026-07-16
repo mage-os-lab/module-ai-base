@@ -13,16 +13,27 @@ class AiServiceSelector implements AiServiceSelectorInterface
 {
     private const CONFIG_PATH_AI_SERVICES = 'mageos_ai/services/configuration';
 
+    /**
+     * @param ScopeConfigInterface $scopeConfig
+     * @param AiServiceInterfaceFactory $aiServiceFactory
+     */
     public function __construct(
         private readonly ScopeConfigInterface $scopeConfig,
         private readonly AiServiceInterfaceFactory $aiServiceFactory,
-    ) {}
+    ) {
+    }
 
+    /**
+     * @inheritdoc
+     */
     public function getAll(): array
     {
         return $this->getParsedConfig();
     }
 
+    /**
+     * @inheritdoc
+     */
     public function getByCode(string $code): array
     {
         return array_values(array_filter(
@@ -32,6 +43,8 @@ class AiServiceSelector implements AiServiceSelectorInterface
     }
 
     /**
+     * Read and defensively parse the stored services configuration.
+     *
      * @return AiServiceInterface[]
      */
     private function getParsedConfig(): array

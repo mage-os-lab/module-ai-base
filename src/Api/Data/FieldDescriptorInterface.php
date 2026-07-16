@@ -10,14 +10,38 @@ interface FieldDescriptorInterface
     public const TYPE_PASSWORD = 'password';
     public const TYPE_SELECT   = 'select';
 
+    /**
+     * Field name used as the input name suffix.
+     *
+     * @return string
+     */
     public function getName(): string;
+
+    /**
+     * Human-readable field label.
+     *
+     * @return string
+     */
     public function getLabel(): string;
+
+    /**
+     * Input type; one of the TYPE_* constants.
+     *
+     * @return string
+     */
     public function getType(): string;
 
     /**
+     * Options for select fields.
+     *
      * @return array<int, array{value: string, label: string}>
      */
     public function getOptions(): array;
 
+    /**
+     * Default value pre-filled in the input, if any.
+     *
+     * @return string|null
+     */
     public function getDefault(): ?string;
 }

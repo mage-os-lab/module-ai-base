@@ -13,8 +13,18 @@ use MageOS\AiBase\Api\Data\FieldDescriptorInterface;
 
 class Services extends AbstractFieldArray
 {
+    /**
+     * @var string
+     */
     protected $_template = 'MageOS_AiBase::system/config/form/field/services.phtml';
 
+    /**
+     * @param Context $context
+     * @param Json $jsonSerializer
+     * @param AiServiceConfigurationInterface[] $services
+     * @param array $data
+     * @param SecureHtmlRenderer|null $secureRenderer
+     */
     public function __construct(
         Context $context,
         private readonly Json $jsonSerializer,
@@ -37,6 +47,8 @@ class Services extends AbstractFieldArray
     }
 
     /**
+     * Buttons rendered in the admin form, one per registered AI backend.
+     *
      * @return array<int, array{code: string, name: string}>
      */
     public function getServicesButtons(): array
@@ -51,6 +63,8 @@ class Services extends AbstractFieldArray
     }
 
     /**
+     * Field schema consumed by the admin form JavaScript.
+     *
      * @return string JSON object keyed by service code, each value is a list of field descriptors as arrays
      */
     public function getServicesSchemaJson(): string
@@ -71,6 +85,9 @@ class Services extends AbstractFieldArray
         return $this->jsonSerializer->serialize($schema);
     }
 
+    /**
+     * @inheritdoc
+     */
     protected function _prepareToRender(): void
     {
         $this->addColumn('service', [

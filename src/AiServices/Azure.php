@@ -11,20 +11,33 @@ class Azure implements AiServiceConfigurationInterface
 {
     use FieldFactoryTrait;
 
+    /**
+     * @param FieldDescriptorInterfaceFactory $fieldFactory
+     */
     public function __construct(
         private readonly FieldDescriptorInterfaceFactory $fieldFactory,
-    ) {}
+    ) {
+    }
 
+    /**
+     * @inheritdoc
+     */
     public function getCode(): string
     {
         return 'azure';
     }
 
+    /**
+     * @inheritdoc
+     */
     public function getName(): string
     {
         return 'Azure OpenAI';
     }
 
+    /**
+     * @inheritdoc
+     */
     public function getSupportedModels(): array
     {
         return [
@@ -36,6 +49,9 @@ class Azure implements AiServiceConfigurationInterface
         ];
     }
 
+    /**
+     * @inheritdoc
+     */
     public function getConfigurationFields(): array
     {
         return [
