@@ -45,6 +45,13 @@ $_colspan = $block->isAddAfter() ? 2 : 1;
     $fieldNameJs = $escaper->escapeJs($block->getElement()->getName());
     $deleteLabelJs = $escaper->escapeJs(__('Delete'));
     $htmlIdJs = $escaper->escapeJs($_htmlId);
+    // Test Connection is only rendered for SAVED rows: the client factory reads
+    // saved configuration, so unsaved rows cannot be tested. When multiple rows
+    // share a service code, the factory uses the FIRST configured row of that
+    // code, so results are effectively per-code, not per-row.
+    $testUrlJs = $escaper->escapeJs($block->getUrl('mageos_ai/service/test'));
+    $testLabelJs = $escaper->escapeJs(__('Test Connection'));
+    $testingLabelJs = $escaper->escapeJs(__('Testing...'));
     $existingRowsJs = '';
     foreach ($block->getArrayRows() as $_row) {
         $rowData = $_row->getData();
@@ -101,11 +108,22 @@ require(['prototype'], function () {
                 + '</tr>';
         }).join('');
 
+        // Stored rows (they arrive with an existingRowId) get a Test Connection
+        // button; unsaved rows cannot be tested because the client factory only
+        // reads saved configuration.
+        const testHtml = existingRowId
+            ? '<button class="action-secondary action-test-connection" type="button"'
+                + ' data-service-code="' + escapeHtml(serviceCode) + '">'
+                + '<span>{$testLabelJs}</span></button>'
+                + '<span class="ai-test-result"></span>'
+            : '';
+
         const rowHtml = '<tr id="' + rowId + '">'
             + '<td><table>' + rows + '</table></td>'
             + '<td class="col-actions">'
             + '<button class="action-delete" data-row-id="' + rowId + '" type="button">'
-            + '<span>{$deleteLabelJs}</span></button></td>'
+            + '<span>{$deleteLabelJs}</span></button>'
+            + testHtml + '</td>'
             + '</tr>';
 
         Element.insert($('addRow{$htmlIdJs}'), { bottom: rowHtml });
@@ -138,7 +156,42 @@ require(['prototype'], function () {
         });
     });
 
+    function testConnection(button) {
+        const resultEl = button.parentNode.querySelector('.ai-test-result');
+        button.disabled = true;
+        resultEl.className = 'ai-test-result';
+        resultEl.textContent = '{$testingLabelJs}';
+
+        const body = new URLSearchParams();
+        body.append('service_code', button.dataset.serviceCode);
+        body.append('form_key', window.FORM_KEY);
+
+        fetch('{$testUrlJs}', { method: 'POST', body: body })
+            .then(function (response) { return response.json(); })
+            .then(function (data) {
+                if (data.success) {
+                    resultEl.classList.add('ai-test-result-success');
+                    resultEl.textContent = 'OK (' + data.latency_ms + 'ms): ' + data.response;
+                } else {
+                    resultEl.classList.add('ai-test-result-error');
+                    resultEl.textContent = data.error;
+                }
+            })
+            .catch(function (error) {
+                resultEl.classList.add('ai-test-result-error');
+                resultEl.textContent = String(error);
+            })
+            .finally(function () {
+                button.disabled = false;
+            });
+    }
+
     document.querySelector('.ai-services-configurator').addEventListener('click', function (e) {
+        const testButton = e.target.closest('.action-test-connection');
+        if (testButton) {
+            testConnection(testButton);
+            return;
+        }
         if (!e.target.classList.contains('action-delete')) return;
         document.getElementById(e.target.dataset.rowId).remove();
     });
