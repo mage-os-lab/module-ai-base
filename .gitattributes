@@ -1,4 +1,5 @@
 /.github          export-ignore
+/docs             export-ignore
 /phpcs.xml.dist   export-ignore
 /phpunit.xml.dist export-ignore
 /CLAUDE.md        export-ignore
