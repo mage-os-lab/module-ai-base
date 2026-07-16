@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What this is
 
-`mage-os/module-ai-base` — a small Magento 2 module (`MageOS_AiBase`) that exposes an admin configuration UI for registering multiple AI backends (OpenAI, Anthropic, Azure, Google, Grok, Deepseek, HuggingFace, LM Studio, Ollama, OpenRouter, xAI) and a consumer API for other modules to read those configured credentials. It does **not** call any AI service itself — it only stores and serves configuration.
+`mage-os/module-ai-base` — a small Magento 2 module (`MageOS_AiBase`) that exposes an admin configuration UI for registering multiple AI backends (OpenAI, Anthropic, Azure, Google, Deepseek, HuggingFace, LM Studio, Ollama, OpenRouter, xAI (Grok)) and a consumer API for other modules to read those configured credentials. It does **not** call any AI service itself — it only stores and serves configuration.
 
 The module is installed into a host Magento 2 app; this repo contains no runnable Magento instance. There is no test suite, no lint/format config, and no build step.
 
