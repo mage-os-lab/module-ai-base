@@ -75,7 +75,7 @@ class AiServiceSelector implements AiServiceSelectorInterface
             }
             $services[] = $this->aiServiceFactory->create([
                 'code' => $code,
-                'configuration' => $this->sensitiveDataProcessor->decryptRow($configuration),
+                'configuration' => $this->sensitiveDataProcessor->decryptRow($code, $configuration),
             ]);
         }
 
