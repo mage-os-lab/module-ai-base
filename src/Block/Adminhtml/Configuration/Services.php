@@ -11,7 +11,7 @@ use Magento\Framework\View\Helper\SecureHtmlRenderer;
 use MageOS\AiBase\Api\Data\AiServiceConfigurationInterface;
 use MageOS\AiBase\Api\Data\FieldDescriptorInterface;
 
-final class Services extends AbstractFieldArray
+class Services extends AbstractFieldArray
 {
     protected $_template = 'MageOS_AiBase::system/config/form/field/services.phtml';
 

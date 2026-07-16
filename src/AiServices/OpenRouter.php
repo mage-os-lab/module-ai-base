@@ -7,7 +7,7 @@ namespace MageOS\AiBase\AiServices;
 use MageOS\AiBase\Api\Data\AiServiceConfigurationInterface;
 use MageOS\AiBase\Api\Data\FieldDescriptorInterfaceFactory;
 
-final class OpenRouter implements AiServiceConfigurationInterface
+class OpenRouter implements AiServiceConfigurationInterface
 {
     use FieldFactoryTrait;
 

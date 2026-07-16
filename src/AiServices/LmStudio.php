@@ -7,7 +7,7 @@ namespace MageOS\AiBase\AiServices;
 use MageOS\AiBase\Api\Data\AiServiceConfigurationInterface;
 use MageOS\AiBase\Api\Data\FieldDescriptorInterfaceFactory;
 
-final class LmStudio implements AiServiceConfigurationInterface
+class LmStudio implements AiServiceConfigurationInterface
 {
     use FieldFactoryTrait;
 

@@ -23,7 +23,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `composer.json` now pins `php: ^8.2` and `magento/framework: ^103.0 || ^104.0`.
 - `Model/AiServiceSelector` hardened against null scope values and malformed JSON.
 - `module.xml` declares explicit dependency on `Magento_Config` + `Magento_Backend`.
-- `Block\Adminhtml\Configuration\Services` is now `final` with runtime validation that injected services implement `AiServiceConfigurationInterface`.
+- `Block\Adminhtml\Configuration\Services` now validates at runtime that injected services implement `AiServiceConfigurationInterface`. (Classes are intentionally not `final` so Magento can generate interceptors/proxies.)
 
 ### Fixed
 - `README.md` API example now references the correct `AiServiceSelectorInterface` (previously cited `AiServiceConfigurationInterface`).

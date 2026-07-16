@@ -7,7 +7,7 @@ namespace MageOS\AiBase\AiServices;
 use MageOS\AiBase\Api\Data\AiServiceConfigurationInterface;
 use MageOS\AiBase\Api\Data\FieldDescriptorInterfaceFactory;
 
-final class Deepseek implements AiServiceConfigurationInterface
+class Deepseek implements AiServiceConfigurationInterface
 {
     use FieldFactoryTrait;
 

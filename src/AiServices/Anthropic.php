@@ -7,7 +7,7 @@ namespace MageOS\AiBase\AiServices;
 use MageOS\AiBase\Api\Data\AiServiceConfigurationInterface;
 use MageOS\AiBase\Api\Data\FieldDescriptorInterfaceFactory;
 
-final class Anthropic implements AiServiceConfigurationInterface
+class Anthropic implements AiServiceConfigurationInterface
 {
     use FieldFactoryTrait;
 

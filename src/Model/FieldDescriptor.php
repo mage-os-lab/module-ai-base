@@ -6,7 +6,7 @@ namespace MageOS\AiBase\Model;
 
 use MageOS\AiBase\Api\Data\FieldDescriptorInterface;
 
-final class FieldDescriptor implements FieldDescriptorInterface
+class FieldDescriptor implements FieldDescriptorInterface
 {
     public function __construct(
         private readonly string $name,

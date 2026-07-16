@@ -9,7 +9,7 @@ use MageOS\AiBase\Api\AiServiceSelectorInterface;
 use MageOS\AiBase\Api\Data\AiServiceInterface;
 use MageOS\AiBase\Api\Data\AiServiceInterfaceFactory;
 
-final class AiServiceSelector implements AiServiceSelectorInterface
+class AiServiceSelector implements AiServiceSelectorInterface
 {
     private const CONFIG_PATH_AI_SERVICES = 'mageos_ai/services/configuration';
 

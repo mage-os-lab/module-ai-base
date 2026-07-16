@@ -7,7 +7,7 @@ namespace MageOS\AiBase\AiServices;
 use MageOS\AiBase\Api\Data\AiServiceConfigurationInterface;
 use MageOS\AiBase\Api\Data\FieldDescriptorInterfaceFactory;
 
-final class Grok implements AiServiceConfigurationInterface
+class Grok implements AiServiceConfigurationInterface
 {
     use FieldFactoryTrait;
 

@@ -7,7 +7,7 @@ namespace MageOS\AiBase\AiServices;
 use MageOS\AiBase\Api\Data\AiServiceConfigurationInterface;
 use MageOS\AiBase\Api\Data\FieldDescriptorInterfaceFactory;
 
-final class Azure implements AiServiceConfigurationInterface
+class Azure implements AiServiceConfigurationInterface
 {
     use FieldFactoryTrait;
 

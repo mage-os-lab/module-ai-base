@@ -6,7 +6,7 @@ namespace MageOS\AiBase\Model;
 
 use MageOS\AiBase\Api\Data\AiServiceInterface;
 
-final class AiService implements AiServiceInterface
+class AiService implements AiServiceInterface
 {
     public function __construct(
         private readonly string $code,
