@@ -32,7 +32,7 @@ class Xai implements AiServiceConfigurationInterface
      */
     public function getName(): string
     {
-        return 'xAI';
+        return 'xAI (Grok)';
     }
 
     /**
