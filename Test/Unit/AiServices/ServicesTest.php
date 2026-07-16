@@ -25,6 +25,7 @@ final class ServicesTest extends TestCase
                 type: $data['type'],
                 options: $data['options'] ?? [],
                 default: $data['default'] ?? null,
+                encrypted: $data['encrypted'] ?? false,
             )
         );
         $this->fieldFactory = $stub;
@@ -48,6 +49,11 @@ final class ServicesTest extends TestCase
             self::assertContains(
                 $field->getType(),
                 [FieldDescriptorInterface::TYPE_TEXT, FieldDescriptorInterface::TYPE_PASSWORD, FieldDescriptorInterface::TYPE_SELECT],
+            );
+            self::assertSame(
+                $field->getName() === 'api_key',
+                $field->isEncrypted(),
+                "$className field '{$field->getName()}' must be encrypted iff it is the api_key credential"
             );
         }
 

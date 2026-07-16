@@ -73,11 +73,12 @@ class Services extends AbstractFieldArray
         foreach ($this->services as $service) {
             $schema[$service->getCode()] = array_map(
                 fn (FieldDescriptorInterface $field) => [
-                    'name'    => $field->getName(),
-                    'label'   => $field->getLabel(),
-                    'type'    => $field->getType(),
-                    'options' => $field->getOptions(),
-                    'default' => $field->getDefault(),
+                    'name'      => $field->getName(),
+                    'label'     => $field->getLabel(),
+                    'type'      => $field->getType(),
+                    'options'   => $field->getOptions(),
+                    'default'   => $field->getDefault(),
+                    'encrypted' => $field->isEncrypted(),
                 ],
                 $service->getConfigurationFields(),
             );

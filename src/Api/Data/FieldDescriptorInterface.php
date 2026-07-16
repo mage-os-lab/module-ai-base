@@ -44,4 +44,11 @@ interface FieldDescriptorInterface
      * @return string|null
      */
     public function getDefault(): ?string;
+
+    /**
+     * Whether the field holds a credential that must be encrypted at rest and masked in the admin form.
+     *
+     * @return bool
+     */
+    public function isEncrypted(): bool;
 }
