@@ -107,6 +107,19 @@ several rows share a service code, the first configured row of that code is used
 feature relies on the client layer, so it requires `symfony/ai-platform` — if the library
 is not installed, the error message shown by the button explains what to install.
 
+### Refreshing model lists
+
+Saved rows of services that support it also show a **Refresh Models** button. It fetches the
+provider's current model list live (using the saved credentials) and updates the row's model
+dropdown — refreshing is strictly manual; the module never fetches model lists automatically
+or on a schedule. Supported by OpenAI, Anthropic, xAI (Grok), OpenRouter, Ollama and
+LM Studio; other backends (e.g. Azure, whose listing endpoint is resource-specific) simply
+don't show the button. The fetched list is stored per service code (with a fetched-at
+timestamp) and keeps feeding the form until the next refresh; when nothing has been fetched
+yet, the curated default model list built into each service remains the fallback. Third-party
+providers can opt in by implementing `MageOS\AiBase\Api\ModelListProviderInterface` alongside
+their service configuration class.
+
 ## Contributing
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) and our [Code of Conduct](CODE_OF_CONDUCT.md).
