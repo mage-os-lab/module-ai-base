@@ -13,12 +13,12 @@ final class FieldDescriptorTest extends TestCase
     public function test_exposes_required_fields(): void
     {
         $field = new FieldDescriptor(
-            name: 'apikey',
+            name: 'api_key',
             label: 'API Key',
             type: FieldDescriptorInterface::TYPE_PASSWORD,
         );
 
-        self::assertSame('apikey', $field->getName());
+        self::assertSame('api_key', $field->getName());
         self::assertSame('API Key', $field->getLabel());
         self::assertSame(FieldDescriptorInterface::TYPE_PASSWORD, $field->getType());
         self::assertSame([], $field->getOptions());

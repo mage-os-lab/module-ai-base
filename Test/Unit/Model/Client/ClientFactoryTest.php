@@ -38,7 +38,7 @@ final class ClientFactoryTest extends TestCase
     public function test_create_throws_when_no_bridge_is_registered_for_the_service(): void
     {
         $this->serviceSelector->method('getByCode')->with('openai')
-            ->willReturn([new AiService('openai', ['apikey' => 'k'])]);
+            ->willReturn([new AiService('openai', ['api_key' => 'k'])]);
         $subject = new ClientFactory($this->serviceSelector, $this->clientFactory, []);
 
         $this->expectException(LocalizedException::class);
@@ -53,7 +53,7 @@ final class ClientFactoryTest extends TestCase
         // class with a non-static create() and no createPlatform(), which is
         // exactly the shape the method_exists guard must reject.
         $this->serviceSelector->method('getByCode')->with('openai')
-            ->willReturn([new AiService('openai', ['apikey' => 'k'])]);
+            ->willReturn([new AiService('openai', ['api_key' => 'k'])]);
         $subject = new ClientFactory(
             $this->serviceSelector,
             $this->clientFactory,
@@ -69,7 +69,7 @@ final class ClientFactoryTest extends TestCase
     public function test_create_builds_client_from_registered_bridge(): void
     {
         $this->serviceSelector->method('getByCode')->with('openai')
-            ->willReturn([new AiService('openai', ['apikey' => 'k', 'model' => 'gpt-4o'])]);
+            ->willReturn([new AiService('openai', ['api_key' => 'k', 'model' => 'gpt-4o'])]);
 
         $client = new SymfonyAiClient(new \stdClass(), 'gpt-4o', 'openai');
         $this->clientFactory->expects(self::once())->method('create')

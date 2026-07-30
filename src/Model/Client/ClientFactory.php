@@ -97,9 +97,9 @@ class ClientFactory implements AiClientFactoryInterface
                 $config['endpoint'] ?? '',
                 $config['deployment'] ?? $config['model'] ?? '',
                 $config['api_version'] ?? '2024-10-21',
-                $config['apikey'] ?? ''
+                $config['api_key'] ?? ''
             ),
-            default => $factoryClass::createPlatform($config['apikey'] ?? ''),
+            default => $factoryClass::createPlatform($config['api_key'] ?? ''),
         };
     }
 }

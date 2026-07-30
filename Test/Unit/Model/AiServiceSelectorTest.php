@@ -49,8 +49,8 @@ final class AiServiceSelectorTest extends TestCase
     public function test_get_all_returns_all_configured_services(): void
     {
         $json = json_encode([
-            '_row1' => ['openai'    => ['apikey' => 'k1', 'model' => 'gpt-4o']],
-            '_row2' => ['anthropic' => ['apikey' => 'k2', 'model' => 'claude-sonnet-4-6']],
+            '_row1' => ['openai'    => ['api_key' => 'k1', 'model' => 'gpt-4o']],
+            '_row2' => ['anthropic' => ['api_key' => 'k2', 'model' => 'claude-sonnet-4-6']],
         ], JSON_THROW_ON_ERROR);
         $this->scopeConfig->method('getValue')->willReturn($json);
 
@@ -86,16 +86,16 @@ final class AiServiceSelectorTest extends TestCase
             'row is a bare string'         => [['_row1' => 'not-an-array']],
             'row is an empty array'        => [['_row1' => []]],
             'row value is non-array'       => [['_row1' => ['openai' => 'not-an-array']]],
-            'row key is integer (not code)'=> [['_row1' => [0 => ['apikey' => 'k1']]]],
+            'row key is integer (not code)'=> [['_row1' => [0 => ['api_key' => 'k1']]]],
         ];
     }
 
     public function test_get_by_code_filters_to_matching_services_only(): void
     {
         $json = json_encode([
-            '_row1' => ['openai'    => ['apikey' => 'k1']],
-            '_row2' => ['anthropic' => ['apikey' => 'k2']],
-            '_row3' => ['openai'    => ['apikey' => 'k3']],
+            '_row1' => ['openai'    => ['api_key' => 'k1']],
+            '_row2' => ['anthropic' => ['api_key' => 'k2']],
+            '_row3' => ['openai'    => ['api_key' => 'k3']],
         ], JSON_THROW_ON_ERROR);
         $this->scopeConfig->method('getValue')->willReturn($json);
 
