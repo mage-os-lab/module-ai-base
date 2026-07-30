@@ -7,7 +7,7 @@
     <preference for="MageOS\AiBase\Api\AiClientFactoryInterface" type="MageOS\AiBase\Model\Client\ClientFactory"/>
 
     <!-- Symfony AI provider bridges (soft dependency: FQCN strings, resolved only when a client is created).
-         Verified against symfony/ai-platform v0.11.0. Grok/xAI have no dedicated bridge yet; register one
+         Verified against symfony/ai-platform v0.11.0. xAI (Grok) has no dedicated bridge yet; register one
          here (or via a consumer module) once available upstream. -->
     <type name="MageOS\AiBase\Model\Client\ClientFactory">
         <arguments>
@@ -32,7 +32,6 @@
                 <item name="azure" xsi:type="object">MageOS\AiBase\AiServices\Azure</item>
                 <item name="deepseek" xsi:type="object">MageOS\AiBase\AiServices\Deepseek</item>
                 <item name="google" xsi:type="object">MageOS\AiBase\AiServices\Google</item>
-                <item name="grok" xsi:type="object">MageOS\AiBase\AiServices\Grok</item>
                 <item name="huggingface" xsi:type="object">MageOS\AiBase\AiServices\HuggingFace</item>
                 <item name="lmstudio" xsi:type="object">MageOS\AiBase\AiServices\LmStudio</item>
                 <item name="ollama" xsi:type="object">MageOS\AiBase\AiServices\Ollama</item>

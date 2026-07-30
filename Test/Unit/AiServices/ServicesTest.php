@@ -64,7 +64,6 @@ final class ServicesTest extends TestCase
             'Azure'      => [\MageOS\AiBase\AiServices\Azure::class],
             'Deepseek'   => [\MageOS\AiBase\AiServices\Deepseek::class],
             'Google'     => [\MageOS\AiBase\AiServices\Google::class],
-            'Grok'       => [\MageOS\AiBase\AiServices\Grok::class],
             'HuggingFace'=> [\MageOS\AiBase\AiServices\HuggingFace::class],
             'LmStudio'   => [\MageOS\AiBase\AiServices\LmStudio::class],
             'Ollama'     => [\MageOS\AiBase\AiServices\Ollama::class],
