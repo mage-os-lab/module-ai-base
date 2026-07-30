@@ -5,9 +5,11 @@ declare(strict_types=1);
 namespace MageOS\AiBase\Model;
 
 use Magento\Framework\App\Config\ScopeConfigInterface;
+use Magento\Store\Model\ScopeInterface;
 use MageOS\AiBase\Api\AiServiceSelectorInterface;
 use MageOS\AiBase\Api\Data\AiServiceInterface;
 use MageOS\AiBase\Api\Data\AiServiceInterfaceFactory;
+use MageOS\AiBase\Model\Config\SensitiveDataProcessor;
 
 class AiServiceSelector implements AiServiceSelectorInterface
 {
@@ -16,10 +18,12 @@ class AiServiceSelector implements AiServiceSelectorInterface
     /**
      * @param ScopeConfigInterface $scopeConfig
      * @param AiServiceInterfaceFactory $aiServiceFactory
+     * @param SensitiveDataProcessor $sensitiveDataProcessor
      */
     public function __construct(
         private readonly ScopeConfigInterface $scopeConfig,
         private readonly AiServiceInterfaceFactory $aiServiceFactory,
+        private readonly SensitiveDataProcessor $sensitiveDataProcessor,
     ) {
     }
 
@@ -49,7 +53,7 @@ class AiServiceSelector implements AiServiceSelectorInterface
      */
     private function getParsedConfig(): array
     {
-        $raw = $this->scopeConfig->getValue(self::CONFIG_PATH_AI_SERVICES);
+        $raw = $this->scopeConfig->getValue(self::CONFIG_PATH_AI_SERVICES, ScopeInterface::SCOPE_STORE);
         if (!is_string($raw) || $raw === '') {
             return [];
         }
@@ -71,7 +75,7 @@ class AiServiceSelector implements AiServiceSelectorInterface
             }
             $services[] = $this->aiServiceFactory->create([
                 'code' => $code,
-                'configuration' => $configuration,
+                'configuration' => $this->sensitiveDataProcessor->decryptRow($configuration),
             ]);
         }
 
