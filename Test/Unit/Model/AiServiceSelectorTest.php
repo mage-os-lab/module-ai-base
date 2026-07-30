@@ -5,10 +5,12 @@ declare(strict_types=1);
 namespace MageOS\AiBase\Test\Unit\Model;
 
 use Magento\Framework\App\Config\ScopeConfigInterface;
+use Magento\Framework\Encryption\EncryptorInterface;
 use MageOS\AiBase\Api\Data\AiServiceInterface;
 use MageOS\AiBase\Api\Data\AiServiceInterfaceFactory;
 use MageOS\AiBase\Model\AiService;
 use MageOS\AiBase\Model\AiServiceSelector;
+use MageOS\AiBase\Model\Config\SensitiveDataProcessor;
 use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\MockObject\MockObject;
 use PHPUnit\Framework\TestCase;
@@ -23,7 +25,11 @@ final class AiServiceSelectorTest extends TestCase
     {
         $this->scopeConfig = $this->createMock(ScopeConfigInterface::class);
         $this->aiServiceFactory = $this->createMock(AiServiceInterfaceFactory::class);
-        $this->subject = new AiServiceSelector($this->scopeConfig, $this->aiServiceFactory);
+        $this->subject = new AiServiceSelector(
+            $this->scopeConfig,
+            $this->aiServiceFactory,
+            new SensitiveDataProcessor($this->createMock(EncryptorInterface::class)),
+        );
     }
 
     public function test_get_all_returns_empty_array_when_config_is_null(): void
