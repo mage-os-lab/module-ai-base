@@ -94,6 +94,27 @@ require(['prototype'], function () {
         }).join('');
     }
 
+    /**
+     * Find a row's input by its exact name attribute.
+     *
+     * Row IDs, service codes and field names all originate as POST array keys and reach
+     * the browser unmodified, so interpolating them into a selector string lets a stored
+     * value containing a double quote produce an invalid selector. querySelector then
+     * throws a SyntaxError, which aborts whatever loop is calling it and leaves the form
+     * half-rendered. Comparing the name attribute in JavaScript keeps untrusted text away
+     * from the selector parser entirely; the only selector used here is a constant.
+     */
+    function findField(rowId, serviceCode, fieldName) {
+        const container = document.querySelector('.ai-services-configurator');
+        if (!container) return null;
+
+        const name = fieldNameBase + '[' + rowId + '][' + serviceCode + '][' + fieldName + ']';
+
+        return Array.from(container.querySelectorAll('[name]')).find(function (el) {
+            return el.getAttribute('name') === name;
+        }) || null;
+    }
+
     function buildField(serviceCode, fieldName, field) {
         const base = fieldNameBase + '[' + fieldName + '][' + serviceCode + '][' + field.name + ']';
         if (field.type === 'select') {
@@ -162,9 +183,7 @@ require(['prototype'], function () {
 
         if (values) {
             Object.keys(values).forEach(function (key) {
-                const selector = '[name="' + fieldNameBase + '[' + rowId + ']['
-                    + serviceCode + '][' + key + ']"]';
-                const el = document.querySelector(selector);
+                const el = findField(rowId, serviceCode, key);
                 if (!el) return;
                 if (el.tagName === 'SELECT') {
                     const hasOption = Array.from(el.options).some(function (opt) {
@@ -219,9 +238,7 @@ require(['prototype'], function () {
     }
 
     function updateModelOptions(rowId, serviceCode, models) {
-        const selector = '[name="' + fieldNameBase + '[' + rowId + ']['
-            + serviceCode + '][model]"]';
-        const el = document.querySelector(selector);
+        const el = findField(rowId, serviceCode, 'model');
         if (!el) return;
 
         if (el.tagName !== 'SELECT') {
