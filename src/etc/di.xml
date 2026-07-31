@@ -6,6 +6,20 @@
     <preference for="MageOS\AiBase\Api\Data\FieldDescriptorInterface" type="MageOS\AiBase\Model\FieldDescriptor"/>
     <preference for="MageOS\AiBase\Api\AiClientFactoryInterface" type="MageOS\AiBase\Model\Client\ClientFactory"/>
 
+    <!-- The services config holds provider credentials, so keep it out of `app:config:dump`.
+         Without this, the value is written into app/etc/config.php, which is commonly committed,
+         and the field then becomes read-only in the admin because deployment config wins over
+         the database. Values are encrypted at rest, so what would leak is ciphertext, but an
+         install that dumped config before credentials were encrypted has the plaintext key in
+         a tracked file. -->
+    <type name="Magento\Config\Model\Config\TypePool">
+        <arguments>
+            <argument name="sensitive" xsi:type="array">
+                <item name="mageos_ai/services/configuration" xsi:type="string">1</item>
+            </argument>
+        </arguments>
+    </type>
+
     <!-- Symfony AI provider bridges (soft dependency: FQCN strings, resolved only when a client is created).
          Verified against symfony/ai-platform v0.11.0. xAI (Grok) has no dedicated bridge yet; register one
          here (or via a consumer module) once available upstream. -->

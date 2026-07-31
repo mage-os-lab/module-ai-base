@@ -26,6 +26,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `AiServiceSelector` reads configuration with store scope (`ScopeInterface::SCOPE_STORE`), enabling per-store service configuration.
 - `composer.json`: declare `magento/module-backend`, `module-config`, `module-store` requirements; suggest `symfony/ai-platform`; exclude `registration.php` from the classmap.
 
+### Fixed
+- `mageos_ai/services/configuration` is now registered with `Magento\Config\Model\Config\TypePool` as `sensitive`, so `bin/magento app:config:dump` no longer writes stored provider credentials into `app/etc/config.php` (commonly committed) and no longer makes the AI Configuration field read-only in the admin, which is what happens once a value is present in the deployment config.
+
 ### Removed
 - Duplicate `Grok` service (`grok`): xAI's models are named Grok, so it duplicated the `xai` service. Use `xai`, now displayed as "xAI (Grok)".
 
