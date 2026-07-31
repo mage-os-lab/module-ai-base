@@ -52,6 +52,12 @@ $_colspan = $block->isAddAfter() ? 2 : 1;
     $testUrlJs = $escaper->escapeJs($block->getUrl('mageos_ai/service/test'));
     $testLabelJs = $escaper->escapeJs(__('Test Connection'));
     $testingLabelJs = $escaper->escapeJs(__('Testing...'));
+    // Refresh Models mirrors Test Connection: saved rows only, first configured row per
+    // code; the button is rendered only for services whose schema opts in.
+    $refreshUrlJs = $escaper->escapeJs($block->getUrl('mageos_ai/service/refreshmodels'));
+    $refreshLabelJs = $escaper->escapeJs(__('Refresh Models'));
+    $refreshingLabelJs = $escaper->escapeJs(__('Refreshing...'));
+    $modelsLabelJs = $escaper->escapeJs(__('models'));
     $existingRowsJs = '';
     foreach ($block->getArrayRows() as $_row) {
         $rowData = $_row->getData();
@@ -95,8 +101,9 @@ require(['prototype'], function () {
     }
 
     function addRow(serviceCode, values, existingRowId) {
-        const fields = schema[serviceCode];
-        if (!fields) return;
+        const serviceSchema = schema[serviceCode];
+        if (!serviceSchema) return;
+        const fields = serviceSchema.fields;
 
         const d = new Date();
         const rowId = existingRowId || ('_' + d.getTime() + '_' + d.getMilliseconds());
@@ -111,10 +118,17 @@ require(['prototype'], function () {
         // Stored rows (they arrive with an existingRowId) get a Test Connection
         // button; unsaved rows cannot be tested because the client factory only
         // reads saved configuration.
+        const refreshHtml = (existingRowId && serviceSchema.supportsModelRefresh)
+            ? '<button class="action-secondary action-refresh-models" type="button"'
+                + ' data-service-code="' + escapeHtml(serviceCode) + '"'
+                + ' data-row-id="' + escapeHtml(rowId) + '">'
+                + '<span>{$refreshLabelJs}</span></button>'
+            : '';
         const testHtml = existingRowId
             ? '<button class="action-secondary action-test-connection" type="button"'
                 + ' data-service-code="' + escapeHtml(serviceCode) + '">'
                 + '<span>{$testLabelJs}</span></button>'
+                + refreshHtml
                 + '<span class="ai-test-result"></span>'
             : '';
 
@@ -186,10 +200,76 @@ require(['prototype'], function () {
             });
     }
 
+    function updateModelSelect(rowId, serviceCode, models) {
+        const selector = '[name="' + fieldNameBase + '[' + rowId + ']['
+            + serviceCode + '][model]"]';
+        const el = document.querySelector(selector);
+        if (!el || el.tagName !== 'SELECT') return;
+
+        const current = el.value;
+        while (el.options.length) {
+            el.remove(0);
+        }
+        Object.keys(models).forEach(function (value) {
+            const opt = document.createElement('option');
+            opt.value = value;
+            opt.text = models[value];
+            el.appendChild(opt);
+        });
+        if (current !== '') {
+            const hasOption = Array.from(el.options).some(function (opt) {
+                return opt.value === current;
+            });
+            if (!hasOption) {
+                const legacyOpt = document.createElement('option');
+                legacyOpt.value = current;
+                legacyOpt.text = current + ' (legacy)';
+                el.insertBefore(legacyOpt, el.firstChild);
+            }
+            el.value = current;
+        }
+    }
+
+    function refreshModels(button) {
+        const resultEl = button.parentNode.querySelector('.ai-test-result');
+        button.disabled = true;
+        resultEl.className = 'ai-test-result';
+        resultEl.textContent = '{$refreshingLabelJs}';
+
+        const body = new URLSearchParams();
+        body.append('service_code', button.dataset.serviceCode);
+        body.append('form_key', window.FORM_KEY);
+
+        fetch('{$refreshUrlJs}', { method: 'POST', body: body })
+            .then(function (response) { return response.json(); })
+            .then(function (data) {
+                if (data.success) {
+                    updateModelSelect(button.dataset.rowId, button.dataset.serviceCode, data.models);
+                    resultEl.classList.add('ai-test-result-success');
+                    resultEl.textContent = data.count + ' {$modelsLabelJs}';
+                } else {
+                    resultEl.classList.add('ai-test-result-error');
+                    resultEl.textContent = data.error;
+                }
+            })
+            .catch(function (error) {
+                resultEl.classList.add('ai-test-result-error');
+                resultEl.textContent = String(error);
+            })
+            .finally(function () {
+                button.disabled = false;
+            });
+    }
+
     document.querySelector('.ai-services-configurator').addEventListener('click', function (e) {
         const testButton = e.target.closest('.action-test-connection');
         if (testButton) {
             testConnection(testButton);
+            return;
+        }
+        const refreshButton = e.target.closest('.action-refresh-models');
+        if (refreshButton) {
+            refreshModels(refreshButton);
             return;
         }
         if (!e.target.classList.contains('action-delete')) return;

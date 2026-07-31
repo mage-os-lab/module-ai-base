@@ -61,4 +61,23 @@
             </argument>
         </arguments>
     </type>
+
+    <!-- Refresh Models controller receives the same backend definitions as the admin form block;
+         backends implementing Api\ModelListProviderInterface opt in to the live refresh. -->
+    <type name="MageOS\AiBase\Controller\Adminhtml\Service\RefreshModels">
+        <arguments>
+            <argument name="services" xsi:type="array">
+                <item name="anthropic" xsi:type="object">MageOS\AiBase\AiServices\Anthropic</item>
+                <item name="azure" xsi:type="object">MageOS\AiBase\AiServices\Azure</item>
+                <item name="deepseek" xsi:type="object">MageOS\AiBase\AiServices\Deepseek</item>
+                <item name="google" xsi:type="object">MageOS\AiBase\AiServices\Google</item>
+                <item name="huggingface" xsi:type="object">MageOS\AiBase\AiServices\HuggingFace</item>
+                <item name="lmstudio" xsi:type="object">MageOS\AiBase\AiServices\LmStudio</item>
+                <item name="ollama" xsi:type="object">MageOS\AiBase\AiServices\Ollama</item>
+                <item name="openrouter" xsi:type="object">MageOS\AiBase\AiServices\OpenRouter</item>
+                <item name="openai" xsi:type="object">MageOS\AiBase\AiServices\OpenAi</item>
+                <item name="xai" xsi:type="object">MageOS\AiBase\AiServices\Xai</item>
+            </argument>
+        </arguments>
+    </type>
 </config>

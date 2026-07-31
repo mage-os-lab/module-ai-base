@@ -10,6 +10,8 @@ use Magento\Framework\Serialize\Serializer\Json;
 use Magento\Framework\View\Helper\SecureHtmlRenderer;
 use MageOS\AiBase\Api\Data\AiServiceConfigurationInterface;
 use MageOS\AiBase\Api\Data\FieldDescriptorInterface;
+use MageOS\AiBase\Api\ModelListProviderInterface;
+use MageOS\AiBase\Model\ModelList\Resolver;
 
 class Services extends AbstractFieldArray
 {
@@ -22,6 +24,7 @@ class Services extends AbstractFieldArray
      * @param Context $context
      * @param Json $jsonSerializer
      * @param AiServiceConfigurationInterface[] $services
+     * @param Resolver $modelListResolver
      * @param array $data
      * @param SecureHtmlRenderer|null $secureRenderer
      */
@@ -30,6 +33,7 @@ class Services extends AbstractFieldArray
         private readonly Json $jsonSerializer,
         /** @var AiServiceConfigurationInterface[] */
         private readonly array $services,
+        private readonly Resolver $modelListResolver,
         array $data = [],
         ?SecureHtmlRenderer $secureRenderer = null,
     ) {
@@ -65,25 +69,54 @@ class Services extends AbstractFieldArray
     /**
      * Field schema consumed by the admin form JavaScript.
      *
-     * @return string JSON object keyed by service code, each value is a list of field descriptors as arrays
+     * Each service entry carries its field descriptors (`fields`) and whether the backend supports
+     * the live model-list refresh (`supportsModelRefresh`). Model select options come from the
+     * model-list resolver, so a previously refreshed list wins over the curated defaults.
+     *
+     * @return string JSON object keyed by service code:
+     *         {fields: array[], supportsModelRefresh: bool}
      */
     public function getServicesSchemaJson(): string
     {
         $schema = [];
         foreach ($this->services as $service) {
-            $schema[$service->getCode()] = array_map(
-                fn (FieldDescriptorInterface $field) => [
-                    'name'      => $field->getName(),
-                    'label'     => $field->getLabel(),
-                    'type'      => $field->getType(),
-                    'options'   => $field->getOptions(),
-                    'default'   => $field->getDefault(),
-                    'encrypted' => $field->isEncrypted(),
-                ],
-                $service->getConfigurationFields(),
-            );
+            $models = $this->modelListResolver->getModels($service);
+            $schema[$service->getCode()] = [
+                'fields' => array_map(
+                    fn (FieldDescriptorInterface $field) => [
+                        'name'      => $field->getName(),
+                        'label'     => $field->getLabel(),
+                        'type'      => $field->getType(),
+                        'options'   => $this->resolveFieldOptions($field, $models),
+                        'default'   => $field->getDefault(),
+                        'encrypted' => $field->isEncrypted(),
+                    ],
+                    $service->getConfigurationFields(),
+                ),
+                'supportsModelRefresh' => $service instanceof ModelListProviderInterface,
+            ];
         }
         return $this->jsonSerializer->serialize($schema);
+    }
+
+    /**
+     * Options for a field, substituting the resolved model list for the model select.
+     *
+     * @param FieldDescriptorInterface $field
+     * @param array $models Resolved model list (stored or curated) as value => label
+     * @return array<int, array{value: string, label: string}>
+     */
+    private function resolveFieldOptions(FieldDescriptorInterface $field, array $models): array
+    {
+        if ($field->getName() !== 'model' || $field->getType() !== FieldDescriptorInterface::TYPE_SELECT) {
+            return $field->getOptions();
+        }
+
+        $options = [];
+        foreach ($models as $value => $label) {
+            $options[] = ['value' => (string) $value, 'label' => (string) $label];
+        }
+        return $options;
     }
 
     /**
