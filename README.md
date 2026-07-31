@@ -111,9 +111,12 @@ is not installed, the error message shown by the button explains what to install
 
 Saved rows of services that support it also show a **Refresh Models** button. It fetches the
 provider's current model list live (using the saved credentials) and updates the row's model
-dropdown — refreshing is strictly manual; the module never fetches model lists automatically
-or on a schedule. Supported by OpenAI, Anthropic, xAI (Grok), OpenRouter, Ollama and
-LM Studio; other backends (e.g. Azure, whose listing endpoint is resource-specific) simply
+field — refreshing is strictly manual; the module never fetches model lists automatically
+or on a schedule. Where the model field is a dropdown (OpenAI, Anthropic, xAI) the fetched
+list replaces its options. Where it is free text because the catalogue cannot be known ahead
+of time (OpenRouter, and self-hosted Ollama and LM Studio) the list is offered as autocomplete
+suggestions, so you can still type a model the provider has not listed. Other backends
+(e.g. Azure, whose listing endpoint is resource-specific) simply
 don't show the button. The fetched list is stored per service code (with a fetched-at
 timestamp) and keeps feeding the form until the next refresh; when nothing has been fetched
 yet, the curated default model list built into each service remains the fallback. Third-party
