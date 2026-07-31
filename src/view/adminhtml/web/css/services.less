@@ -7,6 +7,13 @@
 @add-ai-service__hover__border-color: #14527d;
 @ai-test-result__success__color: #006400;
 @ai-test-result__error__color: #e22626;
+@ai-service-unavailable__background: #f0f0f0;
+@ai-service-unavailable__border-color: #b3b3b3;
+@ai-service-unavailable__color: #5a5a5a;
+@ai-service-badge__color: #6f6f6f;
+@ai-service-note__background: #fdf6e3;
+@ai-service-note__border-color: #e0c97f;
+@ai-service-install-hint__background: #fff;
 
 .add-ai-service {
     align-items: center;
@@ -75,12 +82,6 @@
 //  configuration-only integrations, so it is de-emphasised rather than disabled.
 //  --------------------------------------------------------------------------
 
-@ai-service-unavailable__background: #f0f0f0;
-@ai-service-unavailable__border-color: #b3b3b3;
-@ai-service-unavailable__color: #5a5a5a;
-@ai-service-badge__color: #6f6f6f;
-@ai-service-note__background: #fdf6e3;
-@ai-service-note__border-color: #e0c97f;
 
 .add-ai-service.ai-service-unavailable {
     background: @ai-service-unavailable__background;
@@ -124,7 +125,7 @@
 }
 
 .ai-service-install-hint {
-    background: #fff;
+    background: @ai-service-install-hint__background;
     border: 1px solid @ai-service-note__border-color;
     border-radius: 3px;
     margin: 0 0 6px;

@@ -51,11 +51,16 @@ $_colspan = $block->isAddAfter() ? 2 : 1;
                                     )) ?>
                                 </p>
                                 <?php $_packages = $block->getMissingBridgePackages(); ?>
+                                <?php $_command = 'composer require ' . implode(' ', $_packages); ?>
                                 <?php if ($_packages !== []): ?>
-                                    <p><?= $escaper->escapeHtml(__('To make them available, run from your project root:')) ?></p>
-                                    <pre class="ai-service-install-hint"><?= $escaper->escapeHtml(
-                                        'composer require ' . implode(' ', $_packages)
-                                    ) ?></pre>
+                                    <p>
+                                        <?= $escaper->escapeHtml(
+                                            __('To make them available, run from your project root:')
+                                        ) ?>
+                                    </p>
+                                    <pre class="ai-service-install-hint"><?=
+                                        $escaper->escapeHtml($_command)
+                                    ?></pre>
                                     <p>
                                         <?= $escaper->escapeHtml(__(
                                             'Then run bin/magento cache:flush and reload this page.'

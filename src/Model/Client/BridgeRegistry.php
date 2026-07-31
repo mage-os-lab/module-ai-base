@@ -29,7 +29,7 @@ class BridgeRegistry
     private const KEY_PACKAGE = 'package';
 
     /**
-     * @param array<string, array{factory: string, package: string}> $bridges Service code => bridge definition
+     * @param array $bridges Service code => ['factory' => bridge factory FQCN, 'package' => composer package]
      */
     public function __construct(
         private readonly array $bridges = [],
