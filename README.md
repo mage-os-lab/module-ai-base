@@ -120,6 +120,12 @@ yet, the curated default model list built into each service remains the fallback
 providers can opt in by implementing `MageOS\AiBase\Api\ModelListProviderInterface` alongside
 their service configuration class.
 
+## Documentation
+
+- [Provider Integration & Customization Guide](docs/PROVIDERS.md) — add a provider, wire a client bridge, opt into model refresh, customization recipes
+- [Consumer Guide](docs/CONSUMING.md) — make AI calls from your module, handle failure modes, test your integration
+- [Architecture](docs/ARCHITECTURE.md) — component map, data flows, storage formats, security model, design decisions
+
 ## Contributing
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) and our [Code of Conduct](CODE_OF_CONDUCT.md).
