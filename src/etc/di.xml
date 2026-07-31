@@ -25,6 +25,26 @@
         </arguments>
     </type>
 
+    <!-- The sensitive-data processor decides field sensitivity from the same provider
+         field schema the admin form renders; keep this item list in sync with the
+         Block\Adminhtml\Configuration\Services "services" argument below. -->
+    <type name="MageOS\AiBase\Model\Config\SensitiveDataProcessor">
+        <arguments>
+            <argument name="services" xsi:type="array">
+                <item name="anthropic" xsi:type="object">MageOS\AiBase\AiServices\Anthropic</item>
+                <item name="azure" xsi:type="object">MageOS\AiBase\AiServices\Azure</item>
+                <item name="deepseek" xsi:type="object">MageOS\AiBase\AiServices\Deepseek</item>
+                <item name="google" xsi:type="object">MageOS\AiBase\AiServices\Google</item>
+                <item name="huggingface" xsi:type="object">MageOS\AiBase\AiServices\HuggingFace</item>
+                <item name="lmstudio" xsi:type="object">MageOS\AiBase\AiServices\LmStudio</item>
+                <item name="ollama" xsi:type="object">MageOS\AiBase\AiServices\Ollama</item>
+                <item name="openrouter" xsi:type="object">MageOS\AiBase\AiServices\OpenRouter</item>
+                <item name="openai" xsi:type="object">MageOS\AiBase\AiServices\OpenAi</item>
+                <item name="xai" xsi:type="object">MageOS\AiBase\AiServices\Xai</item>
+            </argument>
+        </arguments>
+    </type>
+
     <type name="MageOS\AiBase\Block\Adminhtml\Configuration\Services">
         <arguments>
             <argument name="services" xsi:type="array">

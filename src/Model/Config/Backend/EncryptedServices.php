@@ -73,7 +73,12 @@ class EncryptedServices extends ArraySerialized
             $this->setValue($this->mapRows(
                 $value,
                 fn (array $row, string $rowId, string $service): array => $this->sensitiveDataProcessor->encryptRow(
-                    $this->sensitiveDataProcessor->restoreRow($row, $this->storedRow($stored, $rowId, $service))
+                    $service,
+                    $this->sensitiveDataProcessor->restoreRow(
+                        $service,
+                        $row,
+                        $this->storedRow($stored, $rowId, $service)
+                    )
                 ),
             ));
         }
@@ -94,7 +99,8 @@ class EncryptedServices extends ArraySerialized
         if (is_array($value)) {
             $this->setValue($this->mapRows(
                 $value,
-                fn (array $row): array => $this->sensitiveDataProcessor->maskRow($row),
+                fn (array $row, string $rowId, string $service): array =>
+                    $this->sensitiveDataProcessor->maskRow($service, $row),
             ));
         }
 

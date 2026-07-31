@@ -23,6 +23,19 @@ final class FieldDescriptorTest extends TestCase
         self::assertSame(FieldDescriptorInterface::TYPE_PASSWORD, $field->getType());
         self::assertSame([], $field->getOptions());
         self::assertNull($field->getDefault());
+        self::assertFalse($field->isEncrypted());
+    }
+
+    public function test_encrypted_flag_is_carried(): void
+    {
+        $field = new FieldDescriptor(
+            name: 'credential',
+            label: 'Credential',
+            type: FieldDescriptorInterface::TYPE_TEXT,
+            encrypted: true,
+        );
+
+        self::assertTrue($field->isEncrypted());
     }
 
     public function test_select_field_carries_options_and_default(): void

@@ -9,8 +9,11 @@ use Magento\Framework\App\Config\ScopeConfigInterface;
 use Magento\Framework\Encryption\EncryptorInterface;
 use Magento\Framework\Serialize\Serializer\Json;
 use Magento\Framework\TestFramework\Unit\Helper\ObjectManager;
+use MageOS\AiBase\Api\Data\AiServiceConfigurationInterface;
+use MageOS\AiBase\Api\Data\FieldDescriptorInterface;
 use MageOS\AiBase\Model\Config\Backend\EncryptedServices;
 use MageOS\AiBase\Model\Config\SensitiveDataProcessor;
+use MageOS\AiBase\Model\FieldDescriptor;
 use PHPUnit\Framework\MockObject\MockObject;
 use PHPUnit\Framework\TestCase;
 
@@ -39,7 +42,7 @@ final class EncryptedServicesTest extends TestCase
 
         $this->subject = (new ObjectManager($this))->getObject(EncryptedServices::class, [
             'config' => $this->scopeConfig,
-            'sensitiveDataProcessor' => new SensitiveDataProcessor($encryptor),
+            'sensitiveDataProcessor' => new SensitiveDataProcessor($encryptor, [$this->createOpenAiFake()]),
             'jsonSerializer' => $this->serializer,
         ]);
         $this->subject->setPath(self::CONFIG_PATH);
@@ -116,6 +119,61 @@ final class EncryptedServicesTest extends TestCase
             ['_rowNew' => ['openai' => ['api_key' => '', 'model' => 'gpt-4o']]],
             $this->serializer->unserialize((string)$this->subject->getValue())
         );
+    }
+
+    /**
+     * Build a fake "openai" provider whose schema marks api_key as encrypted,
+     * so the backend model resolves sensitivity through the schema path.
+     *
+     * @return AiServiceConfigurationInterface
+     */
+    private function createOpenAiFake(): AiServiceConfigurationInterface
+    {
+        return new class implements AiServiceConfigurationInterface {
+            /**
+             * @inheritdoc
+             */
+            public function getCode(): string
+            {
+                return 'openai';
+            }
+
+            /**
+             * @inheritdoc
+             */
+            public function getName(): string
+            {
+                return 'OpenAI (fake)';
+            }
+
+            /**
+             * @inheritdoc
+             */
+            public function getConfigurationFields(): array
+            {
+                return [
+                    new FieldDescriptor(
+                        name: 'api_key',
+                        label: 'API Key',
+                        type: FieldDescriptorInterface::TYPE_PASSWORD,
+                        encrypted: true,
+                    ),
+                    new FieldDescriptor(
+                        name: 'model',
+                        label: 'Model',
+                        type: FieldDescriptorInterface::TYPE_TEXT,
+                    ),
+                ];
+            }
+
+            /**
+             * @inheritdoc
+             */
+            public function getSupportedModels(): array
+            {
+                return [];
+            }
+        };
     }
 
     /**

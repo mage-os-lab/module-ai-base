@@ -14,6 +14,7 @@ class FieldDescriptor implements FieldDescriptorInterface
      * @param string $type
      * @param array $options
      * @param string|null $default
+     * @param bool $encrypted
      */
     public function __construct(
         private readonly string $name,
@@ -21,6 +22,7 @@ class FieldDescriptor implements FieldDescriptorInterface
         private readonly string $type,
         private readonly array $options = [],
         private readonly ?string $default = null,
+        private readonly bool $encrypted = false,
     ) {
     }
 
@@ -62,5 +64,13 @@ class FieldDescriptor implements FieldDescriptorInterface
     public function getDefault(): ?string
     {
         return $this->default;
+    }
+
+    /**
+     * @inheritdoc
+     */
+    public function isEncrypted(): bool
+    {
+        return $this->encrypted;
     }
 }

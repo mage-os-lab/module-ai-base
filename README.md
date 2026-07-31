@@ -82,9 +82,15 @@ providers there, or replace the implementation entirely by preferencing
 
 ### Credential encryption
 
-API keys and other credential fields (`api_key`, `token`, `secret`, plus the legacy
-`apikey` spelling for third-party providers) are encrypted at rest with Magento's
-`EncryptorInterface` when the configuration is saved.
+Credential fields are encrypted at rest with Magento's `EncryptorInterface` when the
+configuration is saved. A field is treated as a credential when its field descriptor
+opts in via the `encrypted` option (`FieldDescriptorInterface::isEncrypted()`); the
+bundled providers flag their `api_key` field. Third-party providers should pass
+`'encrypted' => true` when building credential field descriptors — encrypted fields
+are also always rendered as password inputs in the admin form. For rows whose provider
+schema is not registered (e.g. the provider module was removed), fields named
+`api_key`, `token`, `secret`, or the legacy `apikey` spelling are treated as
+credentials as a fallback.
 Values saved before encryption was introduced are detected and returned as-is, and are
 re-encrypted the next time the configuration is saved in the admin.
 

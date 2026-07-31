@@ -82,7 +82,8 @@ require(['prototype'], function () {
             return '<select name="' + escapeHtml(base) + '">' + options + '</select>';
         }
         const defaultAttr = field.default ? ' value="' + escapeHtml(field.default) + '"' : '';
-        const type = (field.type === 'password' || field.type === 'text') ? field.type : 'text';
+        const inputType = (field.type === 'password' || field.type === 'text') ? field.type : 'text';
+        const type = field.encrypted ? 'password' : inputType;
         return '<input type="' + type + '" name="' + escapeHtml(base) + '"' + defaultAttr + '/>';
     }
 

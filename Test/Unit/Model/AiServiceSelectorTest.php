@@ -28,7 +28,7 @@ final class AiServiceSelectorTest extends TestCase
         $this->subject = new AiServiceSelector(
             $this->scopeConfig,
             $this->aiServiceFactory,
-            new SensitiveDataProcessor($this->createMock(EncryptorInterface::class)),
+            new SensitiveDataProcessor($this->createMock(EncryptorInterface::class), []),
         );
     }
 

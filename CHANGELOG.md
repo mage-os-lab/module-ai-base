@@ -8,6 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- `FieldDescriptorInterface::isEncrypted()`: per-field opt-in flag marking a field as a credential that is encrypted at rest and masked in the admin form (`FieldDescriptor` takes an `encrypted` constructor argument, default `false`). `FieldFactoryTrait::apiKeyField()` sets it, so all bundled providers' `api_key` fields are flagged. The admin form forces `type="password"` inputs for encrypted fields regardless of their declared type.
 - `AiClientInterface` / `AiClientFactoryInterface`: provider-agnostic client layer backed by symfony/ai-platform bridges (soft dependency; bridge `Factory` FQCNs mapped per service code in `di.xml`, guarded by `class_exists`/`method_exists`; verified against symfony/ai-platform v0.11.0). xAI (Grok) has no dedicated upstream bridge yet and is not mapped. Third-party modules can register additional bridges or replace the implementation via `<preference>`.
 - Credential fields (`apikey`, `api_key`, `token`, `secret`) are now encrypted at rest via `EncryptedServices` config backend + `SensitiveDataProcessor`. Plaintext rows saved before this change are detected and keep working; they are re-encrypted on the next admin save.
 - Azure service: `endpoint` configuration field (required by the Azure OpenAI bridge).
@@ -15,6 +16,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Unit tests for the `EncryptedServices` placeholder round-trip and `SensitiveDataProcessor` masking/restore.
 
 ### Changed
+- **BREAKING:** `FieldDescriptorInterface` gained `isEncrypted(): bool`; custom implementations must add it.
+- **BREAKING:** `SensitiveDataProcessor` row methods now require the service code as their first argument (`encryptRow`, `decryptRow`, `maskRow`, `restoreRow`), and the class accepts a `services` array (`AiServiceConfigurationInterface[]`, wired in `di.xml`). Sensitivity is decided by the provider field schema (`isEncrypted()`); for unknown service codes or fields not in the schema, the previous field-name heuristic (`apikey`, `api_key`, `token`, `secret`) remains as a fallback — third-party rows may outlive their provider module, and it adds defense in depth.
 - **BREAKING:** credential field renamed from `apikey` to `api_key` (form schema, stored config, `ClientFactory` reads). `SensitiveDataProcessor` still treats the legacy `apikey` spelling as sensitive for third-party providers.
 - Stored credentials are no longer decrypted into the admin form; they are shown as an obscured `******` placeholder. Saving an unchanged placeholder keeps the previously stored (encrypted) value; typed values replace it. Existing form rows now keep their stored row IDs so placeholders map back to the right row.
 - `services.phtml` no longer uses an inline `<script>` block; the script is emitted via `SecureHtmlRenderer::renderTag()` for CSP compliance.
