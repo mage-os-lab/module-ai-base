@@ -68,3 +68,67 @@
 .ai-test-result-error {
     color: @ai-test-result__error__color;
 }
+
+//
+//  Provider availability
+//  A provider whose Symfony AI bridge package is not installed stays usable for
+//  configuration-only integrations, so it is de-emphasised rather than disabled.
+//  --------------------------------------------------------------------------
+
+@ai-service-unavailable__background: #f0f0f0;
+@ai-service-unavailable__border-color: #b3b3b3;
+@ai-service-unavailable__color: #5a5a5a;
+@ai-service-badge__color: #6f6f6f;
+@ai-service-note__background: #fdf6e3;
+@ai-service-note__border-color: #e0c97f;
+
+.add-ai-service.ai-service-unavailable {
+    background: @ai-service-unavailable__background;
+    border-color: @ai-service-unavailable__border-color;
+    border-style: dashed;
+    box-shadow: none;
+    color: @ai-service-unavailable__color;
+    font-weight: 400;
+
+    &:hover,
+    &:focus {
+        background: @ai-service-unavailable__background;
+        border-color: @ai-service-unavailable__border-color;
+        box-shadow: none;
+    }
+}
+
+.ai-service-badge {
+    color: @ai-service-badge__color;
+    font-size: 11px;
+    font-style: italic;
+    font-weight: 400;
+    white-space: nowrap;
+}
+
+.ai-service-availability-note {
+    background: @ai-service-note__background;
+    border: 1px solid @ai-service-note__border-color;
+    border-radius: 4px;
+    margin-top: 12px;
+    max-width: 760px;
+    padding: 10px 14px;
+
+    p {
+        margin: 0 0 6px;
+    }
+
+    p:last-child {
+        margin-bottom: 0;
+    }
+}
+
+.ai-service-install-hint {
+    background: #fff;
+    border: 1px solid @ai-service-note__border-color;
+    border-radius: 3px;
+    margin: 0 0 6px;
+    overflow-x: auto;
+    padding: 8px 10px;
+    white-space: pre;
+}

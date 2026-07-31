@@ -25,11 +25,62 @@ $_colspan = $block->isAddAfter() ? 2 : 1;
                         <ul>
                             <?php foreach ($block->getServicesButtons() as $button): ?>
                                 <li data-ai-service="<?= $escaper->escapeHtmlAttr($button['code']) ?>"
-                                    class="add-ai-service ai-service-<?= $escaper->escapeHtmlAttr($button['code']) ?>">
+                                    class="add-ai-service ai-service-<?= $escaper->escapeHtmlAttr($button['code']) ?><?=
+                                        $button['available'] ? '' : ' ai-service-unavailable' ?>">
                                     <?= $escaper->escapeHtml($button['name']) ?>
+                                    <?php if (!$button['available']): ?>
+                                        <span class="ai-service-badge">
+                                            <?= $escaper->escapeHtml(
+                                                $button['supported']
+                                                    ? __('package not installed')
+                                                    : __('no bridge available yet')
+                                            ) ?>
+                                        </span>
+                                    <?php endif; ?>
                                 </li>
                             <?php endforeach; ?>
                         </ul>
+                        <?php if ($block->hasUnavailableServices()): ?>
+                            <div class="ai-service-availability-note">
+                                <p>
+                                    <?= $escaper->escapeHtml(__(
+                                        'Greyed-out providers can still be configured here, and modules that call '
+                                        . 'the provider themselves will read that configuration. They cannot be used '
+                                        . 'through this module\'s built-in client or the Test Connection button until '
+                                        . 'their bridge package is installed.'
+                                    )) ?>
+                                </p>
+                                <?php $_packages = $block->getMissingBridgePackages(); ?>
+                                <?php if ($_packages !== []): ?>
+                                    <p><?= $escaper->escapeHtml(__('To make them available, run from your project root:')) ?></p>
+                                    <pre class="ai-service-install-hint"><?= $escaper->escapeHtml(
+                                        'composer require ' . implode(' ', $_packages)
+                                    ) ?></pre>
+                                    <p>
+                                        <?= $escaper->escapeHtml(__(
+                                            'Then run bin/magento cache:flush and reload this page.'
+                                        )) ?>
+                                    </p>
+                                <?php endif; ?>
+                                <?php $_unsupported = $block->getUnsupportedServiceNames(); ?>
+                                <?php if ($_unsupported !== []): ?>
+                                    <p>
+                                        <?= $escaper->escapeHtml(count($_unsupported) === 1
+                                            ? __(
+                                                '%1 has no bridge package yet, so there is nothing to install for it. '
+                                                . 'It becomes available here as soon as one is released.',
+                                                $_unsupported[0]
+                                            )
+                                            : __(
+                                                'These providers have no bridge package yet, so there is nothing to '
+                                                . 'install for them: %1. They become available here as soon as one '
+                                                . 'is released.',
+                                                implode(', ', $_unsupported)
+                                            )) ?>
+                                    </p>
+                                <?php endif; ?>
+                            </div>
+                        <?php endif; ?>
                     </td>
                 </tr>
             </tfoot>

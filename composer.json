@@ -1,10 +1,16 @@
 {
     "name": "mage-os/module-ai-base",
-    "description": "Base AI module for Mage-OS — register and retrieve configuration for multiple AI backends.",
+    "description": "Base AI module for Mage-OS \u2014 register and retrieve configuration for multiple AI backends.",
     "type": "magento2-module",
-    "license": ["OSL-3.0", "AFL-3.0"],
+    "license": [
+        "OSL-3.0",
+        "AFL-3.0"
+    ],
     "authors": [
-        { "name": "David Lambauer", "email": "david@run-as-root.sh" }
+        {
+            "name": "David Lambauer",
+            "email": "david@run-as-root.sh"
+        }
     ],
     "support": {
         "issues": "https://github.com/mage-os-lab/module-ai-base/issues",
@@ -28,19 +34,35 @@
         "magento/module-store": "^101.1 || ^102.0"
     },
     "suggest": {
-        "symfony/ai-platform": "Unified client layer used by the bundled AiClientInterface adapter (experimental component; pin the version and verify compatibility with your Magento/Mage-OS release)"
+        "symfony/ai-anthropic-platform": "Enables the bundled AI client and Test Connection for Anthropic.",
+        "symfony/ai-azure-platform": "Enables the bundled AI client and Test Connection for Azure OpenAI.",
+        "symfony/ai-deep-seek-platform": "Enables the bundled AI client and Test Connection for Deepseek.",
+        "symfony/ai-gemini-platform": "Enables the bundled AI client and Test Connection for Google Gemini.",
+        "symfony/ai-hugging-face-platform": "Enables the bundled AI client and Test Connection for HuggingFace.",
+        "symfony/ai-lm-studio-platform": "Enables the bundled AI client and Test Connection for LM Studio.",
+        "symfony/ai-ollama-platform": "Enables the bundled AI client and Test Connection for Ollama.",
+        "symfony/ai-open-ai-platform": "Enables the bundled AI client and Test Connection for OpenAI.",
+        "symfony/ai-open-router-platform": "Enables the bundled AI client and Test Connection for OpenRouter."
     },
     "require-dev": {
         "phpunit/phpunit": "^10.5",
         "magento/magento-coding-standard": "*"
     },
     "autoload": {
-        "files": ["src/registration.php"],
-        "psr-4": { "MageOS\\AiBase\\": "src/" },
-        "exclude-from-classmap": ["src/registration.php"]
+        "files": [
+            "src/registration.php"
+        ],
+        "psr-4": {
+            "MageOS\\AiBase\\": "src/"
+        },
+        "exclude-from-classmap": [
+            "src/registration.php"
+        ]
     },
     "autoload-dev": {
-        "psr-4": { "MageOS\\AiBase\\Test\\": "Test/" }
+        "psr-4": {
+            "MageOS\\AiBase\\Test\\": "Test/"
+        }
     },
     "config": {
         "allow-plugins": {

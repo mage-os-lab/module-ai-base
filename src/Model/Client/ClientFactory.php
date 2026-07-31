@@ -22,12 +22,12 @@ class ClientFactory implements AiClientFactoryInterface
     /**
      * @param AiServiceSelectorInterface $serviceSelector
      * @param SymfonyAiClientFactory $clientFactory
-     * @param array $platformFactories Service code => Symfony AI bridge PlatformFactory FQCN
+     * @param BridgeRegistry $bridgeRegistry Service code => bridge factory and composer package
      */
     public function __construct(
         private readonly AiServiceSelectorInterface $serviceSelector,
         private readonly SymfonyAiClientFactory $clientFactory,
-        private readonly array $platformFactories = [],
+        private readonly BridgeRegistry $bridgeRegistry,
     ) {
     }
 
@@ -36,26 +36,100 @@ class ClientFactory implements AiClientFactoryInterface
      */
     public function create(?string $serviceCode = null): AiClientInterface
     {
-        $services = $serviceCode === null
-            ? $this->serviceSelector->getAll()
-            : $this->serviceSelector->getByCode($serviceCode);
-
-        $service = $services[0] ?? null;
-        if (!$service instanceof AiServiceInterface) {
-            throw new LocalizedException(
-                __(
-                    'No AI service configured%1. '
-                    . 'Configure one under Stores > Configuration > Services > AI Configuration.',
-                    $serviceCode !== null ? __(' for code "%1"', $serviceCode) : '',
-                )
-            );
-        }
+        $service = $serviceCode === null
+            ? $this->resolveDefaultService()
+            : $this->resolveRequestedService($serviceCode);
 
         return $this->clientFactory->create([
             'platform' => $this->createPlatform($service),
             'model' => (string)($service->getConfiguration()['model'] ?? ''),
             'serviceCode' => $service->getCode(),
         ]);
+    }
+
+    /**
+     * Resolve the service for an explicit code.
+     *
+     * An unusable service is returned rather than skipped: the caller named this provider, and
+     * quietly billing a different one would be worse than failing. createPlatform() reports why.
+     *
+     * @param string $serviceCode
+     * @return AiServiceInterface
+     * @throws LocalizedException
+     */
+    private function resolveRequestedService(string $serviceCode): AiServiceInterface
+    {
+        $service = $this->serviceSelector->getByCode($serviceCode)[0] ?? null;
+        if (!$service instanceof AiServiceInterface) {
+            throw new LocalizedException(
+                __(
+                    'No AI service configured for code "%1". '
+                    . 'Configure one under Stores > Configuration > Services > AI Configuration.',
+                    $serviceCode
+                )
+            );
+        }
+
+        return $service;
+    }
+
+    /**
+     * Resolve the service to use when the caller did not name one.
+     *
+     * The first configured service whose bridge is installed wins, rather than simply the first
+     * configured service. Ordering is the admin's row order, which has nothing to do with which
+     * bridges an install happens to have: without this, one unusable provider sitting at the top
+     * of the list disables the no-argument entry point for every consumer, even when a perfectly
+     * usable provider is configured below it.
+     *
+     * @return AiServiceInterface
+     * @throws LocalizedException
+     */
+    private function resolveDefaultService(): AiServiceInterface
+    {
+        $services = $this->serviceSelector->getAll();
+        if ($services === []) {
+            throw new LocalizedException(
+                __(
+                    'No AI service configured. '
+                    . 'Configure one under Stores > Configuration > Services > AI Configuration.'
+                )
+            );
+        }
+
+        foreach ($services as $service) {
+            if ($this->bridgeRegistry->isAvailable($service->getCode())) {
+                return $service;
+            }
+        }
+
+        throw new LocalizedException(
+            __(
+                'None of the configured AI services can be used through the bundled client: %1. '
+                . 'Install the bridge package for one of them, or request a specific service by code.',
+                $this->describeUnusable($services)
+            )
+        );
+    }
+
+    /**
+     * Human-readable list of configured services and what each one needs, for the error above.
+     *
+     * @param AiServiceInterface[] $services
+     * @return string
+     */
+    private function describeUnusable(array $services): string
+    {
+        $described = [];
+        foreach ($services as $service) {
+            $code = $service->getCode();
+            $package = $this->bridgeRegistry->getPackage($code);
+            $described[$code] = $package !== null
+                ? sprintf('%s (needs %s)', $code, $package)
+                : sprintf('%s (no bridge released)', $code);
+        }
+
+        return implode(', ', $described);
     }
 
     /**
@@ -68,21 +142,26 @@ class ClientFactory implements AiClientFactoryInterface
     private function createPlatform(AiServiceInterface $service): object
     {
         $code = $service->getCode();
-        $factoryClass = $this->platformFactories[$code] ?? null;
-        if ($factoryClass === null) {
-            throw new LocalizedException(
-                __('No Symfony AI platform bridge registered for service "%1".', $code)
-            );
-        }
-        if (!class_exists($factoryClass) || !method_exists($factoryClass, 'createPlatform')) {
+        if (!$this->bridgeRegistry->isSupported($code)) {
             throw new LocalizedException(
                 __(
-                    'The Symfony AI bridge for "%1" is not installed. '
-                    . 'Run "composer require symfony/ai-platform" (plus the provider bridge package, if separate).',
+                    'No Symfony AI bridge has been released for service "%1" yet, so it cannot be '
+                    . 'used through the bundled client. Its configuration can still be read by '
+                    . 'modules that call the provider themselves.',
                     $code
                 )
             );
         }
+        if (!$this->bridgeRegistry->isAvailable($code)) {
+            throw new LocalizedException(
+                __(
+                    'The Symfony AI bridge for "%1" is not installed. Run "composer require %2".',
+                    $code,
+                    (string) $this->bridgeRegistry->getPackage($code)
+                )
+            );
+        }
+        $factoryClass = (string) $this->bridgeRegistry->getFactoryClass($code);
 
         $config = $service->getConfiguration();
 

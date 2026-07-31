@@ -7,6 +7,7 @@ namespace MageOS\AiBase\Test\Unit\Model\Client;
 use Magento\Framework\Exception\LocalizedException;
 use MageOS\AiBase\Api\AiServiceSelectorInterface;
 use MageOS\AiBase\Model\AiService;
+use MageOS\AiBase\Model\Client\BridgeRegistry;
 use MageOS\AiBase\Model\Client\ClientFactory;
 use MageOS\AiBase\Model\Client\SymfonyAiClient;
 use MageOS\AiBase\Model\Client\SymfonyAiClientFactory;
@@ -24,10 +25,97 @@ final class ClientFactoryTest extends TestCase
         $this->clientFactory = $this->createMock(SymfonyAiClientFactory::class);
     }
 
+    /**
+     * Admin row order has nothing to do with which bridge packages an install has, so the
+     * no-argument entry point must not be hostage to whichever provider happens to be first.
+     */
+    public function test_create_without_a_code_skips_a_provider_whose_bridge_is_not_installed(): void
+    {
+        $this->serviceSelector->method('getAll')->willReturn([
+            new AiService('ollama', ['model' => 'llama3']),
+            new AiService('openai', ['api_key' => 'k', 'model' => 'gpt-4o']),
+        ]);
+        $this->clientFactory->method('create')->willReturnCallback(
+            function (array $data): SymfonyAiClient {
+                self::assertSame('openai', $data['serviceCode'], 'The usable provider must win.');
+                self::assertSame('gpt-4o', $data['model']);
+
+                return $this->createMock(SymfonyAiClient::class);
+            }
+        );
+
+        $subject = new ClientFactory($this->serviceSelector, $this->clientFactory, new BridgeRegistry([
+            'ollama' => ['factory' => 'Absent\\Ollama\\Factory', 'package' => 'symfony/ai-ollama-platform'],
+            'openai' => ['factory' => FakePlatformFactory::class, 'package' => 'symfony/ai-open-ai-platform'],
+        ]));
+
+        $subject->create();
+    }
+
+    public function test_create_without_a_code_keeps_the_first_provider_when_it_is_usable(): void
+    {
+        $this->serviceSelector->method('getAll')->willReturn([
+            new AiService('openai', ['api_key' => 'k', 'model' => 'gpt-4o']),
+            new AiService('anthropic', ['api_key' => 'k2', 'model' => 'claude']),
+        ]);
+        $this->clientFactory->method('create')->willReturnCallback(
+            function (array $data): SymfonyAiClient {
+                self::assertSame('openai', $data['serviceCode'], 'Order is still respected among usable providers.');
+
+                return $this->createMock(SymfonyAiClient::class);
+            }
+        );
+
+        $subject = new ClientFactory($this->serviceSelector, $this->clientFactory, new BridgeRegistry([
+            'openai' => ['factory' => FakePlatformFactory::class, 'package' => 'symfony/ai-open-ai-platform'],
+            'anthropic' => ['factory' => FakePlatformFactory::class, 'package' => 'symfony/ai-anthropic-platform'],
+        ]));
+
+        $subject->create();
+    }
+
+    public function test_create_without_a_code_names_what_to_install_when_nothing_is_usable(): void
+    {
+        $this->serviceSelector->method('getAll')->willReturn([
+            new AiService('ollama', ['model' => 'llama3']),
+        ]);
+
+        $subject = new ClientFactory($this->serviceSelector, $this->clientFactory, new BridgeRegistry([
+            'ollama' => ['factory' => 'Absent\\Ollama\\Factory', 'package' => 'symfony/ai-ollama-platform'],
+        ]));
+
+        $this->expectException(LocalizedException::class);
+        $this->expectExceptionMessage('ollama (needs symfony/ai-ollama-platform)');
+
+        $subject->create();
+    }
+
+    /**
+     * Naming a provider explicitly must fail rather than quietly resolve to a different one:
+     * silently billing another provider's account would be worse than an error.
+     */
+    public function test_create_with_a_code_does_not_fall_back_to_a_usable_provider(): void
+    {
+        $this->serviceSelector->method('getByCode')->with('ollama')->willReturn([
+            new AiService('ollama', ['model' => 'llama3']),
+        ]);
+        $this->clientFactory->expects(self::never())->method('create');
+
+        $subject = new ClientFactory($this->serviceSelector, $this->clientFactory, new BridgeRegistry([
+            'ollama' => ['factory' => 'Absent\\Ollama\\Factory', 'package' => 'symfony/ai-ollama-platform'],
+            'openai' => ['factory' => FakePlatformFactory::class, 'package' => 'symfony/ai-open-ai-platform'],
+        ]));
+
+        $this->expectException(LocalizedException::class);
+        $this->expectExceptionMessage('composer require symfony/ai-ollama-platform');
+
+        $subject->create('ollama');
+    }
+
     public function test_create_throws_when_no_service_is_configured(): void
     {
         $this->serviceSelector->method('getAll')->willReturn([]);
-        $subject = new ClientFactory($this->serviceSelector, $this->clientFactory, []);
+        $subject = new ClientFactory($this->serviceSelector, $this->clientFactory, new BridgeRegistry([]));
 
         $this->expectException(LocalizedException::class);
         $this->expectExceptionMessage('No AI service configured');
@@ -39,10 +127,10 @@ final class ClientFactoryTest extends TestCase
     {
         $this->serviceSelector->method('getByCode')->with('openai')
             ->willReturn([new AiService('openai', ['api_key' => 'k'])]);
-        $subject = new ClientFactory($this->serviceSelector, $this->clientFactory, []);
+        $subject = new ClientFactory($this->serviceSelector, $this->clientFactory, new BridgeRegistry([]));
 
         $this->expectException(LocalizedException::class);
-        $this->expectExceptionMessage('No Symfony AI platform bridge registered');
+        $this->expectExceptionMessage('No Symfony AI bridge has been released');
 
         $subject->create('openai');
     }
@@ -57,7 +145,10 @@ final class ClientFactoryTest extends TestCase
         $subject = new ClientFactory(
             $this->serviceSelector,
             $this->clientFactory,
-            ['openai' => 'MageOS\AiBase\Test\Unit\Model\Client\AbsentBridgeFactory'],
+            new BridgeRegistry(['openai' => [
+                'factory' => 'MageOS\AiBase\Test\Unit\Model\Client\AbsentBridgeFactory',
+                'package' => 'symfony/ai-open-ai-platform',
+            ]]),
         );
 
         $this->expectException(LocalizedException::class);
@@ -83,7 +174,10 @@ final class ClientFactoryTest extends TestCase
         $subject = new ClientFactory(
             $this->serviceSelector,
             $this->clientFactory,
-            ['openai' => FakePlatformFactory::class],
+            new BridgeRegistry(['openai' => [
+                'factory' => FakePlatformFactory::class,
+                'package' => 'symfony/ai-open-ai-platform',
+            ]]),
         );
 
         self::assertSame($client, $subject->create('openai'));
