@@ -69,12 +69,12 @@ $_colspan = $block->isAddAfter() ? 2 : 1;
                 return '<input type="' + type + '" name="' + escapeHtml(base) + '"' + defaultAttr + '/>';
             }
 
-            function addRow(serviceCode, values) {
+            function addRow(serviceCode, values, existingRowId) {
                 const fields = schema[serviceCode];
                 if (!fields) return;
 
                 const d = new Date();
-                const rowId = '_' + d.getTime() + '_' + d.getMilliseconds();
+                const rowId = existingRowId || ('_' + d.getTime() + '_' + d.getMilliseconds());
 
                 const rows = fields.map(function (field) {
                     return '<tr>'
@@ -130,7 +130,8 @@ $_colspan = $block->isAddAfter() ? 2 : 1;
                 <?php $serviceCode = array_key_first($rowData); ?>
                 addRow(
                     '<?= $escaper->escapeJs($serviceCode) ?>',
-                    <?= /* @noEscape */ json_encode($rowData[$serviceCode]) ?>
+                    <?= /* @noEscape */ json_encode($rowData[$serviceCode]) ?>,
+                    '<?= $escaper->escapeJs((string) $_row->getData('_id')) ?>'
                 );
             <?php endforeach; ?>
         });
