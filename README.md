@@ -105,14 +105,14 @@ minimal prompt to the provider and reports the latency and response (or the erro
 Only saved rows can be tested, because the client factory reads saved configuration; when
 several rows share a service code, the first configured row of that code is used. The
 feature relies on the client layer, so it requires `symfony/ai-platform` — if the library
-is not installed, the error message shown by the button explains what to install.
+is not installed, the error message shown by the button names the exact package to install.
 
 ### Refreshing model lists
 
 Saved rows of services that support it also show a **Refresh Models** button. It fetches the
 provider's current model list live (using the saved credentials) and updates the row's model
 field — refreshing is strictly manual; the module never fetches model lists automatically
-or on a schedule. Where the model field is a dropdown (OpenAI, Anthropic, xAI) the fetched
+or on a schedule. Where the model field is a dropdown (OpenAI, Anthropic) the fetched
 list replaces its options. Where it is free text because the catalogue cannot be known ahead
 of time (OpenRouter, and self-hosted Ollama and LM Studio) the list is offered as autocomplete
 suggestions, so you can still type a model the provider has not listed. Other backends

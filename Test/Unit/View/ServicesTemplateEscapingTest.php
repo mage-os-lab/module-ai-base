@@ -30,7 +30,8 @@ final class ServicesTemplateEscapingTest extends TestCase
     private const NON_MARKUP_USES = [
         'const rowId = existingRowId' => 'generates the value',
         'buildField(serviceCode, rowId, field)' => 'buildField escapes the assembled name attribute',
-        "+ rowId + ']['" => 'builds a querySelector attribute selector, not markup',
+        'findField(rowId,' => 'findField compares the assembled name with getAttribute(), never parsing it',
+        "+ rowId + ']['" => 'builds a plain name string compared against getAttribute(), not markup',
         'dataset.rowId' => 'reads the value back out of the DOM',
     ];
 

@@ -11,6 +11,7 @@ use Magento\Framework\View\Helper\SecureHtmlRenderer;
 use MageOS\AiBase\Api\Data\AiServiceConfigurationInterface;
 use MageOS\AiBase\Api\Data\FieldDescriptorInterface;
 use MageOS\AiBase\Api\ModelListProviderInterface;
+use MageOS\AiBase\Model\Client\BridgeRegistry;
 use MageOS\AiBase\Model\ModelList\Resolver;
 
 class Services extends AbstractFieldArray
@@ -25,6 +26,7 @@ class Services extends AbstractFieldArray
      * @param Json $jsonSerializer
      * @param AiServiceConfigurationInterface[] $services
      * @param Resolver $modelListResolver
+     * @param BridgeRegistry $bridgeRegistry
      * @param array $data
      * @param SecureHtmlRenderer|null $secureRenderer
      */
@@ -34,6 +36,7 @@ class Services extends AbstractFieldArray
         /** @var AiServiceConfigurationInterface[] */
         private readonly array $services,
         private readonly Resolver $modelListResolver,
+        private readonly BridgeRegistry $bridgeRegistry,
         array $data = [],
         ?SecureHtmlRenderer $secureRenderer = null,
     ) {
@@ -61,9 +64,65 @@ class Services extends AbstractFieldArray
             fn (AiServiceConfigurationInterface $service) => [
                 'code' => $service->getCode(),
                 'name' => $service->getName(),
+                'available' => $this->bridgeRegistry->isAvailable($service->getCode()),
+                'supported' => $this->bridgeRegistry->isSupported($service->getCode()),
+                'package' => (string) $this->bridgeRegistry->getPackage($service->getCode()),
             ],
             $this->services,
         );
+    }
+
+    /**
+     * Composer packages needed to make currently unavailable providers usable, deduplicated.
+     *
+     * @return array<int, string>
+     */
+    public function getMissingBridgePackages(): array
+    {
+        $packages = [];
+        foreach ($this->getServicesButtons() as $button) {
+            if (!$button['available'] && $button['supported'] && $button['package'] !== '') {
+                $packages[] = $button['package'];
+            }
+        }
+
+        return array_values(array_unique($packages));
+    }
+
+    /**
+     * Display names of providers for which no bridge has been released upstream.
+     *
+     * Distinct from providers whose package is merely missing: there is nothing to install for
+     * these, so the form must not offer a composer command for them.
+     *
+     * @return array<int, string>
+     */
+    public function getUnsupportedServiceNames(): array
+    {
+        $names = [];
+        foreach ($this->getServicesButtons() as $button) {
+            if (!$button['supported']) {
+                $names[] = $button['name'];
+            }
+        }
+
+        return $names;
+    }
+
+    /**
+     * Whether any registered provider cannot currently be used through the bundled client.
+     *
+     * @return bool
+     */
+    public function hasUnavailableServices(): bool
+    {
+        foreach ($this->getServicesButtons() as $button) {
+            if (!$button['available']) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /**

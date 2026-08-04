@@ -81,7 +81,6 @@ final class ServicesTest extends TestCase
             'Ollama'     => [\MageOS\AiBase\AiServices\Ollama::class],
             'OpenAi'     => [\MageOS\AiBase\AiServices\OpenAi::class],
             'OpenRouter' => [\MageOS\AiBase\AiServices\OpenRouter::class],
-            'Xai'        => [\MageOS\AiBase\AiServices\Xai::class],
         ];
     }
 }
