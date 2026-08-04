@@ -30,10 +30,18 @@ final class ServicesTemplateEscapingTest extends TestCase
     private const NON_MARKUP_USES = [
         'const rowId = existingRowId' => 'generates the value',
         'buildField(serviceCode, rowId, field)' => 'buildField escapes the assembled name attribute',
-        'function updateModelSelect(rowId' => 'parameter declaration',
         "+ rowId + ']['" => 'builds a querySelector attribute selector, not markup',
         'dataset.rowId' => 'reads the value back out of the DOM',
     ];
+
+    /**
+     * A function declaring `rowId` as a parameter, matched by shape rather than by name so
+     * that renaming the function does not fail this guard for a line that cannot interpolate.
+     *
+     * The pattern is anchored on both ends and stops at the opening brace, so a line that
+     * both declares the parameter and builds markup cannot slip through it.
+     */
+    private const PARAMETER_DECLARATION = '/^function \w+\((?:[\w\s,]*,\s*)?rowId\b[\w\s,]*\) \{$/';
 
     private string $template;
 
@@ -68,6 +76,32 @@ final class ServicesTemplateEscapingTest extends TestCase
             array_filter($this->linesContainingRowId(), fn (string $line): bool => str_contains($line, 'escapeHtml(rowId)')),
             'No escaped row-ID interpolation found at all; the template moved and this test now guards nothing.'
         );
+    }
+
+    /**
+     * The parameter-declaration exemption is the one rule matched by shape instead of by
+     * literal, so pin what it must not swallow: anything that concatenates the row ID.
+     */
+    #[DataProvider('lines_the_parameter_declaration_exemption_must_reject')]
+    public function test_the_parameter_declaration_exemption_covers_declarations_only(string $line): void
+    {
+        self::assertDoesNotMatchRegularExpression(
+            self::PARAMETER_DECLARATION,
+            $line,
+            'The parameter-declaration exemption now covers a line that reaches markup.'
+        );
+    }
+
+    /**
+     * @return array<string, array{string}>
+     */
+    public static function lines_the_parameter_declaration_exemption_must_reject(): array
+    {
+        return [
+            'attribute interpolation' => ["const rowHtml = '<tr id=\"' + rowId + '\">'"],
+            'declaration followed by markup' => ["function f(rowId) { return '<tr id=\"' + rowId + '\">'; }"],
+            'call rather than declaration' => ['renderRow(rowId, serviceCode);'],
+        ];
     }
 
     /**
@@ -111,6 +145,10 @@ final class ServicesTemplateEscapingTest extends TestCase
 
     private function isNonMarkupUse(string $line): bool
     {
+        if (preg_match(self::PARAMETER_DECLARATION, $line) === 1) {
+            return true;
+        }
+
         foreach (array_keys(self::NON_MARKUP_USES) as $allowed) {
             if (str_contains($line, $allowed)) {
                 return true;
