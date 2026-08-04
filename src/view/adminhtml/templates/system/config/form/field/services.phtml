@@ -150,10 +150,10 @@ require(['prototype'], function () {
                 + '<span class="ai-test-result"></span>'
             : '';
 
-        const rowHtml = '<tr id="' + rowId + '">'
+        const rowHtml = '<tr id="' + escapeHtml(rowId) + '">'
             + '<td><table>' + rows + '</table></td>'
             + '<td class="col-actions">'
-            + '<button class="action-delete" data-row-id="' + rowId + '" type="button">'
+            + '<button class="action-delete" data-row-id="' + escapeHtml(rowId) + '" type="button">'
             + '<span>{$deleteLabelJs}</span></button>'
             + testHtml + '</td>'
             + '</tr>';
