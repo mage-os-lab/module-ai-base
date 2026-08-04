@@ -32,6 +32,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `AiServiceSelector` reads configuration with store scope (`ScopeInterface::SCOPE_STORE`), enabling per-store service configuration.
 - `composer.json`: declare `magento/module-backend`, `module-config`, `module-store` requirements; suggest one bridge package per provider (`symfony/ai-open-ai-platform`, `symfony/ai-anthropic-platform`, and so on) rather than `symfony/ai-platform`, which has shipped no bridges since 0.12; exclude `registration.php` from the classmap.
 
+### Fixed
+- `mageos_ai/services/configuration` is now registered with `Magento\Config\Model\Config\TypePool` as `sensitive`, so `bin/magento app:config:dump` no longer writes stored provider credentials into `app/etc/config.php` (commonly committed) and no longer makes the AI Configuration field read-only in the admin, which is what happens once a value is present in the deployment config.
+
 ### Removed
 - The `xai` service (xAI / Grok). Symfony AI has no xAI bridge, so the provider could never be used through the bundled client or Test Connection; it is requested upstream in symfony/ai#2371 but unclaimed. Shipping it meant offering a provider in the admin form with nothing an administrator could install to make it work. It can be reinstated as soon as a bridge is released. Installs with an `xai` row configured keep it in `core_config_data` until the AI Configuration page is next saved, at which point the row is dropped along with its credential.
 
