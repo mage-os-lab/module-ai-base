@@ -27,6 +27,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `composer.json`: declare `magento/module-backend`, `module-config`, `module-store` requirements; suggest `symfony/ai-platform`; exclude `registration.php` from the classmap.
 
 ### Fixed
+- "Refresh Models" is no longer a silent no-op for providers whose model field is free text (OpenRouter, Ollama, LM Studio). The refreshed list was fetched, persisted and reported as a success, but the form only substituted it into a `select`, so half the providers the feature advertises showed nothing. Free-text model fields now render the resolved list as `<datalist>` suggestions and the refresh repopulates them in place. The typed value is left alone: for self-hosted backends the list is a suggestion, not a constraint, which is why the field is free text to begin with.
 - `mageos_ai/services/configuration` is now registered with `Magento\Config\Model\Config\TypePool` as `sensitive`, so `bin/magento app:config:dump` no longer writes stored provider credentials into `app/etc/config.php` (commonly committed) and no longer makes the AI Configuration field read-only in the admin, which is what happens once a value is present in the deployment config.
 
 ### Removed

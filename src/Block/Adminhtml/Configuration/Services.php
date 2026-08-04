@@ -100,7 +100,12 @@ class Services extends AbstractFieldArray
     }
 
     /**
-     * Options for a field, substituting the resolved model list for the model select.
+     * Options for a field, substituting the resolved model list for the model field.
+     *
+     * Applies to the model field whatever its type. A select renders these as its options;
+     * a free-text field renders them as datalist suggestions, so providers whose model list
+     * cannot be known ahead of time (self-hosted Ollama and LM Studio, or OpenRouter's very
+     * large catalogue) still benefit from a refresh instead of silently discarding it.
      *
      * @param FieldDescriptorInterface $field
      * @param array $models Resolved model list (stored or curated) as value => label
@@ -108,7 +113,7 @@ class Services extends AbstractFieldArray
      */
     private function resolveFieldOptions(FieldDescriptorInterface $field, array $models): array
     {
-        if ($field->getName() !== 'model' || $field->getType() !== FieldDescriptorInterface::TYPE_SELECT) {
+        if ($field->getName() !== 'model') {
             return $field->getOptions();
         }
 
