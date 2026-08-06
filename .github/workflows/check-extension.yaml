@@ -3,8 +3,10 @@ name: Check Extension
 on:
   push:
     branches: [main]
+  # Every pull request, not only those targeting main: a PR stacked on another
+  # feature branch is exactly the change most worth checking, and filtering on
+  # the base branch silently gives it no CI at all.
   pull_request:
-    branches: [main]
 
 jobs:
   compute-matrix:
@@ -17,6 +19,36 @@ jobs:
         id: supported
         with:
           project: mage-os
+
+  # The reusable workflow below runs the unit suite inside a Magento install, where
+  # symfony/ai-platform is absent: it is a `suggest`, and composer does not install a
+  # dependency's require-dev. Every test of the chat client layer skips there, so the
+  # mapping onto the provider bridges would go completely unverified. This job runs the
+  # module's own suite standalone with the platform installed, across the PHP range
+  # composer.json claims to support, so the floor is exercised too.
+  unit-tests-with-ai-platform:
+    name: Unit tests with symfony/ai-platform (PHP ${{ matrix.php }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        php: ['8.2', '8.3', '8.4']
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: ${{ matrix.php }}
+          coverage: none
+
+      - name: Install dependencies
+        run: composer update --no-interaction --no-progress --prefer-dist
+
+      # --fail-on-skipped is the point of this job. These tests skip themselves when
+      # symfony/ai-platform is missing, so without it a job that installed nothing would
+      # still report green while verifying nothing.
+      - name: Run tests that need the AI platform
+        run: vendor/bin/phpunit -c phpunit.xml.dist --testsuite Platform --fail-on-skipped
 
   check-extension:
     needs: compute-matrix
