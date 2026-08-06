@@ -32,8 +32,8 @@ final class ClientFactoryTest extends TestCase
     public function test_create_without_a_code_skips_a_provider_whose_bridge_is_not_installed(): void
     {
         $this->serviceSelector->method('getAll')->willReturn([
-            new AiService('ollama', ['model' => 'llama3']),
-            new AiService('openai', ['api_key' => 'k', 'model' => 'gpt-4o']),
+            new AiService('row_ollama', 'ollama', ['model' => 'llama3']),
+            new AiService('row_openai', 'openai', ['api_key' => 'k', 'model' => 'gpt-4o']),
         ]);
         $this->clientFactory->method('create')->willReturnCallback(
             function (array $data): SymfonyAiClient {
@@ -55,8 +55,8 @@ final class ClientFactoryTest extends TestCase
     public function test_create_without_a_code_keeps_the_first_provider_when_it_is_usable(): void
     {
         $this->serviceSelector->method('getAll')->willReturn([
-            new AiService('openai', ['api_key' => 'k', 'model' => 'gpt-4o']),
-            new AiService('anthropic', ['api_key' => 'k2', 'model' => 'claude']),
+            new AiService('row_openai', 'openai', ['api_key' => 'k', 'model' => 'gpt-4o']),
+            new AiService('row_anthropic', 'anthropic', ['api_key' => 'k2', 'model' => 'claude']),
         ]);
         $this->clientFactory->method('create')->willReturnCallback(
             function (array $data): SymfonyAiClient {
@@ -77,7 +77,7 @@ final class ClientFactoryTest extends TestCase
     public function test_create_without_a_code_names_what_to_install_when_nothing_is_usable(): void
     {
         $this->serviceSelector->method('getAll')->willReturn([
-            new AiService('ollama', ['model' => 'llama3']),
+            new AiService('row_ollama', 'ollama', ['model' => 'llama3']),
         ]);
 
         $subject = new ClientFactory($this->serviceSelector, $this->clientFactory, new BridgeRegistry([
@@ -97,7 +97,7 @@ final class ClientFactoryTest extends TestCase
     public function test_create_with_a_code_does_not_fall_back_to_a_usable_provider(): void
     {
         $this->serviceSelector->method('getByCode')->with('ollama')->willReturn([
-            new AiService('ollama', ['model' => 'llama3']),
+            new AiService('row_ollama', 'ollama', ['model' => 'llama3']),
         ]);
         $this->clientFactory->expects(self::never())->method('create');
 
@@ -126,7 +126,7 @@ final class ClientFactoryTest extends TestCase
     public function test_create_throws_when_no_bridge_is_registered_for_the_service(): void
     {
         $this->serviceSelector->method('getByCode')->with('openai')
-            ->willReturn([new AiService('openai', ['api_key' => 'k'])]);
+            ->willReturn([new AiService('row_openai', 'openai', ['api_key' => 'k'])]);
         $subject = new ClientFactory($this->serviceSelector, $this->clientFactory, new BridgeRegistry([]));
 
         $this->expectException(LocalizedException::class);
@@ -141,7 +141,7 @@ final class ClientFactoryTest extends TestCase
         // class with a non-static create() and no createPlatform(), which is
         // exactly the shape the method_exists guard must reject.
         $this->serviceSelector->method('getByCode')->with('openai')
-            ->willReturn([new AiService('openai', ['api_key' => 'k'])]);
+            ->willReturn([new AiService('row_openai', 'openai', ['api_key' => 'k'])]);
         $subject = new ClientFactory(
             $this->serviceSelector,
             $this->clientFactory,
@@ -160,7 +160,7 @@ final class ClientFactoryTest extends TestCase
     public function test_create_builds_client_from_registered_bridge(): void
     {
         $this->serviceSelector->method('getByCode')->with('openai')
-            ->willReturn([new AiService('openai', ['api_key' => 'k', 'model' => 'gpt-4o'])]);
+            ->willReturn([new AiService('row_openai', 'openai', ['api_key' => 'k', 'model' => 'gpt-4o'])]);
 
         $client = new SymfonyAiClient(new \stdClass(), 'gpt-4o', 'openai');
         $this->clientFactory->expects(self::once())->method('create')
@@ -181,6 +181,59 @@ final class ClientFactoryTest extends TestCase
         );
 
         self::assertSame($client, $subject->create('openai'));
+    }
+
+    /**
+     * The point of addressing a row by id: two rows of the same provider differ in credentials
+     * and model, and create('openai') can only ever reach the first of them.
+     */
+    public function test_create_by_id_builds_a_client_for_that_exact_row(): void
+    {
+        $this->serviceSelector->method('getById')->with('_row_b')
+            ->willReturn(new AiService('_row_b', 'openai', ['api_key' => 'k2', 'model' => 'o1-mini']));
+        $this->clientFactory->expects(self::once())->method('create')
+            ->with(self::callback(
+                fn (array $data) => $data['model'] === 'o1-mini' && $data['serviceCode'] === 'openai'
+            ))
+            ->willReturn($this->createMock(SymfonyAiClient::class));
+
+        $subject = new ClientFactory($this->serviceSelector, $this->clientFactory, new BridgeRegistry([
+            'openai' => ['factory' => FakePlatformFactory::class, 'package' => 'symfony/ai-open-ai-platform'],
+        ]));
+
+        $subject->createById('_row_b');
+    }
+
+    /**
+     * An administrator deleting a row leaves stale ids in every consumer that stored one. Falling
+     * back to another row would quietly bill an account nobody chose, so this fails and says why.
+     */
+    public function test_create_by_id_throws_when_the_row_no_longer_exists(): void
+    {
+        $this->serviceSelector->method('getById')->with('_deleted_row')->willReturn(null);
+        $this->clientFactory->expects(self::never())->method('create');
+
+        $subject = new ClientFactory($this->serviceSelector, $this->clientFactory, new BridgeRegistry([]));
+
+        $this->expectException(LocalizedException::class);
+        $this->expectExceptionMessage('_deleted_row');
+
+        $subject->createById('_deleted_row');
+    }
+
+    public function test_create_by_id_reports_a_missing_bridge_for_the_selected_row(): void
+    {
+        $this->serviceSelector->method('getById')->with('_row_a')
+            ->willReturn(new AiService('_row_a', 'ollama', ['model' => 'llama3']));
+
+        $subject = new ClientFactory($this->serviceSelector, $this->clientFactory, new BridgeRegistry([
+            'ollama' => ['factory' => 'Absent\\Ollama\\Factory', 'package' => 'symfony/ai-ollama-platform'],
+        ]));
+
+        $this->expectException(LocalizedException::class);
+        $this->expectExceptionMessage('composer require symfony/ai-ollama-platform');
+
+        $subject->createById('_row_a');
     }
 }
 

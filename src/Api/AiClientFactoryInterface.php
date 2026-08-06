@@ -29,4 +29,19 @@ interface AiClientFactoryInterface
      *         underlying client library is not installed
      */
     public function create(?string $serviceCode = null): AiClientInterface;
+
+    /**
+     * Create a client for one specific configured row, addressed by AiServiceInterface::getId().
+     *
+     * This is the counterpart of Model\Config\Source\ConfiguredService: a module storing the row
+     * an administrator selected turns that stored value into a client here. Unlike create(), it
+     * reaches rows that are not the first of their service code, which is the whole reason an
+     * administrator was offered a choice.
+     *
+     * @param string $serviceId
+     * @return AiClientInterface
+     * @throws LocalizedException When no row carries that id, or the underlying client library
+     *         is not installed
+     */
+    public function createById(string $serviceId): AiClientInterface;
 }
