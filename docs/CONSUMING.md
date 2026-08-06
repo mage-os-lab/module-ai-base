@@ -68,11 +68,68 @@ usually the right move.
 
 ### Which service will `create()` use?
 
-- `create()` (no argument): the **first configured service overall**, in the order the
-  admin saved them.
+- `create()` (no argument): the **first configured service whose bridge is installed**, in
+  the order the admin saved them.
 - `create('openai')`: the **first configured row** with that code. Admins can configure
-  the same backend multiple times; if you need a specific instance (e.g. per-purpose keys),
-  read the rows yourself via the selector and pick before calling.
+  the same backend multiple times; to reach a specific row, let the admin pick one and use
+  `createById()` (below).
+- `createById('_1712345678901_901')`: the **one row** carrying that id, whichever position
+  it occupies.
+
+## Letting the admin pick a service
+
+Rather than hardcoding a service code, give your module's own configuration a select field
+backed by this module's option source. It lists every service the admin configured, labelled
+by provider and model:
+
+```xml
+<!-- your module's etc/adminhtml/system.xml -->
+<field id="ai_service" translate="label" type="select" sortOrder="10"
+       showInDefault="1" showInWebsite="1" showInStore="1">
+    <label>AI service</label>
+    <source_model>MageOS\AiBase\Model\Config\Source\ConfiguredService</source_model>
+</field>
+```
+
+Two source models are available:
+
+| Source model | Options |
+|---|---|
+| `Model\Config\Source\ConfiguredService` | One per configured row |
+| `Model\Config\Source\ConfiguredServiceWithAutomatic` | The same, preceded by an empty-valued *Automatic (first usable service)* option |
+
+Labels read `OpenAI (gpt-4o)`. Two rows that would otherwise be identical are numbered
+(`OpenAI (gpt-4o) #2`). A row whose Symfony AI bridge is missing stays selectable but says so
+(`Ollama (llama3, bridge not installed)`), because a module calling the provider with its own
+HTTP client does not need a bridge.
+
+The **stored value is the row id**, not the service code, since the code cannot tell two rows
+of the same provider apart. Turn that stored id into a client with `createById()`:
+
+```php
+use Magento\Framework\App\Config\ScopeConfigInterface;
+use MageOS\AiBase\Api\AiClientFactoryInterface;
+
+$serviceId = (string) $this->scopeConfig->getValue('my_module/ai/ai_service', ScopeInterface::SCOPE_STORE);
+
+$client = $serviceId === ''
+    ? $this->aiClientFactory->create()            // "Automatic", or nothing chosen yet
+    : $this->aiClientFactory->createById($serviceId);
+```
+
+Or read its raw configuration with `AiServiceSelectorInterface::getById()`, which returns
+`null` when the admin has since deleted that row:
+
+```php
+$service = $this->aiServiceSelector->getById($serviceId);
+if ($service === null) {
+    // The row is gone. Fall back, or tell the admin to pick again.
+}
+```
+
+`createById()` throws `LocalizedException` in that same situation rather than silently falling
+back to another row: another row means another account and another bill, which is not a
+substitution to make on the admin's behalf.
 
 ## Reading raw configuration (lower level)
 
@@ -94,6 +151,8 @@ Notes:
 - Values are decrypted for you; **never log or persist them**, and never echo them to any
   frontend or admin response.
 - Field names are snake_case: `api_key`, `model`, `base_url`, `endpoint`, `api_version`.
+- `getId()` is the row's stable identity, and the only thing that separates two rows of the
+  same provider. It is what the option source stores and what `getById()` resolves.
 - An empty array means nothing is configured — expected state on fresh installs; handle it.
 - Configuration is read with store scope, so per-store setups resolve automatically from
   the current store context.

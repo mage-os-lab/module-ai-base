@@ -20,9 +20,10 @@ use MageOS\AiBase\Api\AiServiceSelectorInterface;
 
 AiServiceSelectorInterface::getAll(): array
 AiServiceSelectorInterface::getByCode(string $code): array
+AiServiceSelectorInterface::getById(string $id): ?AiServiceInterface
 ```
 
-Both methods return an array of `\MageOS\AiBase\Api\Data\AiServiceInterface` objects (multiple entries per code are possible because admins can register the same backend more than once).
+`getAll()` and `getByCode()` return an array of `\MageOS\AiBase\Api\Data\AiServiceInterface` objects (multiple entries per code are possible because admins can register the same backend more than once); `getById()` returns the single row with that id, or `null` once the admin deletes it.
 
 ```php
 use MageOS\AiBase\Api\AiServiceSelectorInterface;
@@ -74,6 +75,34 @@ final class MyAiFunctionality
     }
 }
 ```
+
+### Letting the admin pick a service
+
+Consumer modules do not have to hardcode a service code. Point a `select` field in your own
+`system.xml` at the option source this module ships, and every configured service shows up in it:
+
+```xml
+<field id="ai_service" translate="label" type="select" sortOrder="10"
+       showInDefault="1" showInWebsite="1" showInStore="1">
+    <label>AI service</label>
+    <source_model>MageOS\AiBase\Model\Config\Source\ConfiguredService</source_model>
+</field>
+```
+
+Options are labelled by provider and model (`OpenAI (gpt-4o)`); a row whose Symfony AI bridge is
+not installed stays selectable but says so. Use
+`MageOS\AiBase\Model\Config\Source\ConfiguredServiceWithAutomatic` instead to prepend an
+empty-valued *Automatic (first usable service)* option.
+
+The stored value is the row id, because the service code cannot tell two rows of the same
+provider apart. Resolve it back with either of:
+
+```php
+$this->aiClientFactory->createById($serviceId);       // ready-to-use client
+$this->aiServiceSelector->getById($serviceId);        // raw configuration, or null when deleted
+```
+
+See [docs/CONSUMING.md](docs/CONSUMING.md) for the full example.
 
 Provider bridges are mapped per service code in `etc/di.xml` (`platformFactories`
 argument of `Model\Client\ClientFactory`); third-party modules can register additional

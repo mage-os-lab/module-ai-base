@@ -40,6 +40,37 @@ class ClientFactory implements AiClientFactoryInterface
             ? $this->resolveDefaultService()
             : $this->resolveRequestedService($serviceCode);
 
+        return $this->buildClient($service);
+    }
+
+    /**
+     * @inheritdoc
+     */
+    public function createById(string $serviceId): AiClientInterface
+    {
+        $service = $this->serviceSelector->getById($serviceId);
+        if (!$service instanceof AiServiceInterface) {
+            throw new LocalizedException(
+                __(
+                    'The selected AI service (id "%1") no longer exists. '
+                    . 'Pick another one, or restore it under Stores > Configuration > Services > AI Configuration.',
+                    $serviceId
+                )
+            );
+        }
+
+        return $this->buildClient($service);
+    }
+
+    /**
+     * Build the client for an already resolved service row.
+     *
+     * @param AiServiceInterface $service
+     * @return AiClientInterface
+     * @throws LocalizedException
+     */
+    private function buildClient(AiServiceInterface $service): AiClientInterface
+    {
         return $this->clientFactory->create([
             'platform' => $this->createPlatform($service),
             'model' => (string)($service->getConfiguration()['model'] ?? ''),

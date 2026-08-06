@@ -25,14 +25,17 @@ Admin UI lives at **Stores → Configuration → Services → AI Configuration**
 There are two intentionally separate interfaces — do not conflate them:
 
 - **`Api\Data\AiServiceConfigurationInterface`** (`getCode`, `getName`, `getConfigurationTemplate`) — describes an *available* backend: its machine code, display name, and the HTML snippet used in the admin form. Implementations live in `src/AiServices/*.php`. These are wired into the admin form by the `services` array argument on `Block\Adminhtml\Configuration\Services` in `etc/di.xml`.
-- **`Api\Data\AiServiceInterface`** (`getCode`, `getConfiguration`) — represents a *configured instance* (code + stored credentials/model/etc. array). Produced at runtime by `Model\AiServiceSelector` through `AiServiceInterfaceFactory`.
+- **`Api\Data\AiServiceInterface`** (`getId`, `getCode`, `getConfiguration`) — represents a *configured instance* (stored row id + code + stored credentials/model/etc. array). Produced at runtime by `Model\AiServiceSelector` through `AiServiceInterfaceFactory`. `getId()` is the JSON object key of the row, which the admin form preserves across saves; it is the identity another module stores when an administrator picks a service.
 
 `AiServiceSelectorInterface` is the public consumer API:
 
 ```php
 AiServiceSelectorInterface::getAll(): AiServiceInterface[]
 AiServiceSelectorInterface::getByCode(string $code): AiServiceInterface[]
+AiServiceSelectorInterface::getById(string $id): ?AiServiceInterface
 ```
+
+Consumer modules that want the administrator to choose a service point a `select` field in their own `system.xml` at `Model\Config\Source\ConfiguredService` (or `ConfiguredServiceWithAutomatic`, which prepends an empty-valued "Automatic" option) and resolve the stored row id through `getById()` or `AiClientFactoryInterface::createById()`.
 
 (Note: the README example shows these methods on `AiServiceConfigurationInterface` — that's wrong; they belong to `AiServiceSelectorInterface`. `getAll` also takes no arguments.) Multiple entries per code are possible because admins can add the same backend multiple times in the UI, which is why `getByCode` returns an array.
 
