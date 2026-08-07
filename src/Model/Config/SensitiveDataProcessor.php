@@ -49,7 +49,7 @@ class SensitiveDataProcessor
 
     /**
      * @param EncryptorInterface $encryptor
-     * @param AiServiceConfigurationInterface[] $services Registered AI backends providing the field schema
+     * @param array<string,mixed> $services Registered AI backends providing the field schema
      */
     public function __construct(
         private readonly EncryptorInterface $encryptor,
@@ -61,8 +61,8 @@ class SensitiveDataProcessor
      * Encrypt sensitive values in a service configuration row.
      *
      * @param string $serviceCode
-     * @param array $configuration
-     * @return array
+     * @param array<string,mixed> $configuration
+     * @return array<string,mixed>
      */
     public function encryptRow(string $serviceCode, array $configuration): array
     {
@@ -79,8 +79,8 @@ class SensitiveDataProcessor
      * Plaintext values (rows saved before encryption was introduced) are returned unchanged.
      *
      * @param string $serviceCode
-     * @param array $configuration
-     * @return array
+     * @param array<string,mixed> $configuration
+     * @return array<string,mixed>
      */
     public function decryptRow(string $serviceCode, array $configuration): array
     {
@@ -95,8 +95,8 @@ class SensitiveDataProcessor
      * Replace sensitive values with the obscured placeholder for admin form display.
      *
      * @param string $serviceCode
-     * @param array $configuration
-     * @return array
+     * @param array<string,mixed> $configuration
+     * @return array<string,mixed>
      */
     public function maskRow(string $serviceCode, array $configuration): array
     {
@@ -115,9 +115,9 @@ class SensitiveDataProcessor
      * the literal placeholder as a credential.
      *
      * @param string $serviceCode
-     * @param array $configuration Submitted service configuration row
-     * @param array $previous Previously stored (still encrypted) configuration row
-     * @return array
+     * @param array<string,mixed> $configuration Submitted service configuration row
+     * @param array<string,mixed> $previous Previously stored (still encrypted) configuration row
+     * @return array<string,mixed>
      */
     public function restoreRow(string $serviceCode, array $configuration, array $previous): array
     {

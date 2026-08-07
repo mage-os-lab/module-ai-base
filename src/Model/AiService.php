@@ -10,7 +10,7 @@ class AiService implements AiServiceInterface
 {
     /**
      * @param string $code
-     * @param array $configuration
+     * @param array<string,mixed> $configuration
      */
     public function __construct(
         private readonly string $code,
