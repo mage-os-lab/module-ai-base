@@ -11,13 +11,20 @@ shaped the way they are. For task-oriented guides see
 ```
 Api/
   AiServiceSelectorInterface        read configured services (consumer API)
-  AiClientInterface                 provider-agnostic AI client (consumer API)
+  AiClientInterface                 provider-agnostic AI client: chat, streamChat, complete
   AiClientFactoryInterface          builds clients from saved config (consumer API)
   ModelListProviderInterface        opt-in live model listing (provider SPI)
   Data/
     AiServiceConfigurationInterface describes an available backend (provider SPI)
-    AiServiceInterface              a configured instance (code + values)
+    AiServiceInterface              a configured instance (row id + code + values)
     FieldDescriptorInterface        one admin form field (name/label/type/options/default/encrypted)
+    ChatRequestInterface            conversation plus offered tools (immutable)
+    ChatResponseInterface           text, tool calls, usage, finish reason
+    ChatMessageInterface            one turn; roles via the MessageRole enum
+    ToolDefinitionInterface         a tool offered to the model
+    ToolCallInterface               one invocation the model asked for
+    TokenUsageInterface             prompt/completion/total, every count nullable
+    StreamChunkInterface            one streamed event, typed by StreamChunkType
 
 AiServices/                         bundled providers (OpenAi, Anthropic, Azure, ...)
   FieldFactoryTrait                 shared field builders (api_key, model, base_url, ...)
@@ -29,6 +36,9 @@ Model/
   Config/
     SensitiveDataProcessor          encrypt/decrypt/mask/restore per service schema
     Backend/EncryptedServices       config backend model (save/load hooks)
+    Source/ConfiguredService        option source for consumer modules' own system.xml fields
+    Source/ConfiguredServiceWithAutomatic  the same, plus an empty-valued "Automatic" option
+  Chat/                             value objects behind the chat contracts
   Client/
     ClientFactory                   maps service code -> symfony/ai bridge, builds clients
     SymfonyAiClient                 adapter around a symfony/ai Platform
@@ -60,10 +70,19 @@ Controller/Adminhtml/Service/
 
 ### Read path (database → consumers)
 
-`AiServiceSelector::getAll()/getByCode()` reads the path with store scope, defensively
-parses (non-string raw, malformed JSON, malformed rows, non-string codes are all skipped,
-never thrown), decrypts flagged fields via `SensitiveDataProcessor`, and wraps each row in
-an `AiServiceInterface`. Consumers always receive plaintext values.
+`AiServiceSelector::getAll()/getByCode()/getById()` reads the path with store scope,
+defensively parses (non-string raw, malformed JSON, malformed rows, non-string codes are all
+skipped, never thrown), decrypts flagged fields via `SensitiveDataProcessor`, and wraps each
+row in an `AiServiceInterface`. Consumers always receive plaintext values.
+
+The JSON object key of each row becomes `AiServiceInterface::getId()`. That key is the row id
+Magento's `AbstractFieldArray` assigns and the form preserves across saves, which is what makes
+it safe for another module to store as a reference to "the service the administrator picked"
+(`Model\Config\Source\ConfiguredService` → `getById()` / `AiClientFactoryInterface::createById()`).
+The service code cannot fill that role, because the same backend may be registered several times
+with different credentials or models. A row deleted in the admin makes stored ids stale by
+design: the selector answers `null` and the client factory throws, rather than resolving to a
+different row and billing an account nobody chose.
 
 ### Admin display path
 

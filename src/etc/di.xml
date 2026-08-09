@@ -103,6 +103,26 @@
         </arguments>
     </type>
 
+    <!-- Option source for consumer modules' own system.xml fields. It receives the same backend
+         definitions as the admin form block, to label a configured row with its provider's display
+         name rather than a machine code. Model\Config\Source\ConfiguredServiceWithAutomatic extends
+         ConfiguredService and inherits these arguments through DI type inheritance. -->
+    <type name="MageOS\AiBase\Model\Config\Source\ConfiguredService">
+        <arguments>
+            <argument name="services" xsi:type="array">
+                <item name="anthropic" xsi:type="object">MageOS\AiBase\AiServices\Anthropic</item>
+                <item name="azure" xsi:type="object">MageOS\AiBase\AiServices\Azure</item>
+                <item name="deepseek" xsi:type="object">MageOS\AiBase\AiServices\Deepseek</item>
+                <item name="google" xsi:type="object">MageOS\AiBase\AiServices\Google</item>
+                <item name="huggingface" xsi:type="object">MageOS\AiBase\AiServices\HuggingFace</item>
+                <item name="lmstudio" xsi:type="object">MageOS\AiBase\AiServices\LmStudio</item>
+                <item name="ollama" xsi:type="object">MageOS\AiBase\AiServices\Ollama</item>
+                <item name="openrouter" xsi:type="object">MageOS\AiBase\AiServices\OpenRouter</item>
+                <item name="openai" xsi:type="object">MageOS\AiBase\AiServices\OpenAi</item>
+            </argument>
+        </arguments>
+    </type>
+
     <!-- Refresh Models controller receives the same backend definitions as the admin form block;
          backends implementing Api\ModelListProviderInterface opt in to the live refresh. -->
     <type name="MageOS\AiBase\Controller\Adminhtml\Service\RefreshModels">

@@ -47,6 +47,20 @@ class AiServiceSelector implements AiServiceSelectorInterface
     }
 
     /**
+     * @inheritdoc
+     */
+    public function getById(string $id): ?AiServiceInterface
+    {
+        foreach ($this->getParsedConfig() as $service) {
+            if ($service->getId() === $id) {
+                return $service;
+            }
+        }
+
+        return null;
+    }
+
+    /**
      * Read and defensively parse the stored services configuration.
      *
      * @return AiServiceInterface[]
@@ -64,7 +78,7 @@ class AiServiceSelector implements AiServiceSelectorInterface
         }
 
         $services = [];
-        foreach ($decoded as $row) {
+        foreach ($decoded as $rowId => $row) {
             if (!is_array($row) || $row === []) {
                 continue;
             }
@@ -74,6 +88,7 @@ class AiServiceSelector implements AiServiceSelectorInterface
                 continue;
             }
             $services[] = $this->aiServiceFactory->create([
+                'id' => (string) $rowId,
                 'code' => $code,
                 'configuration' => $this->sensitiveDataProcessor->decryptRow($code, $configuration),
             ]);

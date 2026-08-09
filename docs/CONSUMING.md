@@ -46,8 +46,93 @@ class DescriptionGenerator
 }
 ```
 
-`complete()` is single-turn prompt-in/text-out. `getServiceCode()` tells you which backend
-served the client (useful for logging/attribution).
+`complete()` is single-turn prompt-in/text-out, a convenience over `chat()`.
+`getServiceCode()` tells you which backend served the client (useful for logging/attribution).
+
+## Conversations, tools and streaming
+
+`chat()` takes a conversation and returns text, any tools the model wants run, token counts
+and the provider's stop reason:
+
+```php
+use MageOS\AiBase\Api\Data\MessageRole;
+use MageOS\AiBase\Model\Chat\ChatMessage;
+use MageOS\AiBase\Model\Chat\ChatRequest;
+use MageOS\AiBase\Model\Chat\ToolDefinition;
+
+$request = new ChatRequest(
+    [
+        new ChatMessage(MessageRole::System, 'You are a Magento support assistant.'),
+        new ChatMessage(MessageRole::User, 'Which orders are still pending?'),
+    ],
+    [new ToolDefinition('get_orders', 'Lists orders by status', [
+        'type' => 'object',
+        'properties' => ['status' => ['type' => 'string']],
+    ])],
+);
+
+$response = $this->aiClientFactory->create()->chat($request);
+$response->getText();          // assistant text, empty when it only asked for tools
+$response->getToolCalls();     // ToolCallInterface[]
+$response->getUsage();         // prompt/completion/total tokens, or null
+```
+
+### The tool loop
+
+**This module never executes tools.** It reports what the model asked for and carries your
+result back. Whether a call may run is your policy (user confirmation for write actions, a
+Magento ACL per tool, per-tool instructions), and that does not generalise.
+
+```php
+for ($i = 0; $i < $maxIterations; $i++) {
+    $response = $client->chat($request);
+
+    if (!$response->hasToolCalls()) {
+        return $response->getText();
+    }
+
+    $request = $request->withMessage(
+        new ChatMessage(MessageRole::Assistant, $response->getText(), $response->getToolCalls())
+    );
+
+    foreach ($response->getToolCalls() as $call) {
+        // your ACL check, your confirmation gate, your tool registry
+        $result = $this->myToolRegistry->run($call->getName(), $call->getArguments());
+        $request = $request->withToolResult($call, json_encode($result));
+    }
+}
+```
+
+`ChatRequestInterface` is immutable, so each iteration gets a fresh request and nothing leaks
+into one a caller still holds. `withToolResult()` binds the result to the call that produced
+it, which is the pairing a hand-built loop most easily gets wrong.
+
+### Streaming
+
+`streamChat()` returns a `\Generator`, so you drive the loop and may stop early:
+
+```php
+foreach ($client->streamChat($request) as $chunk) {
+    match ($chunk->getType()) {
+        StreamChunkType::Text     => $this->emit($chunk->getText()),
+        StreamChunkType::Thinking => null,                    // reasoning, not the answer
+        StreamChunkType::ToolCall => $calls[] = $chunk->getToolCall(),
+        StreamChunkType::Usage    => $usage = $chunk->getUsage(),
+    };
+}
+```
+
+Bridging to a callback-style stream is three lines, since `getData()` is a flat payload:
+
+```php
+foreach ($client->streamChat($request) as $chunk) {
+    $onChunk($chunk->getType()->value, $chunk->getData());
+}
+```
+
+Tool calls arrive **complete**, with arguments already accumulated and JSON-decoded by the
+provider bridge. There are no SSE frames to parse and no `input_json_delta` fragments to
+stitch together.
 
 ### Failure modes to handle
 
@@ -68,11 +153,68 @@ usually the right move.
 
 ### Which service will `create()` use?
 
-- `create()` (no argument): the **first configured service overall**, in the order the
-  admin saved them.
+- `create()` (no argument): the **first configured service whose bridge is installed**, in
+  the order the admin saved them.
 - `create('openai')`: the **first configured row** with that code. Admins can configure
-  the same backend multiple times; if you need a specific instance (e.g. per-purpose keys),
-  read the rows yourself via the selector and pick before calling.
+  the same backend multiple times; to reach a specific row, let the admin pick one and use
+  `createById()` (below).
+- `createById('_1712345678901_901')`: the **one row** carrying that id, whichever position
+  it occupies.
+
+## Letting the admin pick a service
+
+Rather than hardcoding a service code, give your module's own configuration a select field
+backed by this module's option source. It lists every service the admin configured, labelled
+by provider and model:
+
+```xml
+<!-- your module's etc/adminhtml/system.xml -->
+<field id="ai_service" translate="label" type="select" sortOrder="10"
+       showInDefault="1" showInWebsite="1" showInStore="1">
+    <label>AI service</label>
+    <source_model>MageOS\AiBase\Model\Config\Source\ConfiguredService</source_model>
+</field>
+```
+
+Two source models are available:
+
+| Source model | Options |
+|---|---|
+| `Model\Config\Source\ConfiguredService` | One per configured row |
+| `Model\Config\Source\ConfiguredServiceWithAutomatic` | The same, preceded by an empty-valued *Automatic (first usable service)* option |
+
+Labels read `OpenAI (gpt-4o)`. Two rows that would otherwise be identical are numbered
+(`OpenAI (gpt-4o) #2`). A row whose Symfony AI bridge is missing stays selectable but says so
+(`Ollama (llama3, bridge not installed)`), because a module calling the provider with its own
+HTTP client does not need a bridge.
+
+The **stored value is the row id**, not the service code, since the code cannot tell two rows
+of the same provider apart. Turn that stored id into a client with `createById()`:
+
+```php
+use Magento\Framework\App\Config\ScopeConfigInterface;
+use MageOS\AiBase\Api\AiClientFactoryInterface;
+
+$serviceId = (string) $this->scopeConfig->getValue('my_module/ai/ai_service', ScopeInterface::SCOPE_STORE);
+
+$client = $serviceId === ''
+    ? $this->aiClientFactory->create()            // "Automatic", or nothing chosen yet
+    : $this->aiClientFactory->createById($serviceId);
+```
+
+Or read its raw configuration with `AiServiceSelectorInterface::getById()`, which returns
+`null` when the admin has since deleted that row:
+
+```php
+$service = $this->aiServiceSelector->getById($serviceId);
+if ($service === null) {
+    // The row is gone. Fall back, or tell the admin to pick again.
+}
+```
+
+`createById()` throws `LocalizedException` in that same situation rather than silently falling
+back to another row: another row means another account and another bill, which is not a
+substitution to make on the admin's behalf.
 
 ## Reading raw configuration (lower level)
 
@@ -94,6 +236,8 @@ Notes:
 - Values are decrypted for you; **never log or persist them**, and never echo them to any
   frontend or admin response.
 - Field names are snake_case: `api_key`, `model`, `base_url`, `endpoint`, `api_version`.
+- `getId()` is the row's stable identity, and the only thing that separates two rows of the
+  same provider. It is what the option source stores and what `getById()` resolves.
 - An empty array means nothing is configured — expected state on fresh installs; handle it.
 - Configuration is read with store scope, so per-store setups resolve automatically from
   the current store context.

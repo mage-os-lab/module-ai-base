@@ -9,13 +9,23 @@ use MageOS\AiBase\Api\Data\AiServiceInterface;
 class AiService implements AiServiceInterface
 {
     /**
+     * @param string $id
      * @param string $code
      * @param array<string,mixed> $configuration
      */
     public function __construct(
+        private readonly string $id,
         private readonly string $code,
         private readonly array $configuration
     ) {
+    }
+
+    /**
+     * @inheritdoc
+     */
+    public function getId(): string
+    {
+        return $this->id;
     }
 
     /**
