@@ -46,8 +46,93 @@ class DescriptionGenerator
 }
 ```
 
-`complete()` is single-turn prompt-in/text-out. `getServiceCode()` tells you which backend
-served the client (useful for logging/attribution).
+`complete()` is single-turn prompt-in/text-out, a convenience over `chat()`.
+`getServiceCode()` tells you which backend served the client (useful for logging/attribution).
+
+## Conversations, tools and streaming
+
+`chat()` takes a conversation and returns text, any tools the model wants run, token counts
+and the provider's stop reason:
+
+```php
+use MageOS\AiBase\Api\Data\MessageRole;
+use MageOS\AiBase\Model\Chat\ChatMessage;
+use MageOS\AiBase\Model\Chat\ChatRequest;
+use MageOS\AiBase\Model\Chat\ToolDefinition;
+
+$request = new ChatRequest(
+    [
+        new ChatMessage(MessageRole::System, 'You are a Magento support assistant.'),
+        new ChatMessage(MessageRole::User, 'Which orders are still pending?'),
+    ],
+    [new ToolDefinition('get_orders', 'Lists orders by status', [
+        'type' => 'object',
+        'properties' => ['status' => ['type' => 'string']],
+    ])],
+);
+
+$response = $this->aiClientFactory->create()->chat($request);
+$response->getText();          // assistant text, empty when it only asked for tools
+$response->getToolCalls();     // ToolCallInterface[]
+$response->getUsage();         // prompt/completion/total tokens, or null
+```
+
+### The tool loop
+
+**This module never executes tools.** It reports what the model asked for and carries your
+result back. Whether a call may run is your policy (user confirmation for write actions, a
+Magento ACL per tool, per-tool instructions), and that does not generalise.
+
+```php
+for ($i = 0; $i < $maxIterations; $i++) {
+    $response = $client->chat($request);
+
+    if (!$response->hasToolCalls()) {
+        return $response->getText();
+    }
+
+    $request = $request->withMessage(
+        new ChatMessage(MessageRole::Assistant, $response->getText(), $response->getToolCalls())
+    );
+
+    foreach ($response->getToolCalls() as $call) {
+        // your ACL check, your confirmation gate, your tool registry
+        $result = $this->myToolRegistry->run($call->getName(), $call->getArguments());
+        $request = $request->withToolResult($call, json_encode($result));
+    }
+}
+```
+
+`ChatRequestInterface` is immutable, so each iteration gets a fresh request and nothing leaks
+into one a caller still holds. `withToolResult()` binds the result to the call that produced
+it, which is the pairing a hand-built loop most easily gets wrong.
+
+### Streaming
+
+`streamChat()` returns a `\Generator`, so you drive the loop and may stop early:
+
+```php
+foreach ($client->streamChat($request) as $chunk) {
+    match ($chunk->getType()) {
+        StreamChunkType::Text     => $this->emit($chunk->getText()),
+        StreamChunkType::Thinking => null,                    // reasoning, not the answer
+        StreamChunkType::ToolCall => $calls[] = $chunk->getToolCall(),
+        StreamChunkType::Usage    => $usage = $chunk->getUsage(),
+    };
+}
+```
+
+Bridging to a callback-style stream is three lines, since `getData()` is a flat payload:
+
+```php
+foreach ($client->streamChat($request) as $chunk) {
+    $onChunk($chunk->getType()->value, $chunk->getData());
+}
+```
+
+Tool calls arrive **complete**, with arguments already accumulated and JSON-decoded by the
+provider bridge. There are no SSE frames to parse and no `input_json_delta` fragments to
+stitch together.
 
 ### Failure modes to handle
 

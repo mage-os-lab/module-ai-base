@@ -104,6 +104,28 @@ $this->aiServiceSelector->getById($serviceId);        // raw configuration, or n
 
 See [docs/CONSUMING.md](docs/CONSUMING.md) for the full example.
 
+### Conversations, tools and streaming
+
+`complete()` is the single-turn convenience. For anything more, `chat()` takes a conversation
+and returns text, requested tool calls, token counts and the stop reason, and `streamChat()`
+returns a generator of typed chunks:
+
+```php
+$response = $client->chat($request);
+$response->getText();
+$response->getToolCalls();
+$response->getUsage();
+
+foreach ($client->streamChat($request) as $chunk) {
+    // StreamChunkType::Text | Thinking | ToolCall | Usage
+}
+```
+
+This module never executes tools. It reports what the model asked for; you run it and feed the
+result back with `ChatRequestInterface::withToolResult()`. Streamed tool calls arrive complete,
+with arguments already decoded, so there is no SSE parsing to do. Full example with the tool
+loop: [docs/CONSUMING.md](docs/CONSUMING.md).
+
 Provider bridges are mapped per service code in `etc/di.xml` (`platformFactories`
 argument of `Model\Client\ClientFactory`); third-party modules can register additional
 providers there, or replace the implementation entirely by preferencing
