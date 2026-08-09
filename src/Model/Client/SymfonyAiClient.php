@@ -47,7 +47,7 @@ class SymfonyAiClient implements AiClientInterface
         } catch (\Throwable $e) {
             throw new LocalizedException(
                 __('AI request to service "%1" failed: %2', $this->serviceCode, $e->getMessage()),
-                $e
+                $e instanceof \Exception ? $e : null
             );
         }
     }

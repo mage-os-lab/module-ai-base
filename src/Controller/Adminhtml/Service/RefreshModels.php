@@ -33,7 +33,7 @@ class RefreshModels extends Action implements HttpPostActionInterface
      * @param JsonFactory $jsonFactory
      * @param AiServiceSelectorInterface $serviceSelector
      * @param Storage $modelListStorage
-     * @param AiServiceConfigurationInterface[] $services Registered backends, same array the admin form block gets
+     * @param array<string,mixed> $services Registered backends, same array the admin form block gets
      */
     public function __construct(
         Context $context,

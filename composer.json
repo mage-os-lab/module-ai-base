@@ -1,6 +1,6 @@
 {
     "name": "mage-os/module-ai-base",
-    "description": "Base AI module for Mage-OS \u2014 register and retrieve configuration for multiple AI backends.",
+    "description": "Base AI module for Mage-OS — register and retrieve configuration for multiple AI backends.",
     "type": "magento2-module",
     "license": [
         "OSL-3.0",
@@ -45,8 +45,11 @@
         "symfony/ai-open-router-platform": "Enables the bundled AI client and Test Connection for OpenRouter."
     },
     "require-dev": {
+        "bitexpert/phpstan-magento": "^0.43",
+        "magento/magento-coding-standard": "*",
+        "phpstan/phpstan": "^2.0",
         "phpunit/phpunit": "^10.5",
-        "magento/magento-coding-standard": "*"
+        "symfony/ai-platform": "^0.12"
     },
     "autoload": {
         "files": [

@@ -35,7 +35,7 @@ class HttpFetcher
      * Perform a GET request and decode the JSON response body.
      *
      * @param string $url
-     * @param array $headers Header name => value
+     * @param array<string,string> $headers Header name => value
      * @return array<mixed> Decoded JSON response
      * @throws LocalizedException On transport failure, non-2xx status or invalid JSON
      */
@@ -52,7 +52,10 @@ class HttpFetcher
             $status = (int) $client->getStatus();
             $body = (string) $client->getBody();
         } catch (\Throwable $e) {
-            throw new LocalizedException(__('Request to %1 failed: %2', $url, $e->getMessage()), $e);
+            throw new LocalizedException(
+                __('Request to %1 failed: %2', $url, $e->getMessage()),
+                $e instanceof \Exception ? $e : null
+            );
         }
 
         if ($status < 200 || $status >= 300) {

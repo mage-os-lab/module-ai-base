@@ -35,7 +35,7 @@ class EncryptedServices extends ArraySerialized
      * @param Json $jsonSerializer
      * @param AbstractResource|null $resource
      * @param AbstractDb|null $resourceCollection
-     * @param array $data
+     * @param array<string,mixed> $data
      */
     public function __construct(
         Context $context,
@@ -112,9 +112,9 @@ class EncryptedServices extends ArraySerialized
      *
      * The processor is called with the row configuration, the row ID and the service code.
      *
-     * @param array $value
+     * @param array<string,mixed> $value
      * @param callable $processor
-     * @return array
+     * @return array<string,mixed>
      */
     private function mapRows(array $value, callable $processor): array
     {
@@ -134,7 +134,7 @@ class EncryptedServices extends ArraySerialized
     /**
      * Previously stored service rows, decoded from the old (raw, still encrypted) config value.
      *
-     * @return array
+     * @return array<string,mixed>
      */
     private function getStoredRows(): array
     {
@@ -154,10 +154,10 @@ class EncryptedServices extends ArraySerialized
     /**
      * Extract a single stored service configuration row, if present.
      *
-     * @param array $stored
+     * @param array<string,mixed> $stored
      * @param string $rowId
      * @param string $service
-     * @return array
+     * @return array<string,mixed>
      */
     private function storedRow(array $stored, string $rowId, string $service): array
     {

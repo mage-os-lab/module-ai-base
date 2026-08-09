@@ -18,7 +18,7 @@ interface AiClientInterface
      * Send a single-turn prompt and return the assistant's text response.
      *
      * @param string $prompt
-     * @param array $options Provider options (e.g. temperature, max_tokens)
+     * @param array<string,mixed> $options Provider options (e.g. temperature, max_tokens)
      * @return string
      * @throws LocalizedException When the underlying platform is unavailable or the call fails
      */

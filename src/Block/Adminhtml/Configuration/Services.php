@@ -22,19 +22,23 @@ class Services extends AbstractFieldArray
     protected $_template = 'MageOS_AiBase::system/config/form/field/services.phtml';
 
     /**
+     * @var array<string,AiServiceConfigurationInterface>
+     */
+    private readonly array $services;
+
+    /**
      * @param Context $context
      * @param Json $jsonSerializer
-     * @param AiServiceConfigurationInterface[] $services
+     * @param array<string,mixed> $services Service code => backend definition, validated below
      * @param Resolver $modelListResolver
      * @param BridgeRegistry $bridgeRegistry
-     * @param array $data
+     * @param array<string,mixed> $data
      * @param SecureHtmlRenderer|null $secureRenderer
      */
     public function __construct(
         Context $context,
         private readonly Json $jsonSerializer,
-        /** @var AiServiceConfigurationInterface[] */
-        private readonly array $services,
+        array $services,
         private readonly Resolver $modelListResolver,
         private readonly BridgeRegistry $bridgeRegistry,
         array $data = [],
@@ -42,7 +46,22 @@ class Services extends AbstractFieldArray
     ) {
         parent::__construct($context, $data, $secureRenderer);
 
-        foreach ($this->services as $service) {
+        $this->services = $this->assertServices($services);
+    }
+
+    /**
+     * Reject a di.xml entry that is not a backend definition.
+     *
+     * DI array arguments are not type-checked by the framework, so this is the only place the
+     * promise made by the property type is actually enforced.
+     *
+     * @param array<string,mixed> $services
+     * @return array<string,AiServiceConfigurationInterface>
+     */
+    private function assertServices(array $services): array
+    {
+        $validated = [];
+        foreach ($services as $code => $service) {
             if (!$service instanceof AiServiceConfigurationInterface) {
                 throw new \InvalidArgumentException(sprintf(
                     'Each registered service must implement %s, got %s',
@@ -50,13 +69,16 @@ class Services extends AbstractFieldArray
                     get_debug_type($service),
                 ));
             }
+            $validated[$code] = $service;
         }
+
+        return $validated;
     }
 
     /**
      * Buttons rendered in the admin form, one per registered AI backend.
      *
-     * @return array<int, array{code: string, name: string}>
+     * @return array<string,array{code:string,name:string,available:bool,supported:bool,package:string}>
      */
     public function getServicesButtons(): array
     {
@@ -167,7 +189,7 @@ class Services extends AbstractFieldArray
      * large catalogue) still benefit from a refresh instead of silently discarding it.
      *
      * @param FieldDescriptorInterface $field
-     * @param array $models Resolved model list (stored or curated) as value => label
+     * @param array<string,string> $models Resolved model list (stored or curated) as value => label
      * @return array<int, array{value: string, label: string}>
      */
     private function resolveFieldOptions(FieldDescriptorInterface $field, array $models): array
@@ -194,6 +216,6 @@ class Services extends AbstractFieldArray
         ]);
 
         $this->_addAfter = false;
-        $this->_addButtonLabel = __('Add Service');
+        $this->_addButtonLabel = (string) __('Add Service');
     }
 }

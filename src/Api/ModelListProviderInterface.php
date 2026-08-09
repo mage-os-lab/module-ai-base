@@ -18,7 +18,7 @@ interface ModelListProviderInterface
     /**
      * Fetch the models currently available from the provider.
      *
-     * @param array $configuration Saved service configuration with decrypted credentials
+     * @param array<string,mixed> $configuration Saved service configuration with decrypted credentials
      *        (keys such as `api_key`, `base_url`, `endpoint`, `model`)
      * @return array<string, string> Map of model value => human-readable label
      * @throws LocalizedException On HTTP, authentication or response-parsing failure,

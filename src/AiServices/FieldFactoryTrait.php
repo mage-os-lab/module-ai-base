@@ -29,7 +29,7 @@ trait FieldFactoryTrait
      * Build the standard model select field from a supported-models map.
      *
      * @param FieldDescriptorInterfaceFactory $factory
-     * @param array $supportedModels Map of model value => label
+     * @param array<string,string> $supportedModels Map of model value => label
      * @return FieldDescriptorInterface
      */
     private function modelField(

@@ -14,7 +14,7 @@ trait ModelListTrait
     /**
      * Parse an OpenAI-style model listing (`{"data": [{"id": ...}, ...]}`) into a value => label map.
      *
-     * @param array<mixed> $response Decoded JSON response
+     * @param array<string,mixed> $response Decoded JSON response
      * @param string|null $labelField Optional entry key to use as the label; falls back to the id
      * @return array<string, string> Map of model id => label
      * @throws LocalizedException When the response does not contain a "data" model list
@@ -49,7 +49,7 @@ trait ModelListTrait
     /**
      * Resolve the base URL from configuration, falling back to a default, without a trailing slash.
      *
-     * @param array $configuration Saved service configuration
+     * @param array<string,mixed> $configuration Saved service configuration
      * @param string $default Default base URL for this service
      * @return string
      */

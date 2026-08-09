@@ -52,7 +52,7 @@ class Storage
      * Persist a fetched model list for a service code (default scope) with a fetched-at timestamp.
      *
      * @param string $serviceCode
-     * @param array $models Map of model value => label
+     * @param array<string,string> $models Map of model value => label
      * @return void
      */
     public function save(string $serviceCode, array $models): void

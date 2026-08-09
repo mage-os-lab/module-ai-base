@@ -12,7 +12,7 @@ class FieldDescriptor implements FieldDescriptorInterface
      * @param string $name
      * @param string $label
      * @param string $type
-     * @param array $options
+     * @param array<int,array{value:string,label:string}> $options
      * @param string|null $default
      * @param bool $encrypted
      */
