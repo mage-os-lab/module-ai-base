@@ -24,6 +24,16 @@ use Magento\Framework\Exception\LocalizedException;
  *
  * Dialects are wired in `di.xml` and the bridge registry says which dialect a service code speaks,
  * so a third party registering a provider declares it in the same entry as its bridge.
+ *
+ * `lists` is keyed loosely on purpose: `di.xml` lets a third party write either `<item name="stop">stop</item>`
+ * or a bare list entry, and wantsList() honours both, so the shape has to allow both.
+ *
+ * @phpstan-type Dialect array{
+ *     map?: array<string,string>,
+ *     lists?: array<array-key, string>,
+ *     defaults?: array<string,mixed>
+ * }
+ * @phpstan-type RequestOptions array<string,mixed>
  */
 class OptionNormalizer
 {
@@ -52,7 +62,7 @@ class OptionNormalizer
 
     /**
      * @param BridgeRegistry $bridgeRegistry Says which dialect each service code speaks
-     * @param array $dialects Dialect name => ['map' => [], 'lists' => [], 'defaults' => []]
+     * @param array<string,Dialect> $dialects Dialect name => ['map' => [], 'lists' => [], 'defaults' => []]
      */
     public function __construct(
         private readonly BridgeRegistry $bridgeRegistry,
@@ -67,8 +77,8 @@ class OptionNormalizer
      * a third-party provider this module knows nothing about is better served raw than mangled.
      *
      * @param string $serviceCode
-     * @param array $options
-     * @return array
+     * @param RequestOptions $options
+     * @return RequestOptions
      * @throws LocalizedException When an option has no equivalent at the target provider
      */
     public function normalize(string $serviceCode, array $options): array
@@ -89,10 +99,10 @@ class OptionNormalizer
      * Move one canonical option onto its provider name, or apply the provider's required default.
      *
      * @param string $serviceCode
-     * @param array $dialect
-     * @param array $options
+     * @param Dialect $dialect
+     * @param RequestOptions $options
      * @param string $canonical
-     * @return array
+     * @return RequestOptions
      * @throws LocalizedException
      */
     private function applyOption(string $serviceCode, array $dialect, array $options, string $canonical): array
@@ -134,11 +144,11 @@ class OptionNormalizer
      * provider directly, and overruling that with a default would be the surprise this class is
      * meant to prevent.
      *
-     * @param array $dialect
-     * @param array $options
+     * @param Dialect $dialect
+     * @param RequestOptions $options
      * @param string $canonical
      * @param string|null $target
-     * @return array
+     * @return RequestOptions
      */
     private function applyDefault(array $dialect, array $options, string $canonical, ?string $target): array
     {
@@ -155,7 +165,7 @@ class OptionNormalizer
     /**
      * Put a value into the shape the provider expects it in.
      *
-     * @param array $dialect
+     * @param Dialect $dialect
      * @param string $canonical
      * @param mixed $value
      * @return mixed
@@ -172,7 +182,7 @@ class OptionNormalizer
      * way (`<item name="stop">stop</item>`) is the natural thing for a third party to copy, and
      * reading only one of the two would leave the other silently doing nothing.
      *
-     * @param array $dialect
+     * @param Dialect $dialect
      * @param string $canonical
      * @return bool
      */

@@ -25,7 +25,7 @@ interface AiClientInterface
      * policy that belongs to the module owning the tool.
      *
      * @param ChatRequestInterface $request
-     * @param array $options Provider options (e.g. temperature, max_tokens)
+     * @param array<string,mixed> $options Provider options (e.g. temperature, max_tokens)
      * @return ChatResponseInterface
      * @throws LocalizedException When the underlying platform is unavailable or the call fails
      */
@@ -54,7 +54,7 @@ interface AiClientInterface
      * turn to append.
      *
      * @param ChatRequestInterface $request
-     * @param array $options Provider options (e.g. temperature, max_tokens)
+     * @param array<string,mixed> $options Provider options (e.g. temperature, max_tokens)
      * @return \Generator<int, \MageOS\AiBase\Api\Data\StreamChunkInterface, mixed, ChatResponseInterface>
      * @throws LocalizedException When the underlying platform is unavailable or the call fails
      */

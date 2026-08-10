@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace MageOS\AiBase\Test\Unit\Etc;
 
+use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
 
 /**
@@ -79,9 +80,8 @@ final class BridgeWiringTest extends TestCase
      * wrong one is a 400 from the provider for an unknown body field rather than anything a test
      * of shape would notice. Every other test in this suite reads structure; this one is the only
      * thing standing between a typo here and every call to that provider failing in production.
-     *
-     * @dataProvider shippedDialectProvider
      */
+    #[DataProvider('shippedDialectProvider')]
     public function test_each_dialect_spells_the_universal_options_the_way_its_provider_does(
         string $dialect,
         array $expectedMap,

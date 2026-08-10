@@ -73,10 +73,38 @@ class ClientFactory implements AiClientFactoryInterface
     {
         return $this->clientFactory->create([
             'platform' => $this->createPlatform($service),
-            'model' => (string)($service->getConfiguration()['model'] ?? ''),
+            'model' => $this->resolveModel($service),
             'serviceCode' => $service->getCode(),
             'serviceId' => $service->getId(),
         ]);
+    }
+
+    /**
+     * The model the configured row selected, refused rather than passed on when it is missing.
+     *
+     * Every platform takes the model as a required name, so an unset one reaches the provider as an
+     * empty string and comes back as whatever that provider says about a model it cannot find —
+     * a 404 on an empty path, most usefully. Naming the row here is the difference between an
+     * administrator knowing which service to go fix and reading a provider's error about nothing.
+     *
+     * @param AiServiceInterface $service
+     * @return non-empty-string
+     * @throws LocalizedException
+     */
+    private function resolveModel(AiServiceInterface $service): string
+    {
+        $model = $service->getConfiguration()['model'] ?? '';
+        if (!is_string($model) || $model === '') {
+            throw new LocalizedException(
+                __(
+                    'AI service "%1" has no model selected. '
+                    . 'Pick one under Stores > Configuration > Services > AI Configuration.',
+                    $service->getCode()
+                )
+            );
+        }
+
+        return $model;
     }
 
     /**
@@ -168,7 +196,7 @@ class ClientFactory implements AiClientFactoryInterface
      * Instantiate the Symfony AI platform for a configured service.
      *
      * @param AiServiceInterface $service
-     * @return object
+     * @return object \Symfony\AI\Platform\PlatformInterface
      * @throws LocalizedException
      */
     private function createPlatform(AiServiceInterface $service): object
@@ -201,7 +229,7 @@ class ClientFactory implements AiClientFactoryInterface
         // against symfony/ai-platform v0.11.0): hosted providers take an API key;
         // local runtimes take an endpoint/base URL; Azure takes endpoint +
         // deployment (the selected model) + API version + key.
-        return match ($code) {
+        $platform = match ($code) {
             'ollama' => $factoryClass::createPlatform($config['base_url'] ?? null),
             'lmstudio' => $factoryClass::createPlatform($config['base_url'] ?? 'http://localhost:1234'),
             'azure' => $factoryClass::createPlatform(
@@ -212,5 +240,22 @@ class ClientFactory implements AiClientFactoryInterface
             ),
             default => $factoryClass::createPlatform($config['api_key'] ?? ''),
         };
+
+        // The factory class comes from di.xml, so what it hands back is only ever as good as the
+        // registration. Checking here names the bridge that misbehaved; without it the mistake
+        // surfaces later as a call to a method on null, from a class that never mentions the
+        // registration that caused it. Deliberately not an instanceof PlatformInterface: this
+        // runs in installs where symfony/ai-platform is absent, where that would reject
+        // everything, and a bridge that got this far has already been found on the autoloader.
+        if (!is_object($platform)) {
+            throw new LocalizedException(
+                __(
+                    'The registered bridge factory for service "%1" did not return a platform object.',
+                    $code
+                )
+            );
+        }
+
+        return $platform;
     }
 }

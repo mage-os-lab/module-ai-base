@@ -49,7 +49,7 @@ class ConfiguredService implements OptionSourceInterface
     /**
      * @inheritdoc
      *
-     * @return array<int, array{value: string, label: string}>
+     * @return array<int,array{value:string,label:string}>
      */
     public function toOptionArray(): array
     {
@@ -133,8 +133,8 @@ class ConfiguredService implements OptionSourceInterface
      * Two rows of the same backend with the same model are a legitimate setup (two accounts, two
      * billing owners), and an administrator cannot pick between two identical option labels.
      *
-     * @param array $options Option rows, each with a value and a label
-     * @return array<int, array{value: string, label: string}>
+     * @param array<int,array{value:string,label:string}> $options Option rows, each with a value and a label
+     * @return array<int,array{value:string,label:string}>
      */
     private function numberDuplicateLabels(array $options): array
     {

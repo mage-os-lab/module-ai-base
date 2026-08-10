@@ -145,7 +145,9 @@ class Services extends AbstractFieldArray
                 'supportsModelRefresh' => $service instanceof ModelListProviderInterface,
             ];
         }
-        return $this->jsonSerializer->serialize($schema);
+        // SerializerInterface still declares the string|bool return of the pre-exception days;
+        // Json::serialize throws instead of returning false, so the cast only narrows the type.
+        return (string) $this->jsonSerializer->serialize($schema);
     }
 
     /**
@@ -158,7 +160,7 @@ class Services extends AbstractFieldArray
      *
      * @param FieldDescriptorInterface $field
      * @param array<string,string> $models Resolved model list (stored or curated) as value => label
-     * @return array<int, array{value: string, label: string}>
+     * @return array<int,array{value:string,label:string}>
      */
     private function resolveFieldOptions(FieldDescriptorInterface $field, array $models): array
     {

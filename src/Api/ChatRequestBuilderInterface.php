@@ -89,7 +89,7 @@ interface ChatRequestBuilderInterface
      *
      * @param string $name Name the model calls the tool by
      * @param string $description What the tool does, written for the model
-     * @param array $parameters JSON Schema of the tool's arguments; no argument may be named
+     * @param array<string,mixed> $parameters JSON Schema of the tool's arguments; no argument may be named
      *        `instance` or `argument`
      * @return ChatRequestBuilderInterface
      */

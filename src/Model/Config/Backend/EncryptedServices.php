@@ -112,9 +112,9 @@ class EncryptedServices extends ArraySerialized
      *
      * The processor is called with the row configuration, the row ID and the service code.
      *
-     * @param array<string,mixed> $value
+     * @param array<array-key,mixed> $value
      * @param callable $processor
-     * @return array<string,mixed>
+     * @return array<array-key,mixed>
      */
     private function mapRows(array $value, callable $processor): array
     {
@@ -123,9 +123,11 @@ class EncryptedServices extends ArraySerialized
                 continue;
             }
             $service = array_key_first($row);
-            if ($service !== null && is_array($row[$service])) {
-                $value[$rowId][$service] = $processor($row[$service], (string)$rowId, (string)$service);
+            if ($service === null || !is_array($row[$service])) {
+                continue;
             }
+            $row[$service] = $processor($row[$service], (string)$rowId, (string)$service);
+            $value[$rowId] = $row;
         }
 
         return $value;
@@ -134,7 +136,7 @@ class EncryptedServices extends ArraySerialized
     /**
      * Previously stored service rows, decoded from the old (raw, still encrypted) config value.
      *
-     * @return array<string,mixed>
+     * @return array<array-key,mixed>
      */
     private function getStoredRows(): array
     {
@@ -154,15 +156,19 @@ class EncryptedServices extends ArraySerialized
     /**
      * Extract a single stored service configuration row, if present.
      *
-     * @param array<string,mixed> $stored
+     * @param array<array-key,mixed> $stored
      * @param string $rowId
      * @param string $service
-     * @return array<string,mixed>
+     * @return array<array-key,mixed>
      */
     private function storedRow(array $stored, string $rowId, string $service): array
     {
-        $row = $stored[$rowId][$service] ?? [];
+        $row = $stored[$rowId] ?? null;
+        if (!is_array($row)) {
+            return [];
+        }
+        $configuration = $row[$service] ?? null;
 
-        return is_array($row) ? $row : [];
+        return is_array($configuration) ? $configuration : [];
     }
 }

@@ -64,8 +64,8 @@ interface PlatformAwareInterface
      *         $client->normalizeOptions(['max_tokens' => 400]),
      *     );
      *
-     * @param array $options Provider-neutral options (max_tokens, temperature, top_p, stop)
-     * @return array The same options under the names this client's provider expects
+     * @param array<string,mixed> $options Provider-neutral options (max_tokens, temperature, top_p, stop)
+     * @return array<string,mixed> The same options under the names this client's provider expects
      * @throws \Magento\Framework\Exception\LocalizedException When an option has no equivalent
      *         at this provider
      */

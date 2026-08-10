@@ -74,7 +74,7 @@ class ChatRequest implements ChatRequestInterface
     /**
      * Reject a heterogeneous list before it reaches a provider as a malformed payload.
      *
-     * @param array $items
+     * @param array<mixed> $items
      * @param string $expected
      * @return void
      */

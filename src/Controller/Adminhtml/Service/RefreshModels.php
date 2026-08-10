@@ -53,7 +53,7 @@ class RefreshModels extends Action implements HttpPostActionInterface
     public function execute(): Json
     {
         $result = $this->jsonFactory->create();
-        $serviceCode = (string) $this->getRequest()->getParam('service_code');
+        $serviceCode = $this->getRequestedServiceCode();
         if ($serviceCode === '') {
             return $result->setData([
                 'success' => false,
@@ -97,5 +97,20 @@ class RefreshModels extends Action implements HttpPostActionInterface
                 'error' => (string) __('Model list refresh failed: %1', $e->getMessage()),
             ]);
         }
+    }
+
+    /**
+     * The service code the request asked for, ignoring a parameter that did not arrive as a string.
+     *
+     * Query parameters are whatever the caller put in the URL: `?service_code[]=x` arrives as an
+     * array, and casting that hands the string `Array` to the registry as if it were a code.
+     *
+     * @return string
+     */
+    private function getRequestedServiceCode(): string
+    {
+        $serviceCode = $this->getRequest()->getParam('service_code');
+
+        return is_string($serviceCode) ? $serviceCode : '';
     }
 }

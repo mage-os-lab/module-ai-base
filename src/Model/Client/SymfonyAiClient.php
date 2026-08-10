@@ -27,7 +27,10 @@ use MageOS\AiBase\Model\Chat\ToolCall;
  *
  * The Symfony AI classes are referenced lazily (string FQCNs, guarded by
  * class_exists in ClientFactory) so this module does not hard-require
- * symfony/ai-platform. Written against symfony/ai-platform v0.12.0; the
+ * symfony/ai-platform. Native signatures therefore say `object`, while the
+ * docblocks name the real platform type: annotations are never autoloaded, so
+ * static analysis gets to check these calls without the runtime gaining a
+ * dependency on a package that may be absent. Written against symfony/ai-platform v0.12.0; the
  * component is experimental and not covered by Symfony's BC promise, so
  * pin the version and re-verify on upgrade.
  */
@@ -74,8 +77,8 @@ class SymfonyAiClient implements AiClientInterface, PlatformAwareInterface
     private const TOOL_EXECUTION_PLACEHOLDER_METHOD = 'toolsAreExecutedByTheConsumer';
 
     /**
-     * @param object $platform \Symfony\AI\Platform\PlatformInterface
-     * @param string $model
+     * @param \Symfony\AI\Platform\PlatformInterface $platform
+     * @param non-empty-string $model Guaranteed by ClientFactory, which refuses a row without one
      * @param string $serviceCode
      * @param string $serviceId Configured row this client was built from
      * @param OptionNormalizer $optionNormalizer
@@ -203,8 +206,8 @@ class SymfonyAiClient implements AiClientInterface, PlatformAwareInterface
      * Send the request to the platform.
      *
      * @param ChatRequestInterface $request
-     * @param array $options
-     * @return object
+     * @param array<string,mixed> $options
+     * @return \Symfony\AI\Platform\Result\DeferredResult
      * @throws LocalizedException
      */
     private function invoke(ChatRequestInterface $request, array $options): object
@@ -227,14 +230,14 @@ class SymfonyAiClient implements AiClientInterface, PlatformAwareInterface
      * Build the platform's message bag from the request's conversation.
      *
      * @param ChatRequestInterface $request
-     * @return object \Symfony\AI\Platform\Message\MessageBag
+     * @return \Symfony\AI\Platform\Message\MessageBag
      */
     private function toMessageBag(ChatRequestInterface $request): object
     {
         $messageBagClass = \Symfony\AI\Platform\Message\MessageBag::class;
 
         return new $messageBagClass(...array_map(
-            fn (ChatMessageInterface $message): object => $this->toMessage($message),
+            fn (ChatMessageInterface $message) => $this->toMessage($message),
             $request->getMessages(),
         ));
     }
@@ -243,7 +246,7 @@ class SymfonyAiClient implements AiClientInterface, PlatformAwareInterface
      * Translate one message into the platform's equivalent.
      *
      * @param ChatMessageInterface $message
-     * @return object \Symfony\AI\Platform\Message\MessageInterface
+     * @return \Symfony\AI\Platform\Message\MessageInterface
      */
     private function toMessage(ChatMessageInterface $message): object
     {
@@ -269,7 +272,7 @@ class SymfonyAiClient implements AiClientInterface, PlatformAwareInterface
      * empty text part is not something every provider accepts.
      *
      * @param ChatMessageInterface $message
-     * @return array
+     * @return list<string|object> Text first, then one platform ToolCall per requested call
      */
     private function toAssistantParts(ChatMessageInterface $message): array
     {
@@ -285,7 +288,7 @@ class SymfonyAiClient implements AiClientInterface, PlatformAwareInterface
      * Translate a tool call into the platform's own value object.
      *
      * @param \MageOS\AiBase\Api\Data\ToolCallInterface|null $toolCall
-     * @return object \Symfony\AI\Platform\Result\ToolCall
+     * @return \Symfony\AI\Platform\Result\ToolCall
      * @throws LocalizedException
      */
     private function toPlatformToolCall(?object $toolCall): object
@@ -304,8 +307,8 @@ class SymfonyAiClient implements AiClientInterface, PlatformAwareInterface
     /**
      * Translate offered tools into the platform's Tool objects.
      *
-     * @param ToolDefinitionInterface[] $tools
-     * @return array
+     * @param list<ToolDefinitionInterface> $tools
+     * @return list<\Symfony\AI\Platform\Tool\Tool>
      */
     private function toTools(array $tools): array
     {
@@ -317,6 +320,10 @@ class SymfonyAiClient implements AiClientInterface, PlatformAwareInterface
                 new $referenceClass(self::class, self::TOOL_EXECUTION_PLACEHOLDER_METHOD),
                 $tool->getName(),
                 $tool->getDescription(),
+                // Symfony spells the whole JSON Schema out as an array shape. This one is written
+                // by the consumer at runtime and only the provider can rule on it, so the shape is
+                // unprovable here; restating it would reject valid schemas Symfony left out.
+                // @phpstan-ignore argument.type
                 $tool->getParameters(),
             ),
             $tools,
@@ -329,7 +336,7 @@ class SymfonyAiClient implements AiClientInterface, PlatformAwareInterface
      * The result type is inspected rather than asked for: asText() throws when the model only
      * requested tools, which is exactly what the first turn of a tool loop returns.
      *
-     * @param object $result
+     * @param \Symfony\AI\Platform\Result\DeferredResult $result
      * @return ChatResponseInterface
      */
     private function toChatResponse(object $result): ChatResponseInterface
@@ -348,8 +355,8 @@ class SymfonyAiClient implements AiClientInterface, PlatformAwareInterface
     /**
      * Flatten a result into its parts, so single and multi-part results read the same.
      *
-     * @param object $result
-     * @return array
+     * @param \Symfony\AI\Platform\Result\ResultInterface $result
+     * @return list<\Symfony\AI\Platform\Result\ResultInterface>
      */
     private function toResultParts(object $result): array
     {
@@ -361,7 +368,7 @@ class SymfonyAiClient implements AiClientInterface, PlatformAwareInterface
     /**
      * Concatenate the text of every text part.
      *
-     * @param array $parts
+     * @param list<\Symfony\AI\Platform\Result\ResultInterface> $parts
      * @return string
      */
     private function extractText(array $parts): string
@@ -379,8 +386,8 @@ class SymfonyAiClient implements AiClientInterface, PlatformAwareInterface
     /**
      * Collect every tool call across the result's parts.
      *
-     * @param array $parts
-     * @return array
+     * @param list<\Symfony\AI\Platform\Result\ResultInterface> $parts
+     * @return list<ToolCall>
      */
     private function extractToolCalls(array $parts): array
     {
@@ -400,14 +407,20 @@ class SymfonyAiClient implements AiClientInterface, PlatformAwareInterface
     /**
      * Read token counts off the result metadata, where the platform stores them.
      *
-     * @param object $result
+     * Metadata is an untyped bag any bridge may write to, so the entry is checked rather than
+     * assumed: a third-party bridge storing its own idea of usage under this key would otherwise
+     * take down a working call over numbers nothing needs.
+     *
+     * @param \Symfony\AI\Platform\Result\DeferredResult $result
      * @return TokenUsage|null
      */
     private function extractUsage(object $result): ?TokenUsage
     {
         $usage = $result->getMetadata()->get(self::METADATA_TOKEN_USAGE);
 
-        return $usage === null ? null : $this->toAiBaseUsage($usage);
+        return $usage instanceof \Symfony\AI\Platform\TokenUsage\TokenUsageInterface
+            ? $this->toAiBaseUsage($usage)
+            : null;
     }
 
     /**
@@ -416,7 +429,10 @@ class SymfonyAiClient implements AiClientInterface, PlatformAwareInterface
      * The platform maps each provider's wording onto its own case set per bridge, so the object it
      * stores already answers "was this truncated?"; only its vocabulary has to be translated.
      *
-     * @param object $result
+     * Anything else under that key falls through to the raw wording below, which is the same path a
+     * bridge reporting a bare provider string takes, so an unrecognized entry costs nothing.
+     *
+     * @param \Symfony\AI\Platform\Result\DeferredResult $result
      * @return FinishReason|null
      */
     private function extractFinishReason(object $result): ?FinishReason
@@ -426,7 +442,9 @@ class SymfonyAiClient implements AiClientInterface, PlatformAwareInterface
             return null;
         }
 
-        $case = is_object($reason) && method_exists($reason, 'getCase') ? $reason->getCase()->value : null;
+        $case = $reason instanceof \Symfony\AI\Platform\FinishReason\FinishReason
+            ? $reason->getCase()->value
+            : null;
 
         return match ($case) {
             'stop' => FinishReason::Stop,
@@ -442,7 +460,7 @@ class SymfonyAiClient implements AiClientInterface, PlatformAwareInterface
     /**
      * The stop reason exactly as the provider wrote it.
      *
-     * @param object $result
+     * @param \Symfony\AI\Platform\Result\DeferredResult $result
      * @return string|null
      */
     private function extractRawFinishReason(object $result): ?string
@@ -503,7 +521,7 @@ class SymfonyAiClient implements AiClientInterface, PlatformAwareInterface
      * together, so taking only the first would drop every tool but one from a parallel-tool turn,
      * which the buffered path does not do.
      *
-     * @param object $delta
+     * @param \Symfony\AI\Platform\Result\Stream\Delta\ToolCallComplete $delta
      * @return list<StreamChunkInterface>
      */
     private function toToolCallChunks(object $delta): array
@@ -521,7 +539,7 @@ class SymfonyAiClient implements AiClientInterface, PlatformAwareInterface
     /**
      * Translate a platform tool call into this module's own.
      *
-     * @param object $toolCall \Symfony\AI\Platform\Result\ToolCall
+     * @param \Symfony\AI\Platform\Result\ToolCall $toolCall
      * @return ToolCall
      */
     private function toAiBaseToolCall(object $toolCall): ToolCall
@@ -532,7 +550,7 @@ class SymfonyAiClient implements AiClientInterface, PlatformAwareInterface
     /**
      * Translate platform token counts into this module's own.
      *
-     * @param object $usage \Symfony\AI\Platform\TokenUsage\TokenUsageInterface
+     * @param \Symfony\AI\Platform\TokenUsage\TokenUsageInterface $usage
      * @return TokenUsage
      */
     private function toAiBaseUsage(object $usage): TokenUsage

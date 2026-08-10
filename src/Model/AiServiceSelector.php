@@ -25,7 +25,7 @@ class AiServiceSelector implements AiServiceSelectorInterface
     /**
      * Services parsed from $parsedRaw.
      *
-     * @var AiServiceInterface[]
+     * @var list<AiServiceInterface>
      */
     private array $parsedServices = [];
 
@@ -83,7 +83,7 @@ class AiServiceSelector implements AiServiceSelectorInterface
      * (emulation in cron or a transactional email) has to re-parse rather than serve another
      * scope's credentials.
      *
-     * @return AiServiceInterface[]
+     * @return list<AiServiceInterface>
      */
     private function getParsedConfig(): array
     {

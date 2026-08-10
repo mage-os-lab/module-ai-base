@@ -16,6 +16,7 @@ use MageOS\AiBase\Model\Chat\ToolDefinition;
 use MageOS\AiBase\Model\Client\BridgeRegistry;
 use MageOS\AiBase\Model\Client\OptionNormalizer;
 use MageOS\AiBase\Model\Client\SymfonyAiClient;
+use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
 use Symfony\AI\Platform\FinishReason\FinishReason;
 use Symfony\AI\Platform\FinishReason\FinishReasonCase;
@@ -370,9 +371,8 @@ final class SymfonyAiClientChatTest extends TestCase
      * The platform normalizes the reason itself for every bundled bridge, but a third-party bridge
      * may store the provider's bare wording. Without the fallback a consumer branching on
      * FinishReason::Length treats a truncated answer as a finished one.
-     *
-     * @dataProvider bareProviderFinishReasonProvider
      */
+    #[DataProvider('bareProviderFinishReasonProvider')]
     public function test_translates_a_bare_provider_stop_reason_a_bridge_did_not_normalize(
         string $raw,
         AiBaseFinishReason $expected,
@@ -417,9 +417,8 @@ final class SymfonyAiClientChatTest extends TestCase
      * The output-token limit is spelled differently by every provider, and OpenAI-compatible
      * endpoints reject unknown body fields outright, so passing one option through unchanged is a
      * hard failure or a silently different cap depending on which backend an administrator picked.
-     *
-     * @dataProvider outputTokenLimitProvider
      */
+    #[DataProvider('outputTokenLimitProvider')]
     public function test_spells_the_output_token_limit_the_way_the_provider_does(
         string $serviceCode,
         string $expectedKey,
