@@ -10,6 +10,7 @@ use MageOS\AiBase\Api\Data\AiServiceConfigurationInterface;
 use MageOS\AiBase\Block\Adminhtml\Configuration\Services;
 use MageOS\AiBase\Model\Client\BridgeRegistry;
 use MageOS\AiBase\Model\ModelList\Resolver;
+use MageOS\AiBase\Model\ServiceRegistry;
 use PHPUnit\Framework\MockObject\MockObject;
 use PHPUnit\Framework\TestCase;
 
@@ -43,7 +44,7 @@ final class ServicesButtonsTest extends TestCase
             'package' => 'symfony/ai-open-ai-platform',
         ]]);
 
-        $button = $this->buttonsFor('openai')[0];
+        $button = $this->buttonFor('openai');
 
         self::assertTrue($button['available']);
         self::assertTrue($button['supported']);
@@ -57,7 +58,7 @@ final class ServicesButtonsTest extends TestCase
             'package' => 'symfony/ai-ollama-platform',
         ]]);
 
-        $button = $this->buttonsFor('ollama')[0];
+        $button = $this->buttonFor('ollama');
 
         self::assertFalse($button['available'], 'The bridge class is not installed in this environment.');
         self::assertTrue($button['supported'], 'A package exists, so the admin can be told to install it.');
@@ -70,7 +71,7 @@ final class ServicesButtonsTest extends TestCase
 
     public function test_a_provider_with_no_released_bridge_is_unsupported(): void
     {
-        $button = $this->buttonsFor('acmeai')[0];
+        $button = $this->buttonFor('acmeai');
 
         self::assertFalse($button['available']);
         self::assertFalse($button['supported'], 'A third-party provider with no bridge has nothing to install.');
@@ -129,10 +130,10 @@ final class ServicesButtonsTest extends TestCase
         $block = $reflection->newInstanceWithoutConstructor();
 
         $reflection->getProperty('jsonSerializer')->setValue($block, new Json());
-        $reflection->getProperty('services')->setValue($block, array_map(
+        $reflection->getProperty('serviceRegistry')->setValue($block, new ServiceRegistry(array_map(
             fn (string $code): AiServiceConfigurationInterface => $this->serviceFor($code),
             $codes
-        ));
+        )));
         $reflection->getProperty('modelListResolver')->setValue($block, $this->modelListResolver);
         $reflection->getProperty('bridgeRegistry')->setValue($block, $this->bridgeRegistry);
 
@@ -140,11 +141,16 @@ final class ServicesButtonsTest extends TestCase
     }
 
     /**
-     * @return array<int, array{code: string, name: string, available: bool, supported: bool, package: string}>
+     * The one button for a provider, looked up the way the form does it.
+     *
+     * getServicesButtons() is keyed by service code, so indexing by position would pass only
+     * because a single-provider fixture happens to have one entry.
+     *
+     * @return array{code: string, name: string, available: bool, supported: bool, package: string}
      */
-    private function buttonsFor(string $code): array
+    private function buttonFor(string $code): array
     {
-        return $this->blockWith($this->serviceFor($code))->getServicesButtons();
+        return $this->blockWith($this->serviceFor($code))->getServicesButtons()[$code];
     }
 
     private function serviceFor(string $code): AiServiceConfigurationInterface
@@ -202,7 +208,7 @@ final class ServicesButtonsTest extends TestCase
         $block = $reflection->newInstanceWithoutConstructor();
 
         $reflection->getProperty('jsonSerializer')->setValue($block, new Json());
-        $reflection->getProperty('services')->setValue($block, [$service]);
+        $reflection->getProperty('serviceRegistry')->setValue($block, new ServiceRegistry([$service]));
         $reflection->getProperty('modelListResolver')->setValue($block, $this->modelListResolver);
         $reflection->getProperty('bridgeRegistry')->setValue($block, $this->bridgeRegistry);
 

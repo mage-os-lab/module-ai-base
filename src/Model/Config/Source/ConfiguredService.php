@@ -6,9 +6,9 @@ namespace MageOS\AiBase\Model\Config\Source;
 
 use Magento\Framework\Data\OptionSourceInterface;
 use MageOS\AiBase\Api\AiServiceSelectorInterface;
-use MageOS\AiBase\Api\Data\AiServiceConfigurationInterface;
 use MageOS\AiBase\Api\Data\AiServiceInterface;
 use MageOS\AiBase\Model\Client\BridgeRegistry;
+use MageOS\AiBase\Model\ServiceRegistry;
 
 /**
  * Option source listing the AI services an administrator has configured, for reuse in the
@@ -36,12 +36,12 @@ class ConfiguredService implements OptionSourceInterface
 
     /**
      * @param AiServiceSelectorInterface $serviceSelector
-     * @param AiServiceConfigurationInterface[] $services Service code => backend definition
+     * @param ServiceRegistry $serviceRegistry
      * @param BridgeRegistry $bridgeRegistry
      */
     public function __construct(
         private readonly AiServiceSelectorInterface $serviceSelector,
-        private readonly array $services,
+        private readonly ServiceRegistry $serviceRegistry,
         private readonly BridgeRegistry $bridgeRegistry,
     ) {
     }
@@ -93,9 +93,7 @@ class ConfiguredService implements OptionSourceInterface
      */
     private function getServiceName(string $code): string
     {
-        return ($this->services[$code] ?? null) instanceof AiServiceConfigurationInterface
-            ? $this->services[$code]->getName()
-            : $code;
+        return $this->serviceRegistry->get($code)?->getName() ?? $code;
     }
 
     /**

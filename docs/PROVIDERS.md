@@ -117,17 +117,10 @@ mark your fields explicitly.
 
 ### 3. Register in di.xml
 
-Two arrays must list your service, and they must stay in sync (`src/etc/di.xml`):
+One array lists your service (`src/etc/di.xml`):
 
 ```xml
-<type name="MageOS\AiBase\Block\Adminhtml\Configuration\Services">
-    <arguments>
-        <argument name="services" xsi:type="array">
-            <item name="acme" xsi:type="object">MageOS\AiBase\AiServices\Acme</item>
-        </argument>
-    </arguments>
-</type>
-<type name="MageOS\AiBase\Model\Config\SensitiveDataProcessor">
+<type name="MageOS\AiBase\Model\ServiceRegistry">
     <arguments>
         <argument name="services" xsi:type="array">
             <item name="acme" xsi:type="object">MageOS\AiBase\AiServices\Acme</item>
@@ -136,30 +129,76 @@ Two arrays must list your service, and they must stay in sync (`src/etc/di.xml`)
 </type>
 ```
 
-The array key should match `getCode()`. Third-party modules add items to these same
-arguments from their own `di.xml` — Magento merges array arguments by key, no core edits.
+The admin form, the `ConfiguredService` option source, the sensitive-data processor and the
+model-list refresh controller all read this one registry, so there is nothing to keep in sync.
+Third-party modules add items to this same argument from their own `di.xml` — Magento merges
+array arguments by key, no core edits.
+
+The item name should match `getCode()`; the registry keys by `getCode()` regardless, so a
+mismatch is misleading rather than broken.
 
 ### 4. Wire a client bridge (optional but recommended)
 
 `AiClientFactoryInterface` builds clients from [symfony/ai-platform](https://github.com/symfony/ai)
 bridges — a **soft dependency** (the package is only required when a client is actually created;
-`composer suggest`s it). Bridges are mapped per service code as FQCN strings:
+`composer suggest`s it). Bridges are registered per service code:
 
 ```xml
-<type name="MageOS\AiBase\Model\Client\ClientFactory">
+<type name="MageOS\AiBase\Model\Client\BridgeRegistry">
     <arguments>
-        <argument name="platformFactories" xsi:type="array">
-            <item name="acme" xsi:type="string">Symfony\AI\Platform\Bridge\Acme\Factory</item>
+        <argument name="bridges" xsi:type="array">
+            <item name="acme" xsi:type="array">
+                <item name="factory" xsi:type="string">Symfony\AI\Platform\Bridge\Acme\Factory</item>
+                <item name="package" xsi:type="string">symfony/ai-acme-platform</item>
+                <item name="dialect" xsi:type="string">openai_chat</item>
+            </item>
         </argument>
     </arguments>
 </type>
 ```
 
-Bridge classes are resolved lazily with `class_exists()`/`method_exists('createPlatform')`
-guards, so the mapping is safe to ship even when symfony/ai-platform is absent. The factory
-signatures are verified against **symfony/ai-platform v0.11.0**; the component is experimental
-with no BC promise — pin your version and re-verify on upgrade. Hosted providers pass the
-API key; local runtimes pass `base_url`; Azure passes endpoint/deployment/api_version/key
+`factory` is resolved lazily with `class_exists()`/`method_exists('createPlatform')` guards, so
+the mapping is safe to ship even when symfony/ai-platform is absent. `package` is what the admin
+form tells an administrator to install when the bridge is missing; a provider with no released
+bridge omits it and is labelled unsupported instead.
+
+`dialect` names the request-option shape your provider speaks, which decides how the universal
+options (`max_tokens`, `temperature`, `top_p`, `stop`) are spelled on the wire — see
+[CONSUMING.md](CONSUMING.md#options). The shipped dialects are `openai_chat` (the
+`/v1/chat/completions` body most OpenAI-compatible providers use), `openai_responses`,
+`anthropic_messages`, `gemini` and `ollama`; declare your own alongside them on
+`Model\Client\OptionNormalizer` if your provider spells them differently:
+
+```xml
+<type name="MageOS\AiBase\Model\Client\OptionNormalizer">
+    <arguments>
+        <argument name="dialects" xsi:type="array">
+            <item name="acme" xsi:type="array">
+                <item name="map" xsi:type="array">
+                    <item name="max_tokens" xsi:type="string">output_budget</item>
+                    <item name="temperature" xsi:type="string">temperature</item>
+                </item>
+                <!-- options the provider wants as an array of strings -->
+                <item name="lists" xsi:type="array">
+                    <item name="stop" xsi:type="string">stop</item>
+                </item>
+                <!-- applied only when the caller supplied neither name -->
+                <item name="defaults" xsi:type="array">
+                    <item name="max_tokens" xsi:type="number">4096</item>
+                </item>
+            </item>
+        </argument>
+    </arguments>
+</type>
+```
+
+An option absent from `map` is treated as unsupported by that provider and raises a
+`LocalizedException` naming both, rather than being dropped on the way to the wire. Declaring no
+dialect at all passes every option through untouched.
+
+The factory signatures are verified against **symfony/ai-platform v0.12.0**; the component is
+experimental with no BC promise — pin your version and re-verify on upgrade. Hosted providers
+pass the API key; local runtimes pass `base_url`; Azure passes endpoint/deployment/api_version/key
 (see `Model\Client\ClientFactory::createPlatform()` for the dispatch).
 
 A service without a bridge still works for configuration storage — `create('acme')` will

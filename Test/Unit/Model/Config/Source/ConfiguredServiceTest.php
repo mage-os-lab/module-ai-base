@@ -10,6 +10,7 @@ use MageOS\AiBase\Model\AiService;
 use MageOS\AiBase\Model\Client\BridgeRegistry;
 use MageOS\AiBase\Model\Config\Source\ConfiguredService;
 use MageOS\AiBase\Model\Config\Source\ConfiguredServiceWithAutomatic;
+use MageOS\AiBase\Model\ServiceRegistry;
 use PHPUnit\Framework\MockObject\MockObject;
 use PHPUnit\Framework\TestCase;
 
@@ -168,21 +169,19 @@ final class ConfiguredServiceTest extends TestCase
         return new ConfiguredServiceWithAutomatic($this->serviceSelector, $this->services(), $this->bridges());
     }
 
-    /**
-     * @return array<string, AiServiceConfigurationInterface>
-     */
-    private function services(): array
+    private function services(): ServiceRegistry
     {
-        return [
-            'openai' => $this->service('OpenAI'),
-            'anthropic' => $this->service('Anthropic'),
-            'ollama' => $this->service('Ollama'),
-        ];
+        return new ServiceRegistry([
+            $this->service('openai', 'OpenAI'),
+            $this->service('anthropic', 'Anthropic'),
+            $this->service('ollama', 'Ollama'),
+        ]);
     }
 
-    private function service(string $name): AiServiceConfigurationInterface
+    private function service(string $code, string $name): AiServiceConfigurationInterface
     {
         $service = $this->createMock(AiServiceConfigurationInterface::class);
+        $service->method('getCode')->willReturn($code);
         $service->method('getName')->willReturn($name);
 
         return $service;

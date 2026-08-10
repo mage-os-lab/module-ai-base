@@ -11,9 +11,9 @@ use Magento\Framework\Controller\Result\Json;
 use Magento\Framework\Controller\Result\JsonFactory;
 use Magento\Framework\Exception\LocalizedException;
 use MageOS\AiBase\Api\AiServiceSelectorInterface;
-use MageOS\AiBase\Api\Data\AiServiceConfigurationInterface;
 use MageOS\AiBase\Api\ModelListProviderInterface;
 use MageOS\AiBase\Model\ModelList\Storage;
+use MageOS\AiBase\Model\ServiceRegistry;
 
 /**
  * Live-fetches the model list of a configured AI service and persists it for the admin form.
@@ -33,14 +33,14 @@ class RefreshModels extends Action implements HttpPostActionInterface
      * @param JsonFactory $jsonFactory
      * @param AiServiceSelectorInterface $serviceSelector
      * @param Storage $modelListStorage
-     * @param array<string,mixed> $services Registered backends, same array the admin form block gets
+     * @param ServiceRegistry $serviceRegistry Registered backends, the same set the admin form gets
      */
     public function __construct(
         Context $context,
         private readonly JsonFactory $jsonFactory,
         private readonly AiServiceSelectorInterface $serviceSelector,
         private readonly Storage $modelListStorage,
-        private readonly array $services = [],
+        private readonly ServiceRegistry $serviceRegistry,
     ) {
         parent::__construct($context);
     }
@@ -62,7 +62,7 @@ class RefreshModels extends Action implements HttpPostActionInterface
         }
 
         try {
-            $definition = $this->getServiceDefinition($serviceCode);
+            $definition = $this->serviceRegistry->get($serviceCode);
             if (!$definition instanceof ModelListProviderInterface) {
                 return $result->setData([
                     'success' => false,
@@ -97,22 +97,5 @@ class RefreshModels extends Action implements HttpPostActionInterface
                 'error' => (string) __('Model list refresh failed: %1', $e->getMessage()),
             ]);
         }
-    }
-
-    /**
-     * Find the registered backend definition for a service code.
-     *
-     * @param string $serviceCode
-     * @return AiServiceConfigurationInterface|null
-     */
-    private function getServiceDefinition(string $serviceCode): ?AiServiceConfigurationInterface
-    {
-        foreach ($this->services as $service) {
-            if ($service instanceof AiServiceConfigurationInterface && $service->getCode() === $serviceCode) {
-                return $service;
-            }
-        }
-
-        return null;
     }
 }

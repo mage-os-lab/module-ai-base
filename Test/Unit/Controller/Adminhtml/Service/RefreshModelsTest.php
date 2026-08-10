@@ -15,6 +15,7 @@ use MageOS\AiBase\Api\Data\AiServiceConfigurationInterface;
 use MageOS\AiBase\Api\Data\AiServiceInterface;
 use MageOS\AiBase\Controller\Adminhtml\Service\RefreshModels;
 use MageOS\AiBase\Model\ModelList\Storage;
+use MageOS\AiBase\Model\ServiceRegistry;
 use PHPUnit\Framework\MockObject\MockObject;
 use PHPUnit\Framework\TestCase;
 
@@ -54,7 +55,7 @@ final class RefreshModelsTest extends TestCase
     /**
      * Build the controller under test with the given registered service definitions.
      *
-     * @param array<string, AiServiceConfigurationInterface> $services
+     * @param AiServiceConfigurationInterface[] $services
      * @return RefreshModels
      */
     private function createSubject(array $services): RefreshModels
@@ -70,7 +71,13 @@ final class RefreshModelsTest extends TestCase
         $jsonFactory = $this->createMock(JsonFactory::class);
         $jsonFactory->method('create')->willReturn($json);
 
-        return new RefreshModels($context, $jsonFactory, $this->serviceSelector, $this->storage, $services);
+        return new RefreshModels(
+            $context,
+            $jsonFactory,
+            $this->serviceSelector,
+            $this->storage,
+            new ServiceRegistry($services),
+        );
     }
 
     public function test_execute_rejects_missing_service_code(): void
@@ -92,7 +99,7 @@ final class RefreshModelsTest extends TestCase
         $this->serviceSelector->expects(self::never())->method('getByCode');
         $this->storage->expects(self::never())->method('save');
 
-        $this->createSubject(['azure' => $azure])->execute();
+        $this->createSubject([$azure])->execute();
 
         self::assertFalse($this->resultData['success']);
         self::assertSame('Model list refresh is not supported for this service.', $this->resultData['error']);
@@ -104,7 +111,7 @@ final class RefreshModelsTest extends TestCase
         $this->serviceSelector->method('getByCode')->with('openai')->willReturn([]);
         $this->storage->expects(self::never())->method('save');
 
-        $this->createSubject(['openai' => $this->openAi])->execute();
+        $this->createSubject([$this->openAi])->execute();
 
         self::assertFalse($this->resultData['success']);
         self::assertSame('No AI service configured for code "openai".', $this->resultData['error']);
@@ -124,7 +131,7 @@ final class RefreshModelsTest extends TestCase
             ->willReturn($models);
         $this->storage->expects(self::once())->method('save')->with('openai', $models);
 
-        $this->createSubject(['openai' => $this->openAi])->execute();
+        $this->createSubject([$this->openAi])->execute();
 
         self::assertTrue($this->resultData['success']);
         self::assertSame(2, $this->resultData['count']);
@@ -143,7 +150,7 @@ final class RefreshModelsTest extends TestCase
             ->willThrowException(new LocalizedException(__('Request to %1 returned HTTP status %2.', 'x', 401)));
         $this->storage->expects(self::never())->method('save');
 
-        $this->createSubject(['openai' => $this->openAi])->execute();
+        $this->createSubject([$this->openAi])->execute();
 
         self::assertFalse($this->resultData['success']);
         self::assertSame('Request to x returned HTTP status 401.', $this->resultData['error']);
@@ -159,7 +166,7 @@ final class RefreshModelsTest extends TestCase
 
         $this->openAi->method('fetchModels')->willThrowException(new \RuntimeException('boom'));
 
-        $this->createSubject(['openai' => $this->openAi])->execute();
+        $this->createSubject([$this->openAi])->execute();
 
         self::assertFalse($this->resultData['success']);
         self::assertSame('Model list refresh failed: boom', $this->resultData['error']);

@@ -13,6 +13,7 @@ use MageOS\AiBase\Api\Data\FieldDescriptorInterface;
 use MageOS\AiBase\Api\ModelListProviderInterface;
 use MageOS\AiBase\Model\Client\BridgeRegistry;
 use MageOS\AiBase\Model\ModelList\Resolver;
+use MageOS\AiBase\Model\ServiceRegistry;
 
 class Services extends AbstractFieldArray
 {
@@ -22,14 +23,9 @@ class Services extends AbstractFieldArray
     protected $_template = 'MageOS_AiBase::system/config/form/field/services.phtml';
 
     /**
-     * @var array<string,AiServiceConfigurationInterface>
-     */
-    private readonly array $services;
-
-    /**
      * @param Context $context
      * @param Json $jsonSerializer
-     * @param array<string,mixed> $services Service code => backend definition, validated below
+     * @param ServiceRegistry $serviceRegistry Registered backends; it validates its own entries
      * @param Resolver $modelListResolver
      * @param BridgeRegistry $bridgeRegistry
      * @param array<string,mixed> $data
@@ -38,41 +34,13 @@ class Services extends AbstractFieldArray
     public function __construct(
         Context $context,
         private readonly Json $jsonSerializer,
-        array $services,
+        private readonly ServiceRegistry $serviceRegistry,
         private readonly Resolver $modelListResolver,
         private readonly BridgeRegistry $bridgeRegistry,
         array $data = [],
         ?SecureHtmlRenderer $secureRenderer = null,
     ) {
         parent::__construct($context, $data, $secureRenderer);
-
-        $this->services = $this->assertServices($services);
-    }
-
-    /**
-     * Reject a di.xml entry that is not a backend definition.
-     *
-     * DI array arguments are not type-checked by the framework, so this is the only place the
-     * promise made by the property type is actually enforced.
-     *
-     * @param array<string,mixed> $services
-     * @return array<string,AiServiceConfigurationInterface>
-     */
-    private function assertServices(array $services): array
-    {
-        $validated = [];
-        foreach ($services as $code => $service) {
-            if (!$service instanceof AiServiceConfigurationInterface) {
-                throw new \InvalidArgumentException(sprintf(
-                    'Each registered service must implement %s, got %s',
-                    AiServiceConfigurationInterface::class,
-                    get_debug_type($service),
-                ));
-            }
-            $validated[$code] = $service;
-        }
-
-        return $validated;
     }
 
     /**
@@ -90,7 +58,7 @@ class Services extends AbstractFieldArray
                 'supported' => $this->bridgeRegistry->isSupported($service->getCode()),
                 'package' => (string) $this->bridgeRegistry->getPackage($service->getCode()),
             ],
-            $this->services,
+            $this->serviceRegistry->getAll(),
         );
     }
 
@@ -160,9 +128,9 @@ class Services extends AbstractFieldArray
     public function getServicesSchemaJson(): string
     {
         $schema = [];
-        foreach ($this->services as $service) {
+        foreach ($this->serviceRegistry->getAll() as $code => $service) {
             $models = $this->modelListResolver->getModels($service);
-            $schema[$service->getCode()] = [
+            $schema[$code] = [
                 'fields' => array_map(
                     fn (FieldDescriptorInterface $field) => [
                         'name'      => $field->getName(),

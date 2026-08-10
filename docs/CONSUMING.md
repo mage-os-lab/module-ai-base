@@ -19,6 +19,9 @@ description generation, translations, chat, ...). To *add* a provider, see
 
 Type-hint only against `MageOS\AiBase\Api\*` interfaces. Never depend on `Model\*` classes
 or on symfony/ai types — implementations can be swapped by the host store via `<preference>`.
+Everything below follows that rule: requests are assembled through
+`Api\ChatRequestBuilderInterface`, and every `Api\Data` interface has a `<preference>`, so the
+Magento-generated `*InterfaceFactory` for it resolves if you'd rather build one directly.
 
 ## Making AI calls (recommended)
 
@@ -40,42 +43,86 @@ class DescriptionGenerator
 
         return $client->complete(
             'Write a product description for: ' . $productName,
-            ['max_tokens' => 400],                            // provider options, passed through
+            ['max_tokens' => 400],                            // see "Options" below
         );
     }
 }
 ```
 
 `complete()` is single-turn prompt-in/text-out, a convenience over `chat()`.
-`getServiceCode()` tells you which backend served the client (useful for logging/attribution).
+A client also says what it is, for logging and cost attribution: `getServiceCode()` (`openai`),
+`getServiceId()` (the configured row, which is what separates two accounts on the same backend)
+and `getModel()` (`gpt-4o`). Cost is per model, so a usage log wants all three.
+
+## Options
+
+Four options are provider-neutral and get translated to whatever the configured backend calls
+them, so the same code works whichever one an administrator picked:
+
+| Option | Notes |
+|---|---|
+| `max_tokens` | `max_output_tokens` on OpenAI/Azure, `maxOutputTokens` on Google, `num_predict` on Ollama. Anthropic *requires* it; the client sends 4096 when you don't. |
+| `temperature` | Same name everywhere. |
+| `top_p` | `topP` on Google. |
+| `stop` | `stop_sequences` on Anthropic, `stopSequences` on Google; a single string is wrapped into a list where the provider wants one. **Not supported on OpenAI and Azure**, whose Responses API has no such parameter — passing it there throws rather than being dropped. |
+
+Anything else is passed through to the provider untouched, so provider-specific features stay
+reachable (Anthropic's `thinking`, Ollama's `keep_alive`, ...). That is the escape hatch for code
+that has deliberately picked its backend; it is not portable, by definition.
 
 ## Conversations, tools and streaming
 
-`chat()` takes a conversation and returns text, any tools the model wants run, token counts
-and the provider's stop reason:
+Build a request with `ChatRequestBuilderInterface`. Inject its generated factory and start one
+per call — every method returns a new builder, so a builder holding your common preamble can be
+kept and branched from:
 
 ```php
-use MageOS\AiBase\Api\Data\MessageRole;
-use MageOS\AiBase\Model\Chat\ChatMessage;
-use MageOS\AiBase\Model\Chat\ChatRequest;
-use MageOS\AiBase\Model\Chat\ToolDefinition;
+use MageOS\AiBase\Api\AiClientFactoryInterface;
+use MageOS\AiBase\Api\ChatRequestBuilderInterfaceFactory;
 
-$request = new ChatRequest(
-    [
-        new ChatMessage(MessageRole::System, 'You are a Magento support assistant.'),
-        new ChatMessage(MessageRole::User, 'Which orders are still pending?'),
-    ],
-    [new ToolDefinition('get_orders', 'Lists orders by status', [
+public function __construct(
+    private readonly AiClientFactoryInterface $aiClientFactory,
+    private readonly ChatRequestBuilderInterfaceFactory $chatRequestBuilderFactory,
+) {
+}
+
+$request = $this->chatRequestBuilderFactory->create()
+    ->withSystemMessage('You are a Magento support assistant.')
+    ->withUserMessage('Which orders are still pending?')
+    ->withTool('get_orders', 'Lists orders by status', [
         'type' => 'object',
         'properties' => ['status' => ['type' => 'string']],
-    ])],
-);
+    ])
+    ->build();
 
 $response = $this->aiClientFactory->create()->chat($request);
-$response->getText();          // assistant text, empty when it only asked for tools
-$response->getToolCalls();     // ToolCallInterface[]
-$response->getUsage();         // prompt/completion/total tokens, or null
+$response->getText();             // assistant text, empty when it only asked for tools
+$response->getToolCalls();        // ToolCallInterface[]
+$response->getUsage();            // prompt/completion/total tokens, or null
+$response->getFinishReason();     // FinishReason enum, or null
 ```
+
+`getFinishReason()` is normalized across providers, because the same event is `length` at
+OpenAI, `max_tokens` at Anthropic and `MAX_TOKENS` at Google. `FinishReason::Length` is the one
+worth handling everywhere — it means the text is a truncated answer rather than a finished one,
+and nothing else in the response says so:
+
+```php
+if ($response->getFinishReason() === FinishReason::Length) {
+    // the answer is cut off: raise max_tokens, or ask for something shorter
+}
+```
+
+`getRawFinishReason()` keeps the provider's own wording, for logs and support tickets.
+
+> **One reserved pair of argument names.** A tool argument may not be named `instance` or
+> `argument`. The schema reaches the tool definition through a Magento-generated factory, and the
+> ObjectManager walks array arguments looking for DI references: a nested object holding an
+> `instance` key is resolved as a service (raising a `TypeError`), and one holding an `argument`
+> key is replaced by a global argument (silently nulling the surrounding object). Every other
+> name, at every nesting level, passes through untouched. Rename the argument, or build the
+> definition yourself and pass it to `withToolDefinition()` — an already-built object is not
+> walked.
 
 ### The tool loop
 
@@ -91,9 +138,7 @@ for ($i = 0; $i < $maxIterations; $i++) {
         return $response->getText();
     }
 
-    $request = $request->withMessage(
-        new ChatMessage(MessageRole::Assistant, $response->getText(), $response->getToolCalls())
-    );
+    $request = $request->withAssistantTurn($response);
 
     foreach ($response->getToolCalls() as $call) {
         // your ACL check, your confirmation gate, your tool registry
@@ -104,8 +149,10 @@ for ($i = 0; $i < $maxIterations; $i++) {
 ```
 
 `ChatRequestInterface` is immutable, so each iteration gets a fresh request and nothing leaks
-into one a caller still holds. `withToolResult()` binds the result to the call that produced
-it, which is the pairing a hand-built loop most easily gets wrong.
+into one a caller still holds. Two methods carry the two halves of a turn that are easy to get
+wrong: `withAssistantTurn()` puts the model's own message back with its tool calls attached
+(append the text and forget the calls, and the provider rejects results answering calls it
+cannot see), and `withToolResult()` binds each result to the call that produced it.
 
 ### Streaming
 
@@ -132,7 +179,39 @@ foreach ($client->streamChat($request) as $chunk) {
 
 Tool calls arrive **complete**, with arguments already accumulated and JSON-decoded by the
 provider bridge. There are no SSE frames to parse and no `input_json_delta` fragments to
-stitch together.
+stitch together. A turn requesting several tools yields one chunk per call, so
+`getToolCall()` always means exactly one.
+
+#### The turn a stream produced
+
+When the stream runs to completion the generator **returns** the same `ChatResponseInterface`
+a buffered `chat()` would have given you — text concatenated, tool calls collected, final token
+counts and stop reason attached. A streaming tool loop needs exactly that to append before the
+next iteration, so there is no accumulator to write:
+
+```php
+$stream = $client->streamChat($request);
+
+foreach ($stream as $chunk) {
+    if ($chunk->getType() === StreamChunkType::Text) {
+        $this->emit($chunk->getText());
+    }
+}
+
+$turn = $stream->getReturn();            // ChatResponseInterface
+$request = $request->withAssistantTurn($turn);
+
+foreach ($turn->getToolCalls() as $call) {
+    $request = $request->withToolResult($call, json_encode($this->myToolRegistry->run(
+        $call->getName(),
+        $call->getArguments(),
+    )));
+}
+```
+
+`getReturn()` is only valid once the generator has finished. Breaking out of the loop early
+raises an `\Exception` from PHP, which is the correct signal: there is no complete turn to
+append.
 
 ### Failure modes to handle
 
@@ -216,6 +295,83 @@ if ($service === null) {
 back to another row: another row means another account and another bill, which is not a
 substitution to make on the admin's behalf.
 
+## Reaching the platform directly (escape hatch)
+
+`AiClientInterface` covers chat, streaming and single-turn completion. symfony/ai-platform does a
+great deal more: executed tool loops via `symfony/ai-agent`, message stores and sessions via
+`symfony/ai-chat`, structured output, embeddings, vector stores, image and audio. Mirroring all of
+that here would mean re-describing an API that already exists, so instead this module hands over
+the platform it already built: credentials resolved, bridge selected, row chosen by the admin.
+
+> **symfony/ai-platform is experimental.** Experimental features are not covered by Symfony's
+> [Backward Compatibility Promise](https://symfony.com/doc/current/contributing/code/bc.html).
+> This is not hypothetical on the surface a tool loop touches most: `Message::ofAssistant()` was
+> reworked in 0.9 and `Message::ofToolCall()` in 0.11. Code written against `Api\*` is insulated
+> from that by the adapter behind it. Code written against symfony/ai types is not, and has to be
+> re-verified on every upgrade. Pin the version.
+
+```php
+use MageOS\AiBase\Api\AiClientFactoryInterface;
+use MageOS\AiBase\Api\PlatformAwareInterface;
+use Symfony\AI\Platform\Message\Message;
+use Symfony\AI\Platform\Message\MessageBag;
+
+$client = $this->aiClientFactory->createById($serviceId);
+
+if (!$client instanceof PlatformAwareInterface) {
+    return $client->complete($prompt);      // no platform to reach; use the stable surface
+}
+
+$result = $client->getPlatform()->invoke(
+    $client->getModel(),
+    new MessageBag(Message::ofUser($prompt)),
+    $client->normalizeOptions(['max_tokens' => 400]),
+);
+```
+
+Three things to know:
+
+- **The `instanceof` check is the API.** It makes the coupling deliberate and keeps it optional:
+  a store that preferences its own client stack does not implement the interface, and your code
+  degrades to the stable surface instead of fataling.
+- **`getModel()` is the model name to invoke with.** It comes off `AiClientInterface`, and it is
+  the model the administrator configured on that row.
+- **Keep `normalizeOptions()`.** Calling the platform directly otherwise opts you out of every
+  translation described under [Options](#options), including the `max_tokens` Anthropic requires.
+  It returns the same array `chat()` would have sent.
+
+### With symfony/ai-agent
+
+The agent component runs the tool loop for you, tools included, which is the main reason to
+reach past `AiClientInterface`:
+
+```bash
+composer require symfony/ai-agent
+```
+
+```php
+use Symfony\AI\Agent\Agent;
+use Symfony\AI\Agent\Toolbox\AgentProcessor;
+use Symfony\AI\Agent\Toolbox\Toolbox;
+
+$toolbox = new Toolbox([$this->myOrderTool]);
+$processor = new AgentProcessor($toolbox);
+
+$agent = new Agent($client->getPlatform(), $client->getModel(), [$processor], [$processor]);
+
+$answer = $agent->call('Which orders are still pending?')->getContent();
+```
+
+`AgentProcessor` is passed as both input and output processor: it advertises the tools on the way
+out and resolves the calls on the way back. It caps itself at 50 tool calls per turn by default
+and throws `MaxIterationsExceededException` past that.
+
+Note the trade this makes. This module never executes tools, deliberately: whether a call may run
+is policy that belongs to the module owning the tool (a confirmation gate for write actions, a
+Magento ACL per tool), and none of it generalises. `Toolbox` **does** execute them. Reaching for
+the agent component means taking that policy decision on yourself, which is where it belonged
+anyway; just take it knowingly rather than by accident.
+
 ## Reading raw configuration (lower level)
 
 When you need credentials/values directly — e.g. you're calling a provider API the client
@@ -239,8 +395,12 @@ Notes:
 - `getId()` is the row's stable identity, and the only thing that separates two rows of the
   same provider. It is what the option source stores and what `getById()` resolves.
 - An empty array means nothing is configured — expected state on fresh installs; handle it.
-- Configuration is read with store scope, so per-store setups resolve automatically from
-  the current store context.
+- Configuration is read at store scope, in whatever scope is ambient at the moment you call.
+  In a storefront request that is the current store, so a per-store setup resolves on its own.
+  **In adminhtml, in cron and on the CLI there is no current store**, so the default scope
+  answers and a per-website or per-store services list is not reachable from those contexts.
+  The selector takes no scope argument: code that needs a specific scope has to establish it
+  first (store emulation), the same rule the rest of Magento's configuration follows.
 
 ## Extending behavior
 

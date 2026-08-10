@@ -6,6 +6,16 @@ namespace MageOS\AiBase\Api;
 
 use MageOS\AiBase\Api\Data\AiServiceInterface;
 
+/**
+ * Reads the AI services an administrator configured.
+ *
+ * Scope: every method resolves the configuration at store scope, in whatever scope is ambient when
+ * it is called, and none of them takes a scope argument. In a storefront request that is the
+ * current store, so a per-store setup resolves on its own. In adminhtml, in cron and on the CLI
+ * there is no current store, so the default scope answers — a per-website or per-store services
+ * list is not reachable from those contexts. Code that needs a specific scope has to establish it
+ * first (store emulation), which is the same rule the rest of Magento's configuration follows.
+ */
 interface AiServiceSelectorInterface
 {
     /**

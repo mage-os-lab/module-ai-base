@@ -8,6 +8,7 @@ use Magento\Framework\Encryption\EncryptorInterface;
 use MageOS\AiBase\Api\Data\AiServiceConfigurationInterface;
 use MageOS\AiBase\Api\Data\FieldDescriptorInterface;
 use MageOS\AiBase\Model\Config\SensitiveDataProcessor;
+use MageOS\AiBase\Model\ServiceRegistry;
 use MageOS\AiBase\Model\FieldDescriptor;
 use PHPUnit\Framework\MockObject\MockObject;
 use PHPUnit\Framework\TestCase;
@@ -34,7 +35,10 @@ final class SensitiveDataProcessorTest extends TestCase
         $this->encryptor->method('decrypt')->willReturnCallback(
             fn (string $v) => preg_replace('/^0:3:enc\((.*)\)$/', '$1', $v)
         );
-        $this->subject = new SensitiveDataProcessor($this->encryptor, [$this->createFakeService()]);
+        $this->subject = new SensitiveDataProcessor(
+            $this->encryptor,
+            new ServiceRegistry([$this->createFakeService()]),
+        );
     }
 
     public function test_encrypt_row_encrypts_only_sensitive_keys(): void
@@ -223,10 +227,9 @@ final class SensitiveDataProcessorTest extends TestCase
 
     public function test_invalid_service_registration_is_rejected(): void
     {
-        $subject = new SensitiveDataProcessor($this->encryptor, ['not-a-service']);
-
         $this->expectException(\InvalidArgumentException::class);
-        $subject->encryptRow(self::KNOWN_SERVICE, ['api_key' => 'x']);
+
+        new ServiceRegistry(['not-a-service']);
     }
 
     /**

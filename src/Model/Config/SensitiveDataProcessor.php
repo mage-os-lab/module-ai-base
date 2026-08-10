@@ -5,7 +5,7 @@ declare(strict_types=1);
 namespace MageOS\AiBase\Model\Config;
 
 use Magento\Framework\Encryption\EncryptorInterface;
-use MageOS\AiBase\Api\Data\AiServiceConfigurationInterface;
+use MageOS\AiBase\Model\ServiceRegistry;
 
 /**
  * Encrypts/decrypts sensitive keys inside a single service configuration array.
@@ -49,11 +49,11 @@ class SensitiveDataProcessor
 
     /**
      * @param EncryptorInterface $encryptor
-     * @param array<string,mixed> $services Registered AI backends providing the field schema
+     * @param ServiceRegistry $serviceRegistry Registered AI backends providing the field schema
      */
     public function __construct(
         private readonly EncryptorInterface $encryptor,
-        private readonly array $services = [],
+        private readonly ServiceRegistry $serviceRegistry,
     ) {
     }
 
@@ -174,22 +174,14 @@ class SensitiveDataProcessor
      * Build (once) the encrypted-field schema from the registered services.
      *
      * @return array<string, array<string, bool>>
-     * @throws \InvalidArgumentException When a registered service has the wrong type
      */
     private function getFieldSchema(): array
     {
         if ($this->fieldSchema === null) {
             $this->fieldSchema = [];
-            foreach ($this->services as $service) {
-                if (!$service instanceof AiServiceConfigurationInterface) {
-                    throw new \InvalidArgumentException(sprintf(
-                        'Each registered service must implement %s, got %s',
-                        AiServiceConfigurationInterface::class,
-                        get_debug_type($service),
-                    ));
-                }
+            foreach ($this->serviceRegistry->getAll() as $code => $service) {
                 foreach ($service->getConfigurationFields() as $field) {
-                    $this->fieldSchema[$service->getCode()][$field->getName()] = $field->isEncrypted();
+                    $this->fieldSchema[$code][$field->getName()] = $field->isEncrypted();
                 }
             }
         }

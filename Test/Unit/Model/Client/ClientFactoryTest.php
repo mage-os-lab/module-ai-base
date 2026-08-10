@@ -162,11 +162,12 @@ final class ClientFactoryTest extends TestCase
         $this->serviceSelector->method('getByCode')->with('openai')
             ->willReturn([new AiService('row_openai', 'openai', ['api_key' => 'k', 'model' => 'gpt-4o'])]);
 
-        $client = new SymfonyAiClient(new \stdClass(), 'gpt-4o', 'openai');
+        $client = $this->createMock(SymfonyAiClient::class);
         $this->clientFactory->expects(self::once())->method('create')
             ->with(self::callback(
                 fn (array $data) => $data['model'] === 'gpt-4o'
                     && $data['serviceCode'] === 'openai'
+                    && $data['serviceId'] === 'row_openai'
                     && $data['platform'] instanceof \stdClass
             ))
             ->willReturn($client);
@@ -193,7 +194,9 @@ final class ClientFactoryTest extends TestCase
             ->willReturn(new AiService('_row_b', 'openai', ['api_key' => 'k2', 'model' => 'o1-mini']));
         $this->clientFactory->expects(self::once())->method('create')
             ->with(self::callback(
-                fn (array $data) => $data['model'] === 'o1-mini' && $data['serviceCode'] === 'openai'
+                fn (array $data) => $data['model'] === 'o1-mini'
+                    && $data['serviceCode'] === 'openai'
+                    && $data['serviceId'] === '_row_b'
             ))
             ->willReturn($this->createMock(SymfonyAiClient::class));
 

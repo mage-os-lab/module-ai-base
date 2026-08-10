@@ -13,6 +13,7 @@ use MageOS\AiBase\Api\Data\AiServiceConfigurationInterface;
 use MageOS\AiBase\Api\Data\FieldDescriptorInterface;
 use MageOS\AiBase\Model\Config\Backend\EncryptedServices;
 use MageOS\AiBase\Model\Config\SensitiveDataProcessor;
+use MageOS\AiBase\Model\ServiceRegistry;
 use MageOS\AiBase\Model\FieldDescriptor;
 use PHPUnit\Framework\MockObject\MockObject;
 use PHPUnit\Framework\TestCase;
@@ -42,7 +43,7 @@ final class EncryptedServicesTest extends TestCase
 
         $this->subject = (new ObjectManager($this))->getObject(EncryptedServices::class, [
             'config' => $this->scopeConfig,
-            'sensitiveDataProcessor' => new SensitiveDataProcessor($encryptor, [$this->createOpenAiFake()]),
+            'sensitiveDataProcessor' => new SensitiveDataProcessor($encryptor, new ServiceRegistry([$this->createOpenAiFake()])),
             'jsonSerializer' => $this->serializer,
         ]);
         $this->subject->setPath(self::CONFIG_PATH);

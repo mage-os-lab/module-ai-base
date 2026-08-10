@@ -6,10 +6,13 @@ namespace MageOS\AiBase\Model\Client;
 
 use Magento\Framework\Exception\LocalizedException;
 use MageOS\AiBase\Api\AiClientInterface;
+use MageOS\AiBase\Api\PlatformAwareInterface;
 use MageOS\AiBase\Api\Data\ChatMessageInterface;
 use MageOS\AiBase\Api\Data\ChatRequestInterface;
 use MageOS\AiBase\Api\Data\ChatResponseInterface;
+use MageOS\AiBase\Api\Data\FinishReason;
 use MageOS\AiBase\Api\Data\MessageRole;
+use MageOS\AiBase\Api\Data\StreamChunkInterface;
 use MageOS\AiBase\Api\Data\StreamChunkType;
 use MageOS\AiBase\Api\Data\ToolDefinitionInterface;
 use MageOS\AiBase\Model\Chat\ChatMessage;
@@ -28,12 +31,39 @@ use MageOS\AiBase\Model\Chat\ToolCall;
  * component is experimental and not covered by Symfony's BC promise, so
  * pin the version and re-verify on upgrade.
  */
-class SymfonyAiClient implements AiClientInterface
+class SymfonyAiClient implements AiClientInterface, PlatformAwareInterface
 {
     /**
      * Metadata key the platform stores extracted token counts under.
      */
     private const METADATA_TOKEN_USAGE = 'token_usage';
+
+    /**
+     * Metadata key the platform stores the normalized stop reason under.
+     */
+    private const METADATA_FINISH_REASON = 'finish_reason';
+
+    /**
+     * Provider stop-reason wordings, for bridges reporting a bare string instead of a mapped value.
+     *
+     * The platform normalizes the reason itself for every bundled bridge; this is the fallback for
+     * a third-party bridge that only forwards what its provider wrote.
+     */
+    private const RAW_FINISH_REASONS = [
+        'stop' => FinishReason::Stop,
+        'end_turn' => FinishReason::Stop,
+        'complete' => FinishReason::Stop,
+        'length' => FinishReason::Length,
+        'max_tokens' => FinishReason::Length,
+        'model_length' => FinishReason::Length,
+        'tool_use' => FinishReason::ToolCall,
+        'tool_calls' => FinishReason::ToolCall,
+        'function_call' => FinishReason::ToolCall,
+        'content_filter' => FinishReason::ContentFilter,
+        'refusal' => FinishReason::ContentFilter,
+        'safety' => FinishReason::ContentFilter,
+        'stop_sequence' => FinishReason::StopSequence,
+    ];
 
     /**
      * Placeholder execution target for tool definitions.
@@ -47,11 +77,15 @@ class SymfonyAiClient implements AiClientInterface
      * @param object $platform \Symfony\AI\Platform\PlatformInterface
      * @param string $model
      * @param string $serviceCode
+     * @param string $serviceId Configured row this client was built from
+     * @param OptionNormalizer $optionNormalizer
      */
     public function __construct(
         private readonly object $platform,
         private readonly string $model,
         private readonly string $serviceCode,
+        private readonly string $serviceId,
+        private readonly OptionNormalizer $optionNormalizer,
     ) {
     }
 
@@ -82,12 +116,36 @@ class SymfonyAiClient implements AiClientInterface
             throw $this->wrap($e);
         }
 
+        $text = '';
+        $toolCalls = [];
+        $usage = null;
+
         foreach ($deltas as $delta) {
-            $chunk = $this->toStreamChunk($delta);
-            if ($chunk !== null) {
+            foreach ($this->toStreamChunks($delta) as $chunk) {
+                $text .= $chunk->getType() === StreamChunkType::Text ? $chunk->getText() : '';
+                $toolCall = $chunk->getToolCall();
+                if ($toolCall !== null) {
+                    $toolCalls[] = $toolCall;
+                }
+                $usage = $chunk->getUsage() ?? $usage;
                 yield $chunk;
             }
         }
+
+        // Token counts and the stop reason arrive at the very end of a stream, and the platform
+        // lifts both out of the delta sequence into the result metadata rather than letting them
+        // through as deltas. Reading them here is what makes a usage chunk reachable at all.
+        if ($usage === null && ($usage = $this->extractUsage($result)) !== null) {
+            yield new StreamChunk(StreamChunkType::Usage, '', null, $usage);
+        }
+
+        return new ChatResponse(
+            $text,
+            $toolCalls,
+            $usage,
+            $this->extractFinishReason($result),
+            $this->extractRawFinishReason($result),
+        );
     }
 
     /**
@@ -110,6 +168,38 @@ class SymfonyAiClient implements AiClientInterface
     }
 
     /**
+     * @inheritdoc
+     */
+    public function getServiceId(): string
+    {
+        return $this->serviceId;
+    }
+
+    /**
+     * @inheritdoc
+     */
+    public function getModel(): string
+    {
+        return $this->model;
+    }
+
+    /**
+     * @inheritdoc
+     */
+    public function getPlatform(): object
+    {
+        return $this->platform;
+    }
+
+    /**
+     * @inheritdoc
+     */
+    public function normalizeOptions(array $options): array
+    {
+        return $this->optionNormalizer->normalize($this->serviceCode, $options);
+    }
+
+    /**
      * Send the request to the platform.
      *
      * @param ChatRequestInterface $request
@@ -119,6 +209,8 @@ class SymfonyAiClient implements AiClientInterface
      */
     private function invoke(ChatRequestInterface $request, array $options): object
     {
+        $options = $this->normalizeOptions($options);
+
         $tools = $this->toTools($request->getTools());
         if ($tools !== []) {
             $options['tools'] = $tools;
@@ -248,6 +340,8 @@ class SymfonyAiClient implements AiClientInterface
             $this->extractText($parts),
             $this->extractToolCalls($parts),
             $this->extractUsage($result),
+            $this->extractFinishReason($result),
+            $this->extractRawFinishReason($result),
         );
     }
 
@@ -307,9 +401,9 @@ class SymfonyAiClient implements AiClientInterface
      * Read token counts off the result metadata, where the platform stores them.
      *
      * @param object $result
-     * @return \MageOS\AiBase\Api\Data\TokenUsageInterface|null
+     * @return TokenUsage|null
      */
-    private function extractUsage(object $result): ?object
+    private function extractUsage(object $result): ?TokenUsage
     {
         $usage = $result->getMetadata()->get(self::METADATA_TOKEN_USAGE);
 
@@ -317,43 +411,111 @@ class SymfonyAiClient implements AiClientInterface
     }
 
     /**
-     * Translate one streamed delta, or null for deltas that carry no payload of their own.
+     * Read the stop reason off the result metadata and normalize it.
      *
-     * @param mixed $delta
-     * @return \MageOS\AiBase\Api\Data\StreamChunkInterface|null
+     * The platform maps each provider's wording onto its own case set per bridge, so the object it
+     * stores already answers "was this truncated?"; only its vocabulary has to be translated.
+     *
+     * @param object $result
+     * @return FinishReason|null
      */
-    private function toStreamChunk(mixed $delta): ?object
+    private function extractFinishReason(object $result): ?FinishReason
     {
-        if ($delta instanceof \Symfony\AI\Platform\Result\Stream\Delta\TextDelta) {
-            return new StreamChunk(StreamChunkType::Text, $delta->getText());
-        }
-        if ($delta instanceof \Symfony\AI\Platform\Result\Stream\Delta\ThinkingDelta) {
-            return new StreamChunk(StreamChunkType::Thinking, $delta->getThinking());
-        }
-        if ($delta instanceof \Symfony\AI\Platform\Result\Stream\Delta\ToolCallComplete) {
-            return $this->toToolCallChunk($delta);
-        }
-        if ($delta instanceof \Symfony\AI\Platform\TokenUsage\TokenUsageInterface) {
-            return new StreamChunk(StreamChunkType::Usage, '', null, $this->toAiBaseUsage($delta));
+        $reason = $result->getMetadata()->get(self::METADATA_FINISH_REASON);
+        if ($reason === null) {
+            return null;
         }
 
-        return null;
+        $case = is_object($reason) && method_exists($reason, 'getCase') ? $reason->getCase()->value : null;
+
+        return match ($case) {
+            'stop' => FinishReason::Stop,
+            'length' => FinishReason::Length,
+            'tool-call' => FinishReason::ToolCall,
+            'content-filter' => FinishReason::ContentFilter,
+            'stop-sequence' => FinishReason::StopSequence,
+            'other' => FinishReason::Other,
+            default => $this->toFinishReasonFromRaw((string) $this->extractRawFinishReason($result)),
+        };
     }
 
     /**
-     * A completed tool call block, arguments already accumulated and decoded by the bridge.
+     * The stop reason exactly as the provider wrote it.
+     *
+     * @param object $result
+     * @return string|null
+     */
+    private function extractRawFinishReason(object $result): ?string
+    {
+        $reason = $result->getMetadata()->get(self::METADATA_FINISH_REASON);
+        if ($reason === null) {
+            return null;
+        }
+
+        $raw = is_object($reason) && method_exists($reason, 'getRaw') ? $reason->getRaw() : $reason;
+
+        return is_scalar($raw) || $raw instanceof \Stringable ? (string) $raw : null;
+    }
+
+    /**
+     * Best effort meaning for a bridge that reported a bare provider string.
+     *
+     * @param string $raw
+     * @return FinishReason
+     */
+    private function toFinishReasonFromRaw(string $raw): FinishReason
+    {
+        return self::RAW_FINISH_REASONS[strtolower($raw)] ?? FinishReason::Other;
+    }
+
+    /**
+     * Translate one streamed delta into the chunks it carries.
+     *
+     * A list rather than a single chunk because one delta is not one event: a model requesting
+     * several tools in the same turn produces exactly one ToolCallComplete holding all of them.
+     * Deltas that carry no payload of their own translate to nothing.
+     *
+     * @param mixed $delta
+     * @return list<StreamChunkInterface>
+     */
+    private function toStreamChunks(mixed $delta): array
+    {
+        if ($delta instanceof \Symfony\AI\Platform\Result\Stream\Delta\TextDelta) {
+            return [new StreamChunk(StreamChunkType::Text, $delta->getText())];
+        }
+        if ($delta instanceof \Symfony\AI\Platform\Result\Stream\Delta\ThinkingDelta) {
+            return [new StreamChunk(StreamChunkType::Thinking, $delta->getThinking())];
+        }
+        if ($delta instanceof \Symfony\AI\Platform\Result\Stream\Delta\ToolCallComplete) {
+            return $this->toToolCallChunks($delta);
+        }
+        if ($delta instanceof \Symfony\AI\Platform\TokenUsage\TokenUsageInterface) {
+            return [new StreamChunk(StreamChunkType::Usage, '', null, $this->toAiBaseUsage($delta))];
+        }
+
+        return [];
+    }
+
+    /**
+     * One chunk per completed tool call, arguments already accumulated and decoded by the bridge.
+     *
+     * ToolCallComplete signals that *all* of the turn's tool calls are finished and carries them
+     * together, so taking only the first would drop every tool but one from a parallel-tool turn,
+     * which the buffered path does not do.
      *
      * @param object $delta
-     * @return \MageOS\AiBase\Api\Data\StreamChunkInterface|null
+     * @return list<StreamChunkInterface>
      */
-    private function toToolCallChunk(object $delta): ?object
+    private function toToolCallChunks(object $delta): array
     {
-        $toolCalls = $delta->getToolCalls();
-        $toolCall = $toolCalls[array_key_first($toolCalls)] ?? null;
-
-        return $toolCall === null
-            ? null
-            : new StreamChunk(StreamChunkType::ToolCall, '', $this->toAiBaseToolCall($toolCall));
+        return array_map(
+            fn (object $toolCall): StreamChunkInterface => new StreamChunk(
+                StreamChunkType::ToolCall,
+                '',
+                $this->toAiBaseToolCall($toolCall),
+            ),
+            array_values($delta->getToolCalls()),
+        );
     }
 
     /**

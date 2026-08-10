@@ -35,6 +35,19 @@ interface ChatRequestInterface
     public function withMessage(ChatMessageInterface $message): ChatRequestInterface;
 
     /**
+     * Copy with the model's own turn appended, text and requested tool calls together.
+     *
+     * Every iteration of a tool loop has to put the assistant turn back into the conversation
+     * before the tool results, or the provider rejects results answering calls it cannot see. The
+     * response already holds both halves, so taking it whole removes the step where a caller
+     * appends the text and forgets the calls.
+     *
+     * @param ChatResponseInterface $response
+     * @return ChatRequestInterface
+     */
+    public function withAssistantTurn(ChatResponseInterface $response): ChatRequestInterface;
+
+    /**
      * Copy with a tool's result appended, bound to the call that produced it.
      *
      * Pairing the result to its call id is the step a hand-built tool loop most easily gets

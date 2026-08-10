@@ -5,17 +5,26 @@ declare(strict_types=1);
 namespace MageOS\AiBase\Test\Unit\Model\Client;
 
 use Magento\Framework\Exception\LocalizedException;
+use MageOS\AiBase\Api\Data\FinishReason as AiBaseFinishReason;
 use MageOS\AiBase\Api\Data\MessageRole;
 use MageOS\AiBase\Api\Data\StreamChunkType;
+use MageOS\AiBase\Api\PlatformAwareInterface;
 use MageOS\AiBase\Model\Chat\ChatMessage;
 use MageOS\AiBase\Model\Chat\ChatRequest;
 use MageOS\AiBase\Model\Chat\ToolCall as AiBaseToolCall;
 use MageOS\AiBase\Model\Chat\ToolDefinition;
+use MageOS\AiBase\Model\Client\BridgeRegistry;
+use MageOS\AiBase\Model\Client\OptionNormalizer;
 use MageOS\AiBase\Model\Client\SymfonyAiClient;
 use PHPUnit\Framework\TestCase;
+use Symfony\AI\Platform\FinishReason\FinishReason;
+use Symfony\AI\Platform\FinishReason\FinishReasonCase;
+use Symfony\AI\Platform\Message\Message;
 use Symfony\AI\Platform\Message\MessageBag;
 use Symfony\AI\Platform\Message\Role;
 use Symfony\AI\Platform\Metadata\Metadata;
+use Symfony\AI\Platform\PlatformInterface;
+use Symfony\AI\Platform\Test\InMemoryPlatform;
 use Symfony\AI\Platform\Result\MultiPartResult;
 use Symfony\AI\Platform\Result\Stream\Delta\TextDelta;
 use Symfony\AI\Platform\Result\Stream\Delta\ThinkingDelta;
@@ -230,6 +239,35 @@ final class SymfonyAiClientChatTest extends TestCase
         self::assertSame(45, $chunks[4]->getUsage()?->getCompletionTokens());
     }
 
+    /**
+     * ToolCallComplete signals that *all* of the turn's tool calls are finished and carries them
+     * together, so a turn asking for two tools arrives as one delta. Taking only the first would
+     * mean the second tool is never run and never answered, while the buffered path returns both.
+     */
+    public function test_streaming_surfaces_every_tool_call_of_a_parallel_tool_turn(): void
+    {
+        $platform = new FakePlatform(new FakeResult(null, null, [
+            new ToolCallComplete([
+                new ToolCall('toolu_01', 'get_orders', ['status' => 'pending']),
+                new ToolCall('toolu_02', 'get_customers', ['group' => 'wholesale']),
+            ]),
+        ]));
+
+        $stream = $this->client($platform)->streamChat($this->helloRequest());
+        $chunks = iterator_to_array($stream, false);
+
+        self::assertSame(
+            [StreamChunkType::ToolCall, StreamChunkType::ToolCall],
+            array_map(static fn ($c) => $c->getType(), $chunks),
+            'One chunk per call, so getToolCall() keeps meaning exactly one call.'
+        );
+        self::assertSame('get_orders', $chunks[0]->getToolCall()?->getName());
+        self::assertSame('get_customers', $chunks[1]->getToolCall()?->getName());
+
+        $names = array_map(static fn ($c) => $c->getName(), $stream->getReturn()->getToolCalls());
+        self::assertSame(['get_orders', 'get_customers'], $names);
+    }
+
     public function test_streaming_wraps_a_provider_failure_in_a_localized_exception(): void
     {
         $platform = new FakePlatform(null, new \RuntimeException('connection reset'));
@@ -240,9 +278,349 @@ final class SymfonyAiClientChatTest extends TestCase
         iterator_to_array($this->client($platform)->streamChat($this->helloRequest()));
     }
 
-    private function client(FakePlatform $platform): SymfonyAiClient
+    public function test_reports_the_service_and_model_it_was_built_for(): void
     {
-        return new SymfonyAiClient($platform, 'gpt-4o', 'openai');
+        $client = $this->client(new FakePlatform(new FakeResult(new TextResult('Hi'))));
+
+        self::assertSame('openai', $client->getServiceCode());
+        self::assertSame('_row_1', $client->getServiceId());
+        self::assertSame('gpt-4o', $client->getModel());
+    }
+
+    /**
+     * The escape hatch: a consumer reaching for symfony/ai-agent or any other part of the platform
+     * this module does not mirror takes the instance it already built, credentials resolved and
+     * bridge selected, rather than assembling one itself from raw configuration.
+     */
+    public function test_hands_out_the_platform_it_was_built_with(): void
+    {
+        $platform = new FakePlatform(new FakeResult(new TextResult('Hi')));
+        $client = $this->client($platform);
+
+        self::assertInstanceOf(PlatformAwareInterface::class, $client);
+        self::assertSame($platform, $client->getPlatform());
+    }
+
+    /**
+     * The fake platform above is duck-typed, so it cannot show that what comes back out satisfies
+     * Symfony's own contract. A consumer handing this to `new Agent(...)`, whose first parameter
+     * is typed `PlatformInterface`, depends on exactly that.
+     */
+    public function test_the_platform_it_hands_out_satisfies_symfonys_own_contract(): void
+    {
+        $platform = new InMemoryPlatform('Hi there');
+        $client = new SymfonyAiClient($platform, 'gpt-4o', 'openai', '_row_1', $this->optionNormalizer());
+
+        self::assertInstanceOf(PlatformInterface::class, $client->getPlatform());
+
+        $result = $client->getPlatform()->invoke(
+            $client->getModel(),
+            new MessageBag(Message::ofUser('Hello')),
+            $client->normalizeOptions(['max_tokens' => 400]),
+        );
+
+        self::assertSame('Hi there', $result->asText());
+    }
+
+    /**
+     * Calling the platform directly opts out of every translation chat() does, so the one piece
+     * worth keeping has to be reachable on its own.
+     */
+    public function test_offers_the_option_translation_separately_for_direct_platform_calls(): void
+    {
+        $client = $this->client(new FakePlatform(new FakeResult(new TextResult('Hi'))));
+
+        self::assertSame(
+            ['max_output_tokens' => 400],
+            $client->normalizeOptions(['max_tokens' => 400])
+        );
+    }
+
+    public function test_the_option_translation_matches_what_chat_applies_internally(): void
+    {
+        $platform = new FakePlatform(new FakeResult(new TextResult('Hi')));
+        $client = $this->client($platform, 'anthropic');
+
+        $client->chat($this->helloRequest(), ['max_tokens' => 400, 'stop' => 'END']);
+
+        self::assertSame(
+            $platform->options,
+            $client->normalizeOptions(['max_tokens' => 400, 'stop' => 'END']),
+            'A consumer calling the platform directly must be able to reproduce the same payload.'
+        );
+    }
+
+    /**
+     * A truncated answer is indistinguishable from a finished one without this, and every provider
+     * words it differently, so the normalized case is what a consumer can branch on.
+     */
+    public function test_reports_why_the_model_stopped_in_both_normalized_and_raw_form(): void
+    {
+        $metadata = new Metadata();
+        $metadata->add('finish_reason', new FinishReason(FinishReasonCase::LENGTH, 'max_tokens'));
+        $platform = new FakePlatform(new FakeResult(new TextResult('Truncat'), $metadata));
+
+        $response = $this->client($platform)->chat($this->helloRequest());
+
+        self::assertSame(AiBaseFinishReason::Length, $response->getFinishReason());
+        self::assertSame('max_tokens', $response->getRawFinishReason());
+    }
+
+    /**
+     * The platform normalizes the reason itself for every bundled bridge, but a third-party bridge
+     * may store the provider's bare wording. Without the fallback a consumer branching on
+     * FinishReason::Length treats a truncated answer as a finished one.
+     *
+     * @dataProvider bareProviderFinishReasonProvider
+     */
+    public function test_translates_a_bare_provider_stop_reason_a_bridge_did_not_normalize(
+        string $raw,
+        AiBaseFinishReason $expected,
+    ): void {
+        $metadata = new Metadata();
+        $metadata->add('finish_reason', $raw);
+        $platform = new FakePlatform(new FakeResult(new TextResult('Truncat'), $metadata));
+
+        $response = $this->client($platform)->chat($this->helloRequest());
+
+        self::assertSame($expected, $response->getFinishReason());
+        self::assertSame($raw, $response->getRawFinishReason());
+    }
+
+    /**
+     * @return array<string, array{0: string, 1: AiBaseFinishReason}>
+     */
+    public static function bareProviderFinishReasonProvider(): array
+    {
+        return [
+            'OpenAI truncation' => ['length', AiBaseFinishReason::Length],
+            'Anthropic truncation' => ['max_tokens', AiBaseFinishReason::Length],
+            'Google truncation, upper case' => ['MAX_TOKENS', AiBaseFinishReason::Length],
+            'Anthropic clean stop' => ['end_turn', AiBaseFinishReason::Stop],
+            'OpenAI tool call' => ['tool_calls', AiBaseFinishReason::ToolCall],
+            'Anthropic refusal' => ['refusal', AiBaseFinishReason::ContentFilter],
+            'a wording nobody maps' => ['something_new', AiBaseFinishReason::Other],
+        ];
+    }
+
+    public function test_reports_no_finish_reason_when_the_provider_sent_none(): void
+    {
+        $platform = new FakePlatform(new FakeResult(new TextResult('Hi')));
+
+        $response = $this->client($platform)->chat($this->helloRequest());
+
+        self::assertNull($response->getFinishReason());
+        self::assertNull($response->getRawFinishReason());
+    }
+
+    /**
+     * The output-token limit is spelled differently by every provider, and OpenAI-compatible
+     * endpoints reject unknown body fields outright, so passing one option through unchanged is a
+     * hard failure or a silently different cap depending on which backend an administrator picked.
+     *
+     * @dataProvider outputTokenLimitProvider
+     */
+    public function test_spells_the_output_token_limit_the_way_the_provider_does(
+        string $serviceCode,
+        string $expectedKey,
+    ): void {
+        $platform = new FakePlatform(new FakeResult(new TextResult('Hi')));
+
+        $this->client($platform, $serviceCode)->chat($this->helloRequest(), ['max_tokens' => 400]);
+
+        self::assertArrayNotHasKey('max_tokens', array_diff_key($platform->options, ['max_tokens' => null]));
+        self::assertSame(400, $platform->options[$expectedKey] ?? null);
+    }
+
+    /**
+     * @return array<string, array{0: string, 1: string}>
+     */
+    public static function outputTokenLimitProvider(): array
+    {
+        return [
+            'OpenAI Responses API' => ['openai', 'max_output_tokens'],
+            'Anthropic Messages API' => ['anthropic', 'max_tokens'],
+            'Gemini generationConfig' => ['google', 'maxOutputTokens'],
+            'Ollama options' => ['ollama', 'num_predict'],
+            'OpenAI-compatible chat completions' => ['deepseek', 'max_tokens'],
+        ];
+    }
+
+    /**
+     * Anthropic rejects a request without max_tokens, so the one call that works everywhere else
+     * would fail there alone unless the client supplies the limit the others default themselves.
+     */
+    public function test_supplies_the_output_token_limit_anthropic_requires(): void
+    {
+        $platform = new FakePlatform(new FakeResult(new TextResult('Hi')));
+
+        $this->client($platform, 'anthropic')->chat($this->helloRequest());
+
+        self::assertSame(4096, $platform->options['max_tokens'] ?? null);
+    }
+
+    public function test_does_not_override_an_option_the_caller_addressed_to_the_provider(): void
+    {
+        $platform = new FakePlatform(new FakeResult(new TextResult('Hi')));
+
+        $this->client($platform, 'anthropic')->chat($this->helloRequest(), ['max_tokens' => 100]);
+
+        self::assertSame(100, $platform->options['max_tokens'] ?? null);
+    }
+
+    public function test_wraps_a_stop_sequence_for_providers_that_want_a_list(): void
+    {
+        $platform = new FakePlatform(new FakeResult(new TextResult('Hi')));
+
+        $this->client($platform, 'anthropic')->chat($this->helloRequest(), ['stop' => 'END']);
+
+        self::assertSame(['END'], $platform->options['stop_sequences'] ?? null);
+        self::assertArrayNotHasKey('stop', $platform->options);
+    }
+
+    /**
+     * Dropping an option the provider cannot honour would leave a caller believing a limit is in
+     * force that never reaches the wire.
+     */
+    public function test_refuses_an_option_the_provider_has_no_equivalent_for(): void
+    {
+        $platform = new FakePlatform(new FakeResult(new TextResult('Hi')));
+
+        $this->expectException(LocalizedException::class);
+        $this->expectExceptionMessage('"stop" option is not supported by AI service "openai"');
+
+        $this->client($platform)->chat($this->helloRequest(), ['stop' => 'END']);
+    }
+
+    public function test_passes_provider_specific_options_through_untouched(): void
+    {
+        $platform = new FakePlatform(new FakeResult(new TextResult('Hi')));
+
+        $this->client($platform, 'anthropic')->chat($this->helloRequest(), ['thinking' => ['type' => 'enabled']]);
+
+        self::assertSame(['type' => 'enabled'], $platform->options['thinking'] ?? null);
+    }
+
+    /**
+     * A streaming tool loop has to append the assistant turn before the next iteration, and the
+     * pieces of that turn arrive spread across the deltas. Rebuilding it per consumer is the
+     * bookkeeping this client exists to remove.
+     */
+    public function test_streaming_returns_the_assembled_turn(): void
+    {
+        $metadata = new Metadata();
+        $metadata->add('finish_reason', new FinishReason(FinishReasonCase::TOOL_CALL, 'tool_use'));
+        $metadata->add('token_usage', new TokenUsage(promptTokens: 120, completionTokens: 45));
+        $platform = new FakePlatform(new FakeResult(null, $metadata, [
+            new TextDelta('Let me '),
+            new TextDelta('look'),
+            new ThinkingDelta('weighing options'),
+            new ToolCallComplete([new ToolCall('toolu_01', 'get_orders', ['status' => 'pending'])]),
+        ]));
+
+        $stream = $this->client($platform)->streamChat($this->helloRequest());
+        iterator_to_array($stream, false);
+        $turn = $stream->getReturn();
+
+        self::assertSame('Let me look', $turn->getText(), 'Thinking is reasoning, not the answer.');
+        self::assertTrue($turn->hasToolCalls());
+        self::assertSame('get_orders', $turn->getToolCalls()[0]->getName());
+        self::assertSame(45, $turn->getUsage()?->getCompletionTokens());
+        self::assertSame(AiBaseFinishReason::ToolCall, $turn->getFinishReason());
+    }
+
+    /**
+     * The platform lifts token counts out of the delta sequence into the result metadata, so a
+     * client only watching deltas reports no usage for any streamed call at all.
+     */
+    public function test_streaming_yields_the_token_counts_the_platform_kept_out_of_the_deltas(): void
+    {
+        $metadata = new Metadata();
+        $metadata->add('token_usage', new TokenUsage(promptTokens: 120, completionTokens: 45));
+        $platform = new FakePlatform(new FakeResult(null, $metadata, [new TextDelta('Hi')]));
+
+        $chunks = iterator_to_array($this->client($platform)->streamChat($this->helloRequest()), false);
+
+        $types = array_map(static fn ($c) => $c->getType(), $chunks);
+        self::assertSame([StreamChunkType::Text, StreamChunkType::Usage], $types);
+        self::assertSame(120, $chunks[1]->getUsage()?->getPromptTokens());
+    }
+
+    public function test_streaming_reports_usage_once_when_a_bridge_also_sends_it_as_a_delta(): void
+    {
+        $metadata = new Metadata();
+        $metadata->add('token_usage', new TokenUsage(promptTokens: 120, completionTokens: 45));
+        $platform = new FakePlatform(new FakeResult(null, $metadata, [
+            new TextDelta('Hi'),
+            new TokenUsage(promptTokens: 120, completionTokens: 45),
+        ]));
+
+        $chunks = iterator_to_array($this->client($platform)->streamChat($this->helloRequest()), false);
+
+        $usageChunks = array_filter($chunks, static fn ($c) => $c->getType() === StreamChunkType::Usage);
+        self::assertCount(1, $usageChunks);
+    }
+
+    private function client(FakePlatform $platform, string $serviceCode = 'openai'): SymfonyAiClient
+    {
+        return new SymfonyAiClient($platform, 'gpt-4o', $serviceCode, '_row_1', $this->optionNormalizer());
+    }
+
+    /**
+     * A normalizer wired the way di.xml wires it, so the mappings under test are the shipped ones.
+     */
+    private function optionNormalizer(): OptionNormalizer
+    {
+        return new OptionNormalizer(
+            new BridgeRegistry([
+                'openai' => ['dialect' => 'openai_responses'],
+                'anthropic' => ['dialect' => 'anthropic_messages'],
+                'google' => ['dialect' => 'gemini'],
+                'ollama' => ['dialect' => 'ollama'],
+                'deepseek' => ['dialect' => 'openai_chat'],
+            ]),
+            [
+                'openai_responses' => ['map' => [
+                    'max_tokens' => 'max_output_tokens',
+                    'temperature' => 'temperature',
+                    'top_p' => 'top_p',
+                ]],
+                'openai_chat' => ['map' => [
+                    'max_tokens' => 'max_tokens',
+                    'temperature' => 'temperature',
+                    'top_p' => 'top_p',
+                    'stop' => 'stop',
+                ]],
+                'anthropic_messages' => [
+                    'map' => [
+                        'max_tokens' => 'max_tokens',
+                        'temperature' => 'temperature',
+                        'top_p' => 'top_p',
+                        'stop' => 'stop_sequences',
+                    ],
+                    'lists' => ['stop'],
+                    'defaults' => ['max_tokens' => 4096],
+                ],
+                'gemini' => [
+                    'map' => [
+                        'max_tokens' => 'maxOutputTokens',
+                        'temperature' => 'temperature',
+                        'top_p' => 'topP',
+                        'stop' => 'stopSequences',
+                    ],
+                    'lists' => ['stop'],
+                ],
+                'ollama' => [
+                    'map' => [
+                        'max_tokens' => 'num_predict',
+                        'temperature' => 'temperature',
+                        'top_p' => 'top_p',
+                        'stop' => 'stop',
+                    ],
+                    'lists' => ['stop'],
+                ],
+            ]
+        );
     }
 
     private function helloRequest(): ChatRequest

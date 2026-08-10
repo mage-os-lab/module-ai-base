@@ -16,6 +16,20 @@ class AiServiceSelector implements AiServiceSelectorInterface
     private const CONFIG_PATH_AI_SERVICES = 'mageos_ai/services/configuration';
 
     /**
+     * Raw stored value the memoized services were parsed from.
+     *
+     * @var string|null
+     */
+    private ?string $parsedRaw = null;
+
+    /**
+     * Services parsed from $parsedRaw.
+     *
+     * @var AiServiceInterface[]
+     */
+    private array $parsedServices = [];
+
+    /**
      * @param ScopeConfigInterface $scopeConfig
      * @param AiServiceInterfaceFactory $aiServiceFactory
      * @param SensitiveDataProcessor $sensitiveDataProcessor
@@ -63,6 +77,12 @@ class AiServiceSelector implements AiServiceSelectorInterface
     /**
      * Read and defensively parse the stored services configuration.
      *
+     * Parsing decrypts every credential of every configured row, which a tool loop resolving its
+     * service once per iteration would otherwise pay for on every turn. The memo is keyed on the
+     * raw stored value rather than simply held: reading it back is cheap, and a store switch
+     * (emulation in cron or a transactional email) has to re-parse rather than serve another
+     * scope's credentials.
+     *
      * @return AiServiceInterface[]
      */
     private function getParsedConfig(): array
@@ -70,6 +90,9 @@ class AiServiceSelector implements AiServiceSelectorInterface
         $raw = $this->scopeConfig->getValue(self::CONFIG_PATH_AI_SERVICES, ScopeInterface::SCOPE_STORE);
         if (!is_string($raw) || $raw === '') {
             return [];
+        }
+        if ($raw === $this->parsedRaw) {
+            return $this->parsedServices;
         }
 
         $decoded = json_decode($raw, true);
@@ -94,6 +117,8 @@ class AiServiceSelector implements AiServiceSelectorInterface
             ]);
         }
 
-        return $services;
+        $this->parsedRaw = $raw;
+
+        return $this->parsedServices = $services;
     }
 }

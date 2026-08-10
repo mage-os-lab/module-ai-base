@@ -6,6 +6,7 @@ namespace MageOS\AiBase\Model\Chat;
 
 use MageOS\AiBase\Api\Data\ChatMessageInterface;
 use MageOS\AiBase\Api\Data\ChatRequestInterface;
+use MageOS\AiBase\Api\Data\ChatResponseInterface;
 use MageOS\AiBase\Api\Data\MessageRole;
 use MageOS\AiBase\Api\Data\ToolCallInterface;
 use MageOS\AiBase\Api\Data\ToolDefinitionInterface;
@@ -50,6 +51,16 @@ class ChatRequest implements ChatRequestInterface
     public function withMessage(ChatMessageInterface $message): ChatRequestInterface
     {
         return new self([...$this->getMessages(), $message], $this->tools);
+    }
+
+    /**
+     * @inheritdoc
+     */
+    public function withAssistantTurn(ChatResponseInterface $response): ChatRequestInterface
+    {
+        return $this->withMessage(
+            new ChatMessage(MessageRole::Assistant, $response->getText(), $response->getToolCalls())
+        );
     }
 
     /**

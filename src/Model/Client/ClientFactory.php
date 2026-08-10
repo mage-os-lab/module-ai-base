@@ -75,6 +75,7 @@ class ClientFactory implements AiClientFactoryInterface
             'platform' => $this->createPlatform($service),
             'model' => (string)($service->getConfiguration()['model'] ?? ''),
             'serviceCode' => $service->getCode(),
+            'serviceId' => $service->getId(),
         ]);
     }
 

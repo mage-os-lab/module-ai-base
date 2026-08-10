@@ -7,35 +7,68 @@ namespace MageOS\AiBase\Test\Unit\Etc;
 use PHPUnit\Framework\TestCase;
 
 /**
- * The option source labels a configured row with its provider's display name, which it can only
- * do for providers it was given. A provider registered in the admin form but missing here is not
- * a crash: it degrades to a raw machine code in a list an administrator has to choose from.
+ * The admin form, the option source, the sensitive-data processor and the model-list refresh
+ * controller all need the same set of registered providers, and a provider present in one and
+ * missing from another degrades silently rather than failing: a raw machine code in a dropdown an
+ * administrator has to choose from, or credentials falling back to a field-name heuristic.
+ *
+ * They read one registry now, so the way that drift comes back is someone re-introducing a second
+ * `services` argument somewhere. That is what this guards.
  */
 final class ConfiguredServiceWiringTest extends TestCase
 {
     private const DI_XML = __DIR__ . '/../../../src/etc/di.xml';
 
-    public function test_the_option_source_knows_every_provider_the_admin_form_offers(): void
+    private const REGISTRY = 'MageOS\\AiBase\\Model\\ServiceRegistry';
+
+    public function test_the_registry_is_the_only_place_providers_are_listed(): void
     {
+        $di = new \SimpleXMLElement((string) file_get_contents(self::DI_XML));
+        $owners = array_map(
+            static fn (\SimpleXMLElement $argument): string => (string) $argument->xpath('../..')[0]['name'],
+            $di->xpath('//type/arguments/argument[@name="services"]') ?: []
+        );
+
         self::assertSame(
-            $this->registeredServiceCodes('MageOS\\AiBase\\Block\\Adminhtml\\Configuration\\Services'),
-            $this->registeredServiceCodes('MageOS\\AiBase\\Model\\Config\\Source\\ConfiguredService'),
-            'Providers missing from the option source show up as raw codes when an administrator '
-            . 'picks a configured service.'
+            [self::REGISTRY],
+            $owners,
+            'A second provider list has to be kept in sync by hand, and nothing fails when it is not.'
+        );
+    }
+
+    public function test_every_registered_provider_declares_the_code_it_is_keyed_by(): void
+    {
+        $mismatched = [];
+        foreach ($this->registeredServices() as $code => $class) {
+            $service = (new \ReflectionClass($class))->newInstanceWithoutConstructor();
+            if ($service->getCode() !== $code) {
+                $mismatched[$code] = $service->getCode();
+            }
+        }
+
+        self::assertSame(
+            [],
+            $mismatched,
+            'The registry keys providers by getCode(), so an item name that disagrees with it is '
+            . 'misleading to anyone reading di.xml.'
         );
     }
 
     /**
-     * @param string $type
-     * @return array<int, string>
+     * @return array<string, class-string>
      */
-    private function registeredServiceCodes(string $type): array
+    private function registeredServices(): array
     {
         $di = new \SimpleXMLElement((string) file_get_contents(self::DI_XML));
         $items = $di->xpath(
-            sprintf('//type[@name="%s"]/arguments/argument[@name="services"]/item', $type)
+            sprintf('//type[@name="%s"]/arguments/argument[@name="services"]/item', self::REGISTRY)
         ) ?: [];
 
-        return array_map(static fn ($item): string => (string) $item['name'], $items);
+        $services = [];
+        foreach ($items as $item) {
+            $services[(string) $item['name']] = trim((string) $item);
+        }
+
+        return $services;
     }
 }

@@ -38,9 +38,23 @@ interface ChatResponseInterface
     public function getUsage(): ?TokenUsageInterface;
 
     /**
-     * Provider's stop reason as it reported it, or null when it reported none.
+     * Why the model stopped, normalized across providers, or null when none was reported.
+     *
+     * FinishReason::Length is the one worth handling in every consumer: the text is a truncated
+     * answer rather than a finished one, and nothing else in the response says so.
+     *
+     * @return FinishReason|null
+     */
+    public function getFinishReason(): ?FinishReason;
+
+    /**
+     * The stop reason in the provider's own wording, or null when it reported none.
+     *
+     * For logging and support tickets. Branch on getFinishReason() instead: the wording differs
+     * per provider for the same event, and moving a workload to another backend must not silently
+     * turn a branch false.
      *
      * @return string|null
      */
-    public function getFinishReason(): ?string;
+    public function getRawFinishReason(): ?string;
 }

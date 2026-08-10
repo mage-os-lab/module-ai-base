@@ -11,6 +11,7 @@ use MageOS\AiBase\Api\Data\AiServiceInterfaceFactory;
 use MageOS\AiBase\Model\AiService;
 use MageOS\AiBase\Model\AiServiceSelector;
 use MageOS\AiBase\Model\Config\SensitiveDataProcessor;
+use MageOS\AiBase\Model\ServiceRegistry;
 use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\MockObject\MockObject;
 use PHPUnit\Framework\TestCase;
@@ -28,8 +29,47 @@ final class AiServiceSelectorTest extends TestCase
         $this->subject = new AiServiceSelector(
             $this->scopeConfig,
             $this->aiServiceFactory,
-            new SensitiveDataProcessor($this->createMock(EncryptorInterface::class), []),
+            new SensitiveDataProcessor($this->createMock(EncryptorInterface::class), new ServiceRegistry()),
         );
+    }
+
+    /**
+     * Parsing decrypts every credential of every configured row. A tool loop resolving its service
+     * once per iteration would pay for that on every turn, so repeated reads of an unchanged value
+     * must not re-parse.
+     */
+    public function test_parses_the_stored_configuration_once_across_repeated_reads(): void
+    {
+        $json = json_encode(
+            ['_row1' => ['openai' => ['api_key' => 'k1', 'model' => 'gpt-4o']]],
+            JSON_THROW_ON_ERROR
+        );
+        $this->scopeConfig->method('getValue')->willReturn($json);
+        $this->aiServiceFactory->expects(self::once())->method('create')->willReturnCallback(
+            fn (array $data) => new AiService($data['id'], $data['code'], $data['configuration'])
+        );
+
+        $this->subject->getAll();
+        $this->subject->getByCode('openai');
+        $this->subject->getById('_row1');
+    }
+
+    /**
+     * The memo is keyed on the stored value rather than simply held, so a store switch (emulation
+     * in cron or a transactional email) cannot be served another scope's credentials.
+     */
+    public function test_re_parses_when_the_scope_answers_with_a_different_value(): void
+    {
+        $this->scopeConfig->method('getValue')->willReturnOnConsecutiveCalls(
+            json_encode(['_row1' => ['openai' => ['model' => 'gpt-4o']]], JSON_THROW_ON_ERROR),
+            json_encode(['_row2' => ['anthropic' => ['model' => 'claude-sonnet-4-6']]], JSON_THROW_ON_ERROR),
+        );
+        $this->aiServiceFactory->method('create')->willReturnCallback(
+            fn (array $data) => new AiService($data['id'], $data['code'], $data['configuration'])
+        );
+
+        self::assertSame('openai', $this->subject->getAll()[0]->getCode());
+        self::assertSame('anthropic', $this->subject->getAll()[0]->getCode());
     }
 
     public function test_get_all_returns_empty_array_when_config_is_null(): void
