@@ -15,6 +15,7 @@ In this repo:
 ```bash
 vendor/bin/phpunit --testsuite Unit        # needs a Magento install for the tests that mock generated factories
 vendor/bin/phpunit --testsuite Platform    # the chat client layer; needs symfony/ai-platform, run in CI with --fail-on-skipped
+vendor/bin/phpstan analyse                 # level 10 over src/, configured in phpstan.neon
 vendor/bin/phpcs                           # Magento2 ruleset over src/, configured in phpcs.xml.dist
 ```
 
@@ -22,6 +23,23 @@ The `Unit` suite is only fully green inside a Magento install: `AiServiceSelecto
 `ClientFactoryTest` mock Magento's auto-generated `*Factory` classes, which the ObjectManager code
 generator fabricates only there. CI covers that with a separate job (see
 `.github/workflows/check-extension.yaml`), which is why `phpunit.xml.dist` splits out `Platform`.
+
+The `Integration` suite cannot run from this repo at all — it needs a running Magento install with
+the integration test framework and a database. From inside one that has this module installed:
+
+```bash
+cd dev/tests/integration
+../../../vendor/bin/phpunit -c phpunit.xml.dist ../../../vendor/mage-os/module-ai-base/Test/Integration
+```
+
+CI runs exactly that, in the reusable workflow's `integration_test` job, which appends this
+directory to Magento's own `dev/tests/integration/phpunit.xml.dist` as a testsuite.
+`.github/check-extension.json` keeps that job switched on explicitly.
+
+Anything reading `system.xml` — the backend model on a field, the config structure — needs
+`#[\Magento\TestFramework\Fixture\AppArea('adminhtml')]` on the test class. `system.xml` is only
+read into the config structure for that area; elsewhere the field silently has no backend model,
+and Magento falls back to the plain config `Value`.
 
 Host-side (run inside a Magento 2 install that has this module via `composer require mage-os/module-ai-base`):
 
