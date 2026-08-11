@@ -129,11 +129,24 @@
 //  the composer command, which is also why the field label collapsed to one letter per line once
 //  the viewport got narrow. Claiming the cell explicitly makes the width deliberate instead.
 //
-//  The ID selector is the point rather than an oversight: Magento generates this row and its ID
-//  from the section, group and field names, and it is the only stable hook onto the cell.
+//  Matched by what the cell contains rather than by the ID Magento generates for the row. The
+//  rule is about the cell this control sits in, and saying so survives a rename of the section,
+//  the group or the field.
+//
+//  The admin theme sets `.accordion .config .value { width: 44% }`, so the selector has to carry
+//  more classes than that to win; the shorter forms below are the fallback for a theme that does
+//  not nest the section that way.
 //  --------------------------------------------------------------------------
 
-#row_mageos_ai_services_configuration > .value {
+.accordion .config .value:has(> .ai-services-configurator) {
+    width: 100%;
+}
+
+.config .value:has(> .ai-services-configurator) {
+    width: 100%;
+}
+
+.admin__field-value:has(> .ai-services-configurator) {
     width: 100%;
 }
 
