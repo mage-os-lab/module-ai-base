@@ -9,11 +9,13 @@
 @ai-test-result__error__color: #e22626;
 @ai-service-unavailable__background: #f0f0f0;
 @ai-service-unavailable__border-color: #b3b3b3;
-@ai-service-unavailable__color: #5a5a5a;
-@ai-service-badge__color: #6f6f6f;
+@ai-service-unavailable__color: #40484f;
+@ai-service-badge__color: #57606a;
 @ai-service-note__background: #fdf6e3;
 @ai-service-note__border-color: #e0c97f;
 @ai-service-install-hint__background: #fff;
+@ai-service-row-heading__border-color: #d6d6d6;
+@ai-service-row-model__color: #5a5a5a;
 
 .add-ai-service {
     align-items: center;
@@ -61,11 +63,19 @@
     margin-top: 8px;
 }
 
+//
+//  The result of Test Connection and Refresh Models sits under the row's fields, not in the
+//  action column: a provider's error is a sentence, and 260px wrapped one into five lines.
+//  --------------------------------------------------------------------------
+
 .ai-test-result {
     display: block;
-    margin-top: 6px;
-    max-width: 260px;
+    margin: 8px 0 4px;
     word-break: break-word;
+
+    &:empty {
+        display: none;
+    }
 }
 
 .ai-test-result-success {
@@ -74,6 +84,82 @@
 
 .ai-test-result-error {
     color: @ai-test-result__error__color;
+}
+
+//
+//  Row identity
+//  A row's fields never say which provider they configure, and two rows of the same backend
+//  (two accounts, two billing owners) are otherwise identical down to the pixel.
+//  --------------------------------------------------------------------------
+
+.ai-service-row-heading {
+    align-items: baseline;
+    border-bottom: 1px solid @ai-service-row-heading__border-color;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-bottom: 10px;
+    padding-bottom: 6px;
+}
+
+.ai-service-row-name {
+    font-size: 15px;
+    font-weight: 600;
+}
+
+.ai-service-row-model {
+    color: @ai-service-row-model__color;
+    font-size: 12px;
+
+    &:not(:empty)::before {
+        content: '·';
+        margin-right: 8px;
+    }
+}
+
+.ai-services-empty-state td {
+    color: @ai-service-row-model__color;
+    font-style: italic;
+    padding: 16px 0;
+}
+
+//
+//  Magento lays the config form out as an auto-layout table, so this field's cell is only as wide
+//  as its content asks for. The width used to come from the one thing here that could not wrap,
+//  the composer command, which is also why the field label collapsed to one letter per line once
+//  the viewport got narrow. Claiming the cell explicitly makes the width deliberate instead.
+//
+//  The ID selector is the point rather than an oversight: Magento generates this row and its ID
+//  from the section, group and field names, and it is the only stable hook onto the cell.
+//  --------------------------------------------------------------------------
+
+#row_mageos_ai_services_configuration > .value {
+    width: 100%;
+}
+
+.ai-services-configurator {
+    max-width: 100%;
+    width: 100%;
+
+    .admin__control-table {
+        table-layout: auto;
+        width: 100%;
+    }
+
+    //  The per-row field table is what holds the inputs; left to shrink-wrap it leaves the row
+    //  narrow while the outer table stretches, so the two are tied together explicitly.
+    .admin__control-table > tbody > tr > td > table {
+        width: 100%;
+
+        > tbody > tr > th {
+            white-space: nowrap;
+            width: 1px;
+        }
+    }
+
+    .col-actions {
+        white-space: nowrap;
+    }
 }
 
 //
@@ -124,12 +210,30 @@
     }
 }
 
+.ai-service-install-hint-wrapper {
+    align-items: flex-start;
+    display: flex;
+    gap: 8px;
+    margin-bottom: 6px;
+}
+
+//
+//  The command wraps rather than scrolling. It ran past the edge of its box at every width the
+//  admin is used at, and an overlay scrollbar gives no sign that there is more of it.
+//  --------------------------------------------------------------------------
+
 .ai-service-install-hint {
     background: @ai-service-install-hint__background;
     border: 1px solid @ai-service-note__border-color;
     border-radius: 3px;
-    margin: 0 0 6px;
-    overflow-x: auto;
+    flex: 1 1 auto;
+    margin: 0;
+    min-width: 0;
+    overflow-wrap: anywhere;
     padding: 8px 10px;
-    white-space: pre;
+    white-space: pre-wrap;
+}
+
+.ai-service-copy-command {
+    flex: 0 0 auto;
 }

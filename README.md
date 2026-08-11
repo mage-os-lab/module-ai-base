@@ -2,6 +2,14 @@
 
 The goal of this module is to provide a way to allow to configure multiple AI backends.
 
+![The AI Configuration section: one row per configured service, each naming its provider and model, with Test Connection and Refresh Models per row and an install hint for providers whose bridge package is missing](docs/images/admin-configuration.png)
+
+Every row names the provider it configures and the model it is set to, so the same backend can be
+added more than once (one row per account) and still be told apart. **Test Connection** and
+**Refresh Models** act on the row they sit in. Providers whose Symfony AI bridge package is not
+installed stay configurable for modules that call the provider themselves, and the form says what
+to install to make them usable through the bundled client.
+
 ## Installation
 
 ```bash

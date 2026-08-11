@@ -123,7 +123,7 @@ class Services extends AbstractFieldArray
      * model-list resolver, so a previously refreshed list wins over the curated defaults.
      *
      * @return string JSON object keyed by service code:
-     *         {fields: array[], supportsModelRefresh: bool}
+     *         {name: string, fields: array[], supportsModelRefresh: bool}
      */
     public function getServicesSchemaJson(): string
     {
@@ -131,6 +131,10 @@ class Services extends AbstractFieldArray
         foreach ($this->serviceRegistry->getAll() as $code => $service) {
             $models = $this->modelListResolver->getModels($service);
             $schema[$code] = [
+                // The rows are built in JavaScript, so the display name has to travel with the
+                // schema. Without it a row shows its fields and never says which provider they
+                // belong to, which is the one thing two rows of the same backend differ by.
+                'name' => $service->getName(),
                 'fields' => array_map(
                     fn (FieldDescriptorInterface $field) => [
                         'name'      => $field->getName(),

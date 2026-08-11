@@ -14,7 +14,7 @@
                 <field id="configuration" translate="label comment" type="text" sortOrder="20" showInDefault="1" showInWebsite="1" showInStore="1">
                     <label>Configured Services</label>
                     <backend_model>MageOS\AiBase\Model\Config\Backend\EncryptedServices</backend_model>
-                    <comment>Define one or more AI services using the Add Service button.</comment>
+                    <comment>Choose a provider below to add a service. The same provider can be added more than once, for example one row per account.</comment>
                     <frontend_model>MageOS\AiBase\Block\Adminhtml\Configuration\Services</frontend_model>
                 </field>
             </group>

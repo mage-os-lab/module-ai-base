@@ -11,6 +11,7 @@ use Magento\Framework\Controller\Result\Json;
 use Magento\Framework\Controller\Result\JsonFactory;
 use Magento\Framework\Exception\LocalizedException;
 use MageOS\AiBase\Api\AiServiceSelectorInterface;
+use MageOS\AiBase\Api\Data\AiServiceInterface;
 use MageOS\AiBase\Api\ModelListProviderInterface;
 use MageOS\AiBase\Model\ModelList\Storage;
 use MageOS\AiBase\Model\ServiceRegistry;
@@ -53,7 +54,7 @@ class RefreshModels extends Action implements HttpPostActionInterface
     public function execute(): Json
     {
         $result = $this->jsonFactory->create();
-        $serviceCode = $this->getRequestedServiceCode();
+        $serviceCode = $this->getRequestedParam('service_code');
         if ($serviceCode === '') {
             return $result->setData([
                 'success' => false,
@@ -70,15 +71,15 @@ class RefreshModels extends Action implements HttpPostActionInterface
                 ]);
             }
 
-            $configured = $this->serviceSelector->getByCode($serviceCode);
-            if ($configured === []) {
+            $configured = $this->resolveRow($this->getRequestedParam('service_id'), $serviceCode);
+            if ($configured === null) {
                 return $result->setData([
                     'success' => false,
                     'error' => (string) __('No AI service configured for code "%1".', $serviceCode),
                 ]);
             }
 
-            $models = $definition->fetchModels($configured[0]->getConfiguration());
+            $models = $definition->fetchModels($configured->getConfiguration());
             $this->modelListStorage->save($serviceCode, $models);
 
             return $result->setData([
@@ -100,17 +101,39 @@ class RefreshModels extends Action implements HttpPostActionInterface
     }
 
     /**
-     * The service code the request asked for, ignoring a parameter that did not arrive as a string.
+     * The configured row whose credentials the list is fetched with.
+     *
+     * Model lists are per provider, but the key that fetches one belongs to a row. An administrator
+     * with two rows of the same provider, which is the setup row ids exist for, would otherwise
+     * refresh from the first row's account no matter which button they pressed, and read the
+     * resulting error against the key in front of them.
+     *
+     * @param string $serviceId
+     * @param string $serviceCode
+     * @return AiServiceInterface|null
+     */
+    private function resolveRow(string $serviceId, string $serviceCode): ?AiServiceInterface
+    {
+        if ($serviceId !== '') {
+            return $this->serviceSelector->getById($serviceId);
+        }
+
+        return $this->serviceSelector->getByCode($serviceCode)[0] ?? null;
+    }
+
+    /**
+     * A request parameter, ignoring one that did not arrive as a string.
      *
      * Query parameters are whatever the caller put in the URL: `?service_code[]=x` arrives as an
      * array, and casting that hands the string `Array` to the registry as if it were a code.
      *
+     * @param string $name
      * @return string
      */
-    private function getRequestedServiceCode(): string
+    private function getRequestedParam(string $name): string
     {
-        $serviceCode = $this->getRequest()->getParam('service_code');
+        $value = $this->getRequest()->getParam($name);
 
-        return is_string($serviceCode) ? $serviceCode : '';
+        return is_string($value) ? $value : '';
     }
 }

@@ -58,9 +58,17 @@ $_colspan = $block->isAddAfter() ? 2 : 1;
                                             __('To make them available, run from your project root:')
                                         ) ?>
                                     </p>
-                                    <pre class="ai-service-install-hint"><?=
-                                        $escaper->escapeHtml($_command)
-                                    ?></pre>
+                                    <div class="ai-service-install-hint-wrapper">
+                                        <pre class="ai-service-install-hint"><?=
+                                            $escaper->escapeHtml($_command)
+                                        ?></pre>
+                                        <button type="button"
+                                                class="action-secondary ai-service-copy-command"
+                                                data-copy-label="<?= $escaper->escapeHtmlAttr(__('Copy')) ?>"
+                                                data-copied-label="<?= $escaper->escapeHtmlAttr(__('Copied')) ?>">
+                                            <span><?= $escaper->escapeHtml(__('Copy')) ?></span>
+                                        </button>
+                                    </div>
                                     <p>
                                         <?= $escaper->escapeHtml(__(
                                             'Then run bin/magento cache:flush and reload this page.'
@@ -90,6 +98,15 @@ $_colspan = $block->isAddAfter() ? 2 : 1;
                 </tr>
             </tfoot>
             <tbody id="addRow<?= $escaper->escapeHtmlAttr($_htmlId) ?>"></tbody>
+            <tbody class="ai-services-empty-state" hidden>
+                <tr>
+                    <td colspan="<?= count($block->getColumns()) + $_colspan ?>">
+                        <?= $escaper->escapeHtml(__(
+                            'No AI service configured yet. Choose a provider below to add one.'
+                        )) ?>
+                    </td>
+                </tr>
+            </tbody>
         </table>
     </div>
     <input type="hidden"
@@ -100,6 +117,10 @@ $_colspan = $block->isAddAfter() ? 2 : 1;
     $schemaJson = $block->getServicesSchemaJson();
     $fieldNameJs = $escaper->escapeJs($block->getElement()->getName());
     $deleteLabelJs = $escaper->escapeJs(__('Delete'));
+    // Removing a row discards a credential the administrator cannot read back and cannot retype.
+    $deleteConfirmJs = $escaper->escapeJs(
+        __('Remove this service? Its saved credentials are deleted when you save the configuration.')
+    );
     $htmlIdJs = $escaper->escapeJs($_htmlId);
     // Test Connection is only rendered for SAVED rows: the client factory reads
     // saved configuration, so unsaved rows cannot be tested. When multiple rows
@@ -141,6 +162,7 @@ require(['prototype'], function () {
     }
 
     let datalistSequence = 0;
+    let fieldSequence = 0;
 
     function buildOptions(options, selectedValue) {
         return options.map(function (opt) {
@@ -171,28 +193,47 @@ require(['prototype'], function () {
         }) || null;
     }
 
+    /**
+     * Every control gets an id so its <th> can be a real <label for>. The id is keyed off a
+     * sequence rather than the row ID for the same reason the datalist id is: row IDs are
+     * attacker controllable, and this keeps them out of the attribute entirely.
+     */
     function buildField(serviceCode, fieldName, field) {
         const base = fieldNameBase + '[' + fieldName + '][' + serviceCode + '][' + field.name + ']';
+        const fieldId = 'ai-field-' + (++fieldSequence);
+
         if (field.type === 'select') {
-            return '<select name="' + escapeHtml(base) + '">'
-                + buildOptions(field.options, field.default) + '</select>';
+            return {
+                id: fieldId,
+                html: '<select id="' + fieldId + '" name="' + escapeHtml(base) + '">'
+                    + buildOptions(field.options, field.default) + '</select>',
+            };
         }
         const defaultAttr = field.default ? ' value="' + escapeHtml(field.default) + '"' : '';
         const inputType = (field.type === 'password' || field.type === 'text') ? field.type : 'text';
         const type = field.encrypted ? 'password' : inputType;
+        // Credentials are not the administrator's own password. Without this a password manager
+        // offers to save the provider's API key as a login for the store's admin domain, and
+        // offers it back on the next unrelated password field.
+        const autocomplete = ' autocomplete="off" spellcheck="false"';
 
         // A free-text field carrying options (the model field) gets them as datalist
         // suggestions, so a refreshed list is usable without constraining the input to it.
-        // The id is keyed off a sequence rather than the row ID: row IDs are attacker
-        // controllable, and this keeps them out of the attribute entirely.
         if (field.options && field.options.length && type !== 'password') {
             const listId = 'ai-model-options-' + (++datalistSequence);
-            return '<input type="' + type + '" name="' + escapeHtml(base) + '"'
-                + defaultAttr + ' list="' + listId + '"/>'
-                + '<datalist id="' + listId + '">' + buildOptions(field.options) + '</datalist>';
+            return {
+                id: fieldId,
+                html: '<input type="' + type + '" id="' + fieldId + '" name="' + escapeHtml(base) + '"'
+                    + defaultAttr + autocomplete + ' list="' + listId + '"/>'
+                    + '<datalist id="' + listId + '">' + buildOptions(field.options) + '</datalist>',
+            };
         }
 
-        return '<input type="' + type + '" name="' + escapeHtml(base) + '"' + defaultAttr + '/>';
+        return {
+            id: fieldId,
+            html: '<input type="' + type + '" id="' + fieldId + '" name="' + escapeHtml(base) + '"'
+                + defaultAttr + autocomplete + '/>',
+        };
     }
 
     function addRow(serviceCode, values, existingRowId) {
@@ -202,17 +243,28 @@ require(['prototype'], function () {
 
         const d = new Date();
         const rowId = existingRowId || ('_' + d.getTime() + '_' + d.getMilliseconds());
+        const serviceName = serviceSchema.name || serviceCode;
 
         const rows = fields.map(function (field) {
+            const control = buildField(serviceCode, rowId, field);
             return '<tr>'
-                + '<th>' + escapeHtml(field.label) + '</th>'
-                + '<td>' + buildField(serviceCode, rowId, field) + '</td>'
+                + '<th><label for="' + control.id + '">' + escapeHtml(field.label) + '</label></th>'
+                + '<td>' + control.html + '</td>'
                 + '</tr>';
         }).join('');
 
+        // Which provider a row configures is the one thing its fields never say, and two rows of
+        // the same backend (two accounts, two billing owners) are otherwise indistinguishable.
+        // The model rides along as a subtitle because it is what tells those two rows apart.
+        const headingHtml = '<div class="ai-service-row-heading">'
+            + '<span class="ai-service-row-name">' + escapeHtml(serviceName) + '</span>'
+            + '<span class="ai-service-row-model" data-row-model="' + escapeHtml(rowId) + '"></span>'
+            + '</div>';
+
         // Stored rows (they arrive with an existingRowId) get a Test Connection
         // button; unsaved rows cannot be tested because the client factory only
-        // reads saved configuration.
+        // reads saved configuration. Both buttons carry the row id, so they act on
+        // the row they sit in rather than on the first row of the same service code.
         const refreshHtml = (existingRowId && serviceSchema.supportsModelRefresh)
             ? '<button class="action-secondary action-refresh-models" type="button"'
                 + ' data-service-code="' + escapeHtml(serviceCode) + '"'
@@ -221,21 +273,24 @@ require(['prototype'], function () {
             : '';
         const testHtml = existingRowId
             ? '<button class="action-secondary action-test-connection" type="button"'
-                + ' data-service-code="' + escapeHtml(serviceCode) + '">'
+                + ' data-service-code="' + escapeHtml(serviceCode) + '"'
+                + ' data-row-id="' + escapeHtml(rowId) + '">'
                 + '<span>{$testLabelJs}</span></button>'
                 + refreshHtml
-                + '<span class="ai-test-result"></span>'
             : '';
 
         const rowHtml = '<tr id="' + escapeHtml(rowId) + '">'
-            + '<td><table>' + rows + '</table></td>'
+            + '<td>' + headingHtml + '<table>' + rows + '</table>'
+            + '<div class="ai-test-result" role="status" aria-live="polite"></div></td>'
             + '<td class="col-actions">'
-            + '<button class="action-delete" data-row-id="' + escapeHtml(rowId) + '" type="button">'
+            + '<button class="action-delete" data-row-id="' + escapeHtml(rowId) + '" type="button"'
+            + ' title="{$deleteLabelJs}" aria-label="{$deleteLabelJs} ' + escapeHtml(serviceName) + '">'
             + '<span>{$deleteLabelJs}</span></button>'
             + testHtml + '</td>'
             + '</tr>';
 
         Element.insert($('addRow{$htmlIdJs}'), { bottom: rowHtml });
+        syncRowModel(rowId, serviceCode);
 
         if (values) {
             Object.keys(values).forEach(function (key) {
@@ -254,22 +309,82 @@ require(['prototype'], function () {
                 }
                 el.value = values[key];
             });
+            syncRowModel(rowId, serviceCode);
+        }
+
+        return rowId;
+    }
+
+    /**
+     * Keep the row's subtitle showing the model that row is set to, since that is what tells two
+     * rows of the same provider apart once both are collapsed into a wall of identical fields.
+     */
+    /**
+     * The subtitle element of a row, found by comparing its attribute rather than by building a
+     * selector out of the row ID, for the same reason findField() does: a stored ID containing a
+     * double quote makes querySelector throw and aborts the loop that called it.
+     */
+    function findRowModelLabel(rowId) {
+        const container = document.querySelector('.ai-services-configurator');
+        if (!container) return null;
+
+        return Array.from(container.querySelectorAll('[data-row-model]')).find(function (el) {
+            return el.getAttribute('data-row-model') === rowId;
+        }) || null;
+    }
+
+    function syncRowModel(rowId, serviceCode) {
+        const label = findRowModelLabel(rowId);
+        const field = findField(rowId, serviceCode, 'model');
+        if (!label) return;
+        label.textContent = (field && field.value) ? field.value : '';
+        if (field && !field.dataset.modelSynced) {
+            field.dataset.modelSynced = '1';
+            field.addEventListener('change', function () { syncRowModel(rowId, serviceCode); });
+            field.addEventListener('input', function () { syncRowModel(rowId, serviceCode); });
+        }
+    }
+
+    function updateEmptyState() {
+        const body = document.getElementById('addRow{$htmlIdJs}');
+        const emptyState = document.querySelector('.ai-services-empty-state');
+        if (body && emptyState) {
+            emptyState.hidden = body.querySelectorAll('tr').length > 0;
         }
     }
 
     document.querySelectorAll('.ai-services-configurator .add-ai-service').forEach(function (btn) {
         btn.addEventListener('click', function (e) {
-            addRow(e.target.dataset.aiService);
+            const trigger = e.target.closest('.add-ai-service');
+            const rowId = addRow(trigger.dataset.aiService);
+            updateEmptyState();
+            // Land the caret in the row that just appeared, so adding a provider continues into
+            // filling it in instead of leaving focus on the button and the new row unannounced.
+            const firstField = document.getElementById(rowId)
+                ? document.getElementById(rowId).querySelector('input, select')
+                : null;
+            if (firstField) firstField.focus();
         });
     });
 
+    /**
+     * The result element of the row a button belongs to. It lives beside the fields rather than in
+     * the action column, where a provider's error message wrapped to five lines in 260 pixels.
+     */
+    function resultElementFor(button) {
+        const row = button.closest('tr');
+        return row ? row.querySelector('.ai-test-result') : null;
+    }
+
     function testConnection(button) {
-        const resultEl = button.parentNode.querySelector('.ai-test-result');
+        const resultEl = resultElementFor(button);
+        if (!resultEl) return;
         button.disabled = true;
         resultEl.className = 'ai-test-result';
         resultEl.textContent = '{$testingLabelJs}';
 
         const body = new URLSearchParams();
+        body.append('service_id', button.dataset.rowId);
         body.append('service_code', button.dataset.serviceCode);
         body.append('form_key', window.FORM_KEY);
 
@@ -352,12 +467,14 @@ require(['prototype'], function () {
     }
 
     function refreshModels(button) {
-        const resultEl = button.parentNode.querySelector('.ai-test-result');
+        const resultEl = resultElementFor(button);
+        if (!resultEl) return;
         button.disabled = true;
         resultEl.className = 'ai-test-result';
         resultEl.textContent = '{$refreshingLabelJs}';
 
         const body = new URLSearchParams();
+        body.append('service_id', button.dataset.rowId);
         body.append('service_code', button.dataset.serviceCode);
         body.append('form_key', window.FORM_KEY);
 
@@ -393,11 +510,43 @@ require(['prototype'], function () {
             refreshModels(refreshButton);
             return;
         }
-        if (!e.target.classList.contains('action-delete')) return;
-        document.getElementById(e.target.dataset.rowId).remove();
+        const copyButton = e.target.closest('.ai-service-copy-command');
+        if (copyButton) {
+            copyInstallCommand(copyButton);
+            return;
+        }
+        const deleteButton = e.target.closest('.action-delete');
+        if (!deleteButton) return;
+
+        // Credentials are masked, so an administrator cannot retype what a mis-click removed, and
+        // the removal becomes permanent on the next save. Asking costs one keystroke.
+        if (!window.confirm('{$deleteConfirmJs}')) return;
+
+        const row = document.getElementById(deleteButton.dataset.rowId);
+        if (row) row.remove();
+        updateEmptyState();
     });
 
-{$existingRowsJs}});
+    /**
+     * The install hint exists to be pasted into a shell, and it is long enough to be clipped, so
+     * copying it should not depend on selecting text that runs past the edge of its box.
+     */
+    function copyInstallCommand(button) {
+        const command = document.querySelector('.ai-service-install-hint');
+        if (!command || !navigator.clipboard) return;
+        navigator.clipboard.writeText(command.textContent.trim()).then(function () {
+            const label = button.querySelector('span');
+            label.textContent = button.dataset.copiedLabel;
+            window.setTimeout(function () {
+                label.textContent = button.dataset.copyLabel;
+            }, 2000);
+        });
+    }
+
+
+{$existingRowsJs}
+    updateEmptyState();
+});
 script;
     ?>
     <?= /* @noEscape */ $secureRenderer->renderTag('script', [], $scriptString, false) ?>
