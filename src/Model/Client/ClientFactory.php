@@ -52,8 +52,9 @@ class ClientFactory implements AiClientFactoryInterface
         if (!$service instanceof AiServiceInterface) {
             throw new LocalizedException(
                 __(
-                    'The selected AI service (id "%1") no longer exists. '
-                    . 'Pick another one, or restore it under Stores > Configuration > Services > AI Configuration.',
+                    'The selected AI service (id "%1") is not available. It may have been deleted '
+                    . 'or disabled. Pick another one, or restore it under '
+                    . 'Stores > Configuration > Mage-OS > AI Configuration.',
                     $serviceId
                 )
             );
@@ -98,7 +99,7 @@ class ClientFactory implements AiClientFactoryInterface
             throw new LocalizedException(
                 __(
                     'AI service "%1" has no model selected. '
-                    . 'Pick one under Stores > Configuration > Services > AI Configuration.',
+                    . 'Pick one under Stores > Configuration > Mage-OS > AI Configuration.',
                     $service->getCode()
                 )
             );
@@ -124,7 +125,7 @@ class ClientFactory implements AiClientFactoryInterface
             throw new LocalizedException(
                 __(
                     'No AI service configured for code "%1". '
-                    . 'Configure one under Stores > Configuration > Services > AI Configuration.',
+                    . 'Configure one under Stores > Configuration > Mage-OS > AI Configuration.',
                     $serviceCode
                 )
             );
@@ -152,7 +153,7 @@ class ClientFactory implements AiClientFactoryInterface
             throw new LocalizedException(
                 __(
                     'No AI service configured. '
-                    . 'Configure one under Stores > Configuration > Services > AI Configuration.'
+                    . 'Configure one under Stores > Configuration > Mage-OS > AI Configuration.'
                 )
             );
         }

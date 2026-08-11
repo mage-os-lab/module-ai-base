@@ -18,6 +18,12 @@ use MageOS\AiBase\Api\Data\AiServiceInterface;
  */
 interface AiServiceSelectorInterface
 {
+    /*
+     * None of these return a row an administrator has disabled. A disabled row keeps its id and
+     * its credentials and stays in the admin form, but it is not a service anything may call, so
+     * it is absent from every lookup here rather than being something each caller has to check.
+     */
+
     /**
      * Returns all configured AI services in insertion order (the order the admin saved them).
      *

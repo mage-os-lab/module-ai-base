@@ -263,7 +263,7 @@ public function __construct(
 
 ## Admin surface reference
 
-- Form: Stores > Configuration > Services > AI Configuration (`system.xml` field
+- Form: Stores > Configuration > Mage-OS > AI Configuration (`system.xml` field
   `mageos_ai/services/configuration`, backend model `Model\Config\Backend\EncryptedServices`,
   frontend model `Block\Adminhtml\Configuration\Services`).
 - ACL: `MageOS_AiBase::configuration` (also guards the Test Connection and Refresh Models

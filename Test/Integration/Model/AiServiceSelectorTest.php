@@ -97,4 +97,48 @@ final class AiServiceSelectorTest extends TestCase
         self::assertSame('_1712345678901_901', $options[0]['value']);
         self::assertStringStartsWith('OpenAI (gpt-4o', (string) $options[0]['label']);
     }
+
+    /**
+     * A disabled row is configuration an administrator wants kept but not called. It has to stay in
+     * the stored value, keeping its id and its credentials, while disappearing from every lookup:
+     * a consumer that still holds its id must not be handed a service nobody meant to be used.
+     */
+    public function test_a_disabled_row_is_kept_in_storage_and_withheld_from_every_lookup(): void
+    {
+        $json = json_encode([
+            '_enabled_row' => ['openai' => ['api_key' => 'sk-live', 'model' => 'gpt-4o', '_enabled' => '1']],
+            '_disabled_row' => ['openai' => ['api_key' => 'sk-paused', 'model' => 'gpt-4o', '_enabled' => '0']],
+        ], JSON_THROW_ON_ERROR);
+        $this->configWriter->save('mageos_ai/services/configuration', $json);
+        $this->objectManager->get(Config::class)->clean();
+
+        /** @var AiServiceSelectorInterface $selector */
+        $selector = $this->objectManager->get(AiServiceSelectorInterface::class);
+
+        self::assertCount(1, $selector->getAll());
+        self::assertSame('_enabled_row', $selector->getAll()[0]->getId());
+        self::assertCount(1, $selector->getByCode('openai'));
+        self::assertNull($selector->getById('_disabled_row'), 'A stored id must not resolve to a disabled row.');
+
+        self::assertStringContainsString(
+            '_disabled_row',
+            (string) $this->objectManager->get(\Magento\Framework\App\Config\ScopeConfigInterface::class)
+                ->getValue('mageos_ai/services/configuration'),
+            'The row itself has to survive, or disabling one would destroy its credentials.'
+        );
+    }
+
+    /**
+     * Every row saved before this setting existed carries no value for it, and those rows worked.
+     */
+    public function test_a_row_without_the_setting_is_still_handed_out(): void
+    {
+        $json = json_encode([
+            '_legacy_row' => ['openai' => ['api_key' => 'sk-old', 'model' => 'gpt-4o']],
+        ], JSON_THROW_ON_ERROR);
+        $this->configWriter->save('mageos_ai/services/configuration', $json);
+        $this->objectManager->get(Config::class)->clean();
+
+        self::assertCount(1, $this->objectManager->get(AiServiceSelectorInterface::class)->getAll());
+    }
 }

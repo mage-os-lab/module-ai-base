@@ -1,0 +1,126 @@
+name: End-2-end
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  # The admin form is a different form depending on the application mode: developer mode offers
+  # every registered provider and explains what to install, production offers only the ones that
+  # can be used. Both are shipped behaviour, so both are tested.
+  e2e-tests:
+    name: E2E (${{ matrix.MAGENTO_MODE }} mode, PHP ${{ matrix.PHP_VERSION }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - PHP_VERSION: php84-fpm
+            MAGENTO_VERSION: 2.4.8
+            MAGENTO_MODE: developer
+          - PHP_VERSION: php84-fpm
+            MAGENTO_VERSION: 2.4.8
+            MAGENTO_MODE: production
+    env:
+      PHP_VERSION: ${{ matrix.PHP_VERSION }}
+      MAGENTO_VERSION: ${{ matrix.MAGENTO_VERSION }}
+      MAGENTO_MODE: ${{ matrix.MAGENTO_MODE }}
+      ADMIN_USER: e2e_admin
+      ADMIN_PASSWORD: E2eAdminPassword1
+      ADMIN_PATH: admin
+      # The suite clears the configured services on every spec. The container is built for this
+      # job and thrown away with it, which is the only kind of target that is safe.
+      E2E_DISPOSABLE_ENVIRONMENT: '1'
+    steps:
+      - uses: actions/checkout@v4
+
+      # Just the container. It serves the store on port 80 itself, so there is no proxy to
+      # terminate TLS and therefore no forwarded protocol to get wrong, which is what broke the
+      # first version of this job. The store is addressed as localhost because browsers treat it
+      # as a secure context, and the Copy button test uses navigator.clipboard, which needs one.
+      - name: Start the Magento container
+        run: |
+          mkdir -p magento-logs
+          docker run -d --name magento-project-community-edition \
+            -p 80:80 \
+            -e MAGENTO_VERSION \
+            -v "$(pwd)/magento-logs:/data/var/log" \
+            michielgerritsen/magento-project-community-edition:${PHP_VERSION}-magento${MAGENTO_VERSION}
+
+      - name: Upload the module into the container
+        run: |
+          sed -i '/version/d' ./composer.json
+          docker cp $(pwd) magento-project-community-edition:/data/extensions/
+          docker exec magento-project-community-edition ./install-composer-package mage-os/module-ai-base:@dev
+
+      - name: Enable the module
+        run: |
+          docker exec magento-project-community-edition ./retry "php bin/magento module:enable MageOS_AiBase"
+          docker exec magento-project-community-edition ./retry "php bin/magento setup:upgrade --no-interaction --keep-generated"
+
+      # symfony/ai-platform is a suggest, so nothing installs it for us. Two bridges are enough to
+      # give the form both states it can be in: providers that work, and providers that do not.
+      - name: Install two provider bridges
+        run: |
+          docker exec magento-project-community-edition ./install-composer-package \
+            symfony/ai-anthropic-platform symfony/ai-open-ai-platform
+
+      - name: Prepare Magento
+        run: |
+          docker exec magento-project-community-edition /bin/bash ./change-base-url http://localhost/
+          docker exec magento-project-community-edition ./retry "bin/magento config:set admin/security/session_lifetime 14400"
+          docker exec magento-project-community-edition ./retry "bin/magento config:set admin/security/admin_account_sharing 1"
+          docker exec magento-project-community-edition ./retry "bin/magento admin:user:create \
+            --admin-user=${{ env.ADMIN_USER }} \
+            --admin-password=${{ env.ADMIN_PASSWORD }} \
+            --admin-email=e2e@example.com \
+            --admin-firstname=E2E \
+            --admin-lastname=Admin"
+          docker exec magento-project-community-edition ./retry "php bin/magento setup:di:compile"
+          docker exec magento-project-community-edition ./retry "php bin/magento setup:static-content:deploy -f"
+          docker exec magento-project-community-edition ./retry "php bin/magento deploy:mode:set ${{ matrix.MAGENTO_MODE }} --skip-compilation"
+          docker exec magento-project-community-edition ./retry "bin/magento cache:flush"
+
+      # Redirects are followed on purpose. An earlier version of this job passed here on the first
+      # 302 of a redirect loop, and the loop only surfaced later, in the browser.
+      - name: Check that the admin is reachable
+        run: |
+          for attempt in $(seq 1 20); do
+            if curl --fail-with-body --location --max-redirs 5 -s -o /dev/null \
+              -w "admin: %{http_code} after %{num_redirects} redirect(s)\n" \
+              http://localhost/admin/; then
+              exit 0
+            fi
+            echo "not up yet (attempt $attempt), waiting"
+            sleep 5
+          done
+          echo "The admin never became reachable."
+          docker logs magento-project-community-edition | tail -50
+          exit 1
+
+      - name: Install Playwright
+        run: |
+          cd tests/End-2-End
+          npm install
+          npx playwright install --with-deps chromium
+
+      - name: Run the end-to-end tests
+        run: |
+          cd tests/End-2-End
+          BASE_URL="http://localhost/" npx playwright test
+
+      - name: Collect Magento logs
+        if: always()
+        run: docker logs magento-project-community-edition > magento.log 2>&1
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: e2e-${{ matrix.MAGENTO_MODE }}-php${{ matrix.PHP_VERSION }}
+          path: |
+            tests/End-2-End/test-results
+            tests/End-2-End/playwright-report
+            magento-logs
+            magento.log

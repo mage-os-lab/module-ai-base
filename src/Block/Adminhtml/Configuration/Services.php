@@ -6,6 +6,8 @@ namespace MageOS\AiBase\Block\Adminhtml\Configuration;
 
 use Magento\Backend\Block\Template\Context;
 use Magento\Config\Block\System\Config\Form\Field\FieldArray\AbstractFieldArray;
+use Magento\Framework\App\State;
+use Magento\Framework\Exception\LocalizedException;
 use Magento\Framework\Serialize\Serializer\Json;
 use Magento\Framework\View\Helper\SecureHtmlRenderer;
 use MageOS\AiBase\Api\Data\AiServiceConfigurationInterface;
@@ -41,6 +43,64 @@ class Services extends AbstractFieldArray
         ?SecureHtmlRenderer $secureRenderer = null,
     ) {
         parent::__construct($context, $data, $secureRenderer);
+    }
+
+    /**
+     * Whether the install is one where the reader of this page can act on a composer command.
+     *
+     * Nobody runs composer against a production install from the admin, so the instructions for
+     * installing a bridge package, and the providers those instructions are about, are addressed
+     * to a developer and shown only where a developer is the one looking.
+     *
+     * A mode Magento cannot report (a deployment config that predates the setting) is treated as
+     * production, because the cost of being wrong is a page telling an administrator to run a
+     * command they cannot run.
+     *
+     * Read off the block context rather than injected: every Template block already carries the
+     * application state, and adding a constructor argument to a block breaks every install whose
+     * generated interceptor was compiled against the old signature until it is recompiled.
+     *
+     * @return bool
+     */
+    public function isDeveloperMode(): bool
+    {
+        try {
+            return $this->_appState->getMode() === State::MODE_DEVELOPER;
+        } catch (LocalizedException) {
+            return false;
+        }
+    }
+
+    /**
+     * The providers offered as buttons on this install.
+     *
+     * In production the unusable ones are left out entirely rather than greyed out: their label
+     * explains a package that the person reading cannot install, and the row it would add cannot
+     * be tested from here. Developer mode keeps them, because there the label is actionable.
+     *
+     * Only the buttons are filtered. The field schema still carries every registered provider, so
+     * a row saved for one of them keeps rendering and keeps its configuration.
+     *
+     * @return array<string,array{code:string,name:string,available:bool,supported:bool,package:string}>
+     */
+    public function getSelectableServices(): array
+    {
+        $buttons = $this->getServicesButtons();
+        if ($this->isDeveloperMode()) {
+            return $buttons;
+        }
+
+        return array_filter($buttons, static fn (array $button): bool => $button['available']);
+    }
+
+    /**
+     * Whether any provider is being kept off this page because it cannot be used here.
+     *
+     * @return bool
+     */
+    public function hasHiddenServices(): bool
+    {
+        return count($this->getSelectableServices()) < count($this->getServicesButtons());
     }
 
     /**

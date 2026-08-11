@@ -36,6 +36,22 @@ CI runs exactly that, in the reusable workflow's `integration_test` job, which a
 directory to Magento's own `dev/tests/integration/phpunit.xml.dist` as a testsuite.
 `.github/check-extension.json` keeps that job switched on explicitly.
 
+The `End-2-End` suite drives the real admin form in a browser with Playwright:
+
+```bash
+cd tests/End-2-End
+npm install && npx playwright install chromium
+E2E_DISPOSABLE_ENVIRONMENT=1 BASE_URL="https://your-store.test/" \
+  ADMIN_USER=... ADMIN_PASSWORD=... npx playwright test
+```
+
+**It deletes every configured AI service on the target install before each spec**, and stored
+credentials cannot be read back once gone, which is what `E2E_DISPOSABLE_ENVIRONMENT=1` is there to
+make you say out loud. Never point it at an install whose configuration matters. CI runs it in a
+throwaway container, once in developer mode and once in production, because the form offers
+different providers in each; specs that only apply to one are tagged `@developer-mode` or
+`@production-mode`. Run it through DDEV (`ddev exec ...`), never on the host.
+
 Anything reading `system.xml` — the backend model on a field, the config structure — needs
 `#[\Magento\TestFramework\Fixture\AppArea('adminhtml')]` on the test class. `system.xml` is only
 read into the config structure for that area; elsewhere the field silently has no backend model,
@@ -49,7 +65,7 @@ php bin/magento setup:upgrade
 php bin/magento setup:di:compile
 ```
 
-Admin UI lives at **Stores → Configuration → Services → AI Configuration**.
+Admin UI lives at **Stores → Configuration → Mage-OS → AI Configuration**.
 
 ## Architecture
 

@@ -72,14 +72,21 @@ class ConfiguredService implements OptionSourceInterface
      */
     private function getLabel(AiServiceInterface $service): string
     {
+        $name = $service->getLabel();
+        $providerName = $this->getServiceName($service->getCode());
+
+        // A row an administrator named is listed under that name, because the name is the purpose
+        // they picked it for. The provider moves into the details, since a row called "Chat AI"
+        // still has to say which backend it bills.
         $details = array_values(array_filter([
+            $name === null ? null : $providerName,
             $this->getModel($service),
             $this->getUsabilityNote($service->getCode()),
         ]));
 
         return $details === []
-            ? $this->getServiceName($service->getCode())
-            : sprintf('%s (%s)', $this->getServiceName($service->getCode()), implode(', ', $details));
+            ? ($name ?? $providerName)
+            : sprintf('%s (%s)', $name ?? $providerName, implode(', ', $details));
     }
 
     /**

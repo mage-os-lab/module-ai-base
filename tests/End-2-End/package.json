@@ -1,0 +1,10 @@
+{
+  "name": "mage-os-ai-base-end-2-end",
+  "private": true,
+  "description": "End-to-end tests for the MageOS_AiBase admin configuration section.",
+  "license": "OSL-3.0",
+  "devDependencies": {
+    "@playwright/test": "^1.49.0",
+    "@types/node": "^22.10.1"
+  }
+}

@@ -47,6 +47,48 @@ final class ConfiguredServiceTest extends TestCase
         );
     }
 
+    /**
+     * A row an administrator named is listed under that name: the name is the purpose they picked
+     * it for, which is what they recognise in another module's configuration. The provider moves
+     * into the details rather than disappearing, since the row still bills a specific backend.
+     */
+    public function test_labels_a_named_row_by_its_name_and_keeps_the_provider_visible(): void
+    {
+        $this->serviceSelector->method('getAll')->willReturn([
+            new AiService('_row_a', 'openai', ['_label' => 'Chat AI', 'api_key' => 'k', 'model' => 'gpt-4o']),
+        ]);
+
+        self::assertSame('Chat AI (OpenAI, gpt-4o)', (string) $this->subject()->toOptionArray()[0]['label']);
+    }
+
+    public function test_a_blank_name_falls_back_to_the_provider_name(): void
+    {
+        $this->serviceSelector->method('getAll')->willReturn([
+            new AiService('_row_a', 'openai', ['_label' => '   ', 'api_key' => 'k', 'model' => 'gpt-4o']),
+        ]);
+
+        self::assertSame('OpenAI (gpt-4o)', (string) $this->subject()->toOptionArray()[0]['label']);
+    }
+
+    /**
+     * Two rows of one provider named for their purpose are exactly the setup naming exists for, so
+     * they must not collapse into the same label and get numbered instead.
+     */
+    public function test_two_named_rows_of_one_provider_stay_distinguishable(): void
+    {
+        $this->serviceSelector->method('getAll')->willReturn([
+            new AiService('_row_a', 'openai', ['_label' => 'Chat AI', 'model' => 'gpt-4o']),
+            new AiService('_row_b', 'openai', ['_label' => 'Summaries', 'model' => 'gpt-4o']),
+        ]);
+
+        $labels = array_map(
+            static fn (array $option): string => (string) $option['label'],
+            $this->subject()->toOptionArray()
+        );
+
+        self::assertSame(['Chat AI (OpenAI, gpt-4o)', 'Summaries (OpenAI, gpt-4o)'], $labels);
+    }
+
     public function test_labels_a_row_with_the_provider_name_and_its_configured_model(): void
     {
         $this->serviceSelector->method('getAll')->willReturn([

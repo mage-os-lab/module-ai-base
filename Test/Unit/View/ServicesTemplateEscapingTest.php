@@ -39,6 +39,10 @@ final class ServicesTemplateEscapingTest extends TestCase
         "getAttribute('data-row-model') === rowId" => 'compares the value, never parses or renders it',
         'const rowId = addRow(' => 'receives the value back from addRow()',
         'document.getElementById(rowId)' => 'getElementById takes an ID, not a selector, so nothing parses it',
+        'syncRowHeading(rowId,' => 'passes the value on to a function that compares it with getAttribute()',
+        'findByAttribute(' => 'compares the assembled value with getAttribute(), never parsing it',
+        'const rowId = button.dataset.rowRename' => 'reads the value back out of the DOM',
+        'syncRowEnabled(rowId)' => 'passes the value on to a function that compares it with getAttribute()',
     ];
 
     /**

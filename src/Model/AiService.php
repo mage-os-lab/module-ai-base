@@ -39,6 +39,34 @@ class AiService implements AiServiceInterface
     /**
      * @inheritdoc
      */
+    public function getLabel(): ?string
+    {
+        $label = $this->configuration[self::CONFIGURATION_LABEL] ?? null;
+        if (!is_scalar($label)) {
+            return null;
+        }
+
+        return trim((string) $label) === '' ? null : trim((string) $label);
+    }
+
+    /**
+     * @inheritdoc
+     */
+    public function isEnabled(): bool
+    {
+        $enabled = $this->configuration[self::CONFIGURATION_ENABLED] ?? null;
+        if ($enabled === null) {
+            return true;
+        }
+
+        // The form posts '0' or '1'; a hand-edited value could be anything. Only an explicit
+        // negative turns a row off, so an unreadable value leaves it working.
+        return !in_array($enabled, ['0', 0, false, 'false'], true);
+    }
+
+    /**
+     * @inheritdoc
+     */
     public function getConfiguration(): array
     {
         return $this->configuration;

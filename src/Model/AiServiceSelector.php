@@ -77,6 +77,8 @@ class AiServiceSelector implements AiServiceSelectorInterface
     /**
      * Read and defensively parse the stored services configuration.
      *
+     * Disabled rows are left out: see the filter below for why that happens here.
+     *
      * Parsing decrypts every credential of every configured row, which a tool loop resolving its
      * service once per iteration would otherwise pay for on every turn. The memo is keyed on the
      * raw stored value rather than simply held: reading it back is cheap, and a store switch
@@ -110,11 +112,19 @@ class AiServiceSelector implements AiServiceSelectorInterface
             if (!is_string($code) || !is_array($configuration)) {
                 continue;
             }
-            $services[] = $this->aiServiceFactory->create([
+            $service = $this->aiServiceFactory->create([
                 'id' => (string) $rowId,
                 'code' => $code,
                 'configuration' => $this->sensitiveDataProcessor->decryptRow($code, $configuration),
             ]);
+
+            // A disabled row is dropped here rather than at each call site, because every way a
+            // consumer reaches a configured service goes through this class. Filtering once is
+            // what makes "disabled" mean the same thing to the option source, the client factory
+            // and a module reading credentials to call a provider itself.
+            if ($service->isEnabled()) {
+                $services[] = $service;
+            }
         }
 
         $this->parsedRaw = $raw;

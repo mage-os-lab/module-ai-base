@@ -2,13 +2,13 @@
 
 The goal of this module is to provide a way to allow to configure multiple AI backends.
 
-![The AI Configuration section: one row per configured service, each naming its provider and model, with Test Connection and Refresh Models per row and an install hint for providers whose bridge package is missing](docs/images/admin-configuration.png)
+![The AI Configuration section: two configured services, one named Chat AI on Anthropic and enabled, one named Bulk summaries on OpenAI and switched off, each with its own Test Connection and model refresh, above the provider buttons and the install hint for providers whose bridge package is missing](docs/images/admin-configuration.png)
 
 Every row names the provider it configures and the model it is set to, so the same backend can be
-added more than once (one row per account) and still be told apart. **Test Connection** and
-**Refresh Models** act on the row they sit in. Providers whose Symfony AI bridge package is not
-installed stay configurable for modules that call the provider themselves, and the form says what
-to install to make them usable through the bundled client.
+added more than once (one row per account) and still be told apart; the pencil gives a row a name of
+its own, and the toggle takes it out of use without deleting its credentials. **Test Connection** and
+**Refresh Models** act on the row they sit in. In developer mode the form also offers providers whose
+Symfony AI bridge package is missing, and says what to install; in production those are left out.
 
 ## Installation
 
@@ -17,7 +17,7 @@ composer require mage-os/module-ai-base
 php bin/magento module:enable MageOS_AiBase
 ```
 
-You can find the new configuration option in System > Configuration > Services -> AI Configuration.
+You can find the new configuration option in Stores > Configuration > Mage-OS > AI Configuration.
 
 ## Usage
 
@@ -32,6 +32,17 @@ AiServiceSelectorInterface::getById(string $id): ?AiServiceInterface
 ```
 
 `getAll()` and `getByCode()` return an array of `\MageOS\AiBase\Api\Data\AiServiceInterface` objects (multiple entries per code are possible because admins can register the same backend more than once); `getById()` returns the single row with that id, or `null` once the admin deletes it.
+
+None of them return a service an administrator has **disabled**. A disabled row keeps its id and its
+credentials and stays in the admin form, but it is not a service anything may call, so it is absent
+from every lookup here rather than being something each caller has to check. A row can also be given
+a **name** for the purpose it serves, which is what an administrator recognises when your module asks
+them to pick one:
+
+```php
+$service->getLabel();     // 'Chat AI', or null when unnamed
+$service->isEnabled();    // always true for anything this selector hands you
+```
 
 ```php
 use MageOS\AiBase\Api\AiServiceSelectorInterface;

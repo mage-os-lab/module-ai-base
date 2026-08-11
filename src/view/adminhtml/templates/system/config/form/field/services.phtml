@@ -14,16 +14,27 @@ $_colspan = $block->isAddAfter() ? 2 : 1;
                     <?php foreach ($block->getColumns() as $column): ?>
                         <th><?= $escaper->escapeHtml($column['label']) ?></th>
                     <?php endforeach; ?>
-                    <th class="col-actions" colspan="<?= (int) $_colspan ?>">
-                        <?= $escaper->escapeHtml(__('Action')) ?>
-                    </th>
                 </tr>
             </thead>
             <tfoot>
                 <tr>
-                    <td colspan="<?= count($block->getColumns()) + $_colspan ?>" class="col-actions-add">
+                    <td colspan="<?= count($block->getColumns()) ?>" class="col-actions-add">
+                        <?php if ($block->getSelectableServices() !== []): ?>
+                            <p class="ai-service-add-hint">
+                                <?= $escaper->escapeHtml(__(
+                                    'Choose a provider below to add a service. The same provider can be added more '
+                                    . 'than once, for example one row per account.'
+                                )) ?>
+                            </p>
+                        <?php else: ?>
+                            <p class="ai-service-add-hint">
+                                <?= $escaper->escapeHtml(__(
+                                    'No AI provider can be used on this environment yet.'
+                                )) ?>
+                            </p>
+                        <?php endif; ?>
                         <ul>
-                            <?php foreach ($block->getServicesButtons() as $button): ?>
+                            <?php foreach ($block->getSelectableServices() as $button): ?>
                                 <li data-ai-service="<?= $escaper->escapeHtmlAttr($button['code']) ?>"
                                     class="add-ai-service ai-service-<?= $escaper->escapeHtmlAttr($button['code']) ?><?=
                                         $button['available'] ? '' : ' ai-service-unavailable' ?>">
@@ -40,7 +51,15 @@ $_colspan = $block->isAddAfter() ? 2 : 1;
                                 </li>
                             <?php endforeach; ?>
                         </ul>
-                        <?php if ($block->hasUnavailableServices()): ?>
+                        <?php if (!$block->isDeveloperMode() && $block->hasHiddenServices()): ?>
+                            <p class="ai-service-availability-hint">
+                                <?= $escaper->escapeHtml(__(
+                                    'More AI providers are available for this module, but their packages are not '
+                                    . 'installed on this environment. Contact your developer if you want to add one.'
+                                )) ?>
+                            </p>
+                        <?php endif; ?>
+                        <?php if ($block->isDeveloperMode() && $block->hasUnavailableServices()): ?>
                             <div class="ai-service-availability-note">
                                 <p>
                                     <?= $escaper->escapeHtml(__(
@@ -100,7 +119,7 @@ $_colspan = $block->isAddAfter() ? 2 : 1;
             <tbody id="addRow<?= $escaper->escapeHtmlAttr($_htmlId) ?>"></tbody>
             <tbody class="ai-services-empty-state" hidden>
                 <tr>
-                    <td colspan="<?= count($block->getColumns()) + $_colspan ?>">
+                    <td colspan="<?= count($block->getColumns()) ?>">
                         <?= $escaper->escapeHtml(__(
                             'No AI service configured yet. Choose a provider below to add one.'
                         )) ?>
@@ -117,6 +136,15 @@ $_colspan = $block->isAddAfter() ? 2 : 1;
     $schemaJson = $block->getServicesSchemaJson();
     $fieldNameJs = $escaper->escapeJs($block->getElement()->getName());
     $deleteLabelJs = $escaper->escapeJs(__('Delete'));
+    $nameLabelJs = $escaper->escapeJs(__('Name'));
+    $renameLabelJs = $escaper->escapeJs(__('Rename this service'));
+    $enabledLabelJs = $escaper->escapeJs(__('Enabled'));
+    $disabledNoteJs = $escaper->escapeJs(__('Disabled, nothing will use this service'));
+    // Reserved configuration key, not a provider field, shared with the API constant.
+    $enabledKeyJs = $escaper->escapeJs(\MageOS\AiBase\Api\Data\AiServiceInterface::CONFIGURATION_ENABLED);
+    // Reserved configuration key, not a provider field. Kept in one place so the form, the option
+    // source consumers point their own system.xml at, and the API constant cannot drift apart.
+    $labelKeyJs = $escaper->escapeJs(\MageOS\AiBase\Api\Data\AiServiceInterface::CONFIGURATION_LABEL);
     // Removing a row discards a credential the administrator cannot read back and cannot retype.
     $deleteConfirmJs = $escaper->escapeJs(
         __('Remove this service? Its saved credentials are deleted when you save the configuration.')
@@ -244,56 +272,121 @@ require(['prototype'], function () {
         const d = new Date();
         const rowId = existingRowId || ('_' + d.getTime() + '_' + d.getMilliseconds());
         const serviceName = serviceSchema.name || serviceCode;
+        const isEnabled = !values || values['{$enabledKeyJs}'] === undefined
+            || String(values['{$enabledKeyJs}']) !== '0';
 
-        const rows = fields.map(function (field) {
+        // The refresh control sits with the model field it refills rather than in the action
+        // column: it acts on that one control, and as an icon beside it that is self-evident,
+        // where a second full-width button under Test Connection was not. Saved rows only, since
+        // the fetch uses stored credentials.
+        const canRefresh = Boolean(existingRowId) && Boolean(serviceSchema.supportsModelRefresh);
+
+        // Naming a row is the exception, not the routine, so the field stays out of the way until
+        // the pencil beside the heading asks for it. The heading already shows the name that is
+        // set, so nothing is hidden that an administrator cannot see.
+        const nameControlId = 'ai-field-' + (++fieldSequence);
+        const nameField = fieldNameBase + '[' + rowId + '][' + serviceCode + '][{$labelKeyJs}]';
+        const nameRow = '<tr class="ai-service-name-row" hidden'
+            + ' data-row-name-row="' + escapeHtml(rowId) + '">'
+            + '<th><label for="' + nameControlId + '">{$nameLabelJs}</label></th>'
+            + '<td><div class="ai-field-control">'
+            + '<input type="text" id="' + nameControlId + '" name="' + escapeHtml(nameField) + '"'
+            + ' autocomplete="off" data-row-label="' + escapeHtml(rowId) + '"'
+            + ' placeholder="' + escapeHtml(serviceName) + '"/>'
+            + '</div></td>'
+            + '</tr>';
+
+        const rows = nameRow + fields.map(function (field) {
             const control = buildField(serviceCode, rowId, field);
+            const refresh = (canRefresh && field.name === 'model')
+                ? '<button type="button" class="ai-refresh-models action-refresh-models"'
+                    + ' data-service-code="' + escapeHtml(serviceCode) + '"'
+                    + ' data-row-id="' + escapeHtml(rowId) + '"'
+                    + ' title="{$refreshLabelJs}" aria-label="{$refreshLabelJs}">'
+                    + '<span class="ai-refresh-models-icon" aria-hidden="true">&#8635;</span>'
+                    + '<span class="ai-refresh-models-label">{$refreshLabelJs}</span>'
+                    + '</button>'
+                : '';
+
             return '<tr>'
                 + '<th><label for="' + control.id + '">' + escapeHtml(field.label) + '</label></th>'
-                + '<td>' + control.html + '</td>'
+                + '<td><div class="ai-field-control">' + control.html + refresh + '</div></td>'
                 + '</tr>';
         }).join('');
+
+        // Stored rows (they arrive with an existingRowId) get a Test Connection
+        // button; unsaved rows cannot be tested because the client factory only
+        // reads saved configuration. The button carries the row id, so it acts on
+        // the row it sits in rather than on the first row of the same service code.
+        const testHtml = existingRowId
+            ? '<button class="action-test-connection ai-service-row-action" type="button"'
+                + ' data-service-code="' + escapeHtml(serviceCode) + '"'
+                + ' data-row-id="' + escapeHtml(rowId) + '">'
+                + '<span>{$testLabelJs}</span></button>'
+            : '';
+
+        // Both row actions sit on one line, level with the row's heading, and at a size that
+        // matches the refresh control beside the model field. Test Connection as a full-width
+        // pill made the action column the loudest thing in a row that is mostly inputs.
+        const deleteHtml = '<button class="action-delete ai-service-row-action" type="button"'
+            + ' data-row-id="' + escapeHtml(rowId) + '"'
+            + ' title="{$deleteLabelJs}" aria-label="{$deleteLabelJs} ' + escapeHtml(serviceName) + '">'
+            + '<span class="ai-service-row-action-label">{$deleteLabelJs}</span></button>';
+
+        // The actions live in the heading rather than in a column of their own. A column sized for
+        // "Test Connection" took a third of the row's width away from the fields that are the
+        // point of it, on every row, whether or not the buttons were ever used.
+        const actionsHtml = '<div class="ai-service-row-actions">' + testHtml + deleteHtml + '</div>';
 
         // Which provider a row configures is the one thing its fields never say, and two rows of
         // the same backend (two accounts, two billing owners) are otherwise indistinguishable.
         // The model rides along as a subtitle because it is what tells those two rows apart.
+        // An unchecked checkbox posts nothing, so the hidden input carries the "off" value and the
+        // checkbox overwrites it when ticked. Without it, disabling a row would be indistinguishable
+        // from a row saved before this setting existed, which has to keep meaning enabled.
+        const enabledField = fieldNameBase + '[' + rowId + '][' + serviceCode + '][{$enabledKeyJs}]';
+        const enabledHtml = '<label class="ai-service-toggle" title="{$enabledLabelJs}">'
+            + '<input type="hidden" name="' + escapeHtml(enabledField) + '" value="0"/>'
+            + '<input type="checkbox" class="ai-service-toggle-input"'
+            + ' name="' + escapeHtml(enabledField) + '" value="1"'
+            + ' data-row-enabled="' + escapeHtml(rowId) + '"' + (isEnabled ? ' checked' : '') + '/>'
+            + '<span class="ai-service-toggle-label">{$enabledLabelJs}</span>'
+            + '</label>';
+
         const headingHtml = '<div class="ai-service-row-heading">'
-            + '<span class="ai-service-row-name">' + escapeHtml(serviceName) + '</span>'
+            + enabledHtml
+            + '<span class="ai-service-row-name" data-row-heading="' + escapeHtml(rowId) + '">'
+            + escapeHtml(serviceName) + '</span>'
+            + '<button type="button" class="ai-service-rename"'
+            + ' data-row-rename="' + escapeHtml(rowId) + '" aria-expanded="false"'
+            + ' title="{$renameLabelJs}" aria-label="{$renameLabelJs}">'
+            + '<span class="ai-service-rename-icon" aria-hidden="true">&#9998;</span>'
+            + '<span class="ai-service-row-action-label">{$renameLabelJs}</span>'
+            + '</button>'
             + '<span class="ai-service-row-model" data-row-model="' + escapeHtml(rowId) + '"></span>'
+            + actionsHtml
             + '</div>';
 
-        // Stored rows (they arrive with an existingRowId) get a Test Connection
-        // button; unsaved rows cannot be tested because the client factory only
-        // reads saved configuration. Both buttons carry the row id, so they act on
-        // the row they sit in rather than on the first row of the same service code.
-        const refreshHtml = (existingRowId && serviceSchema.supportsModelRefresh)
-            ? '<button class="action-secondary action-refresh-models" type="button"'
-                + ' data-service-code="' + escapeHtml(serviceCode) + '"'
-                + ' data-row-id="' + escapeHtml(rowId) + '">'
-                + '<span>{$refreshLabelJs}</span></button>'
-            : '';
-        const testHtml = existingRowId
-            ? '<button class="action-secondary action-test-connection" type="button"'
-                + ' data-service-code="' + escapeHtml(serviceCode) + '"'
-                + ' data-row-id="' + escapeHtml(rowId) + '">'
-                + '<span>{$testLabelJs}</span></button>'
-                + refreshHtml
-            : '';
-
         const rowHtml = '<tr id="' + escapeHtml(rowId) + '">'
-            + '<td>' + headingHtml + '<table>' + rows + '</table>'
+            + '<td>' + headingHtml
+            + '<table>' + rows + '</table>'
             + '<div class="ai-test-result" role="status" aria-live="polite"></div></td>'
-            + '<td class="col-actions">'
-            + '<button class="action-delete" data-row-id="' + escapeHtml(rowId) + '" type="button"'
-            + ' title="{$deleteLabelJs}" aria-label="{$deleteLabelJs} ' + escapeHtml(serviceName) + '">'
-            + '<span>{$deleteLabelJs}</span></button>'
-            + testHtml + '</td>'
             + '</tr>';
 
         Element.insert($('addRow{$htmlIdJs}'), { bottom: rowHtml });
         syncRowModel(rowId, serviceCode);
+        syncRowHeading(rowId, serviceCode, serviceName);
+        syncRowEnabled(rowId);
 
         if (values) {
             Object.keys(values).forEach(function (key) {
+                // The enable toggle is a checkbox with a hidden input of the same name carrying the
+                // "off" value, and findField() answers with the first match, which is the hidden
+                // one. Restoring the stored value into it would overwrite that "off" with the
+                // stored "on", and unchecking a saved row would post enabled and do nothing.
+                // The checkbox already renders from this value, so there is nothing to restore.
+                if (key === '{$enabledKeyJs}') return;
+
                 const el = findField(rowId, serviceCode, key);
                 if (!el) return;
                 if (el.tagName === 'SELECT') {
@@ -310,6 +403,7 @@ require(['prototype'], function () {
                 el.value = values[key];
             });
             syncRowModel(rowId, serviceCode);
+            syncRowHeading(rowId, serviceCode, serviceName);
         }
 
         return rowId;
@@ -325,12 +419,7 @@ require(['prototype'], function () {
      * double quote makes querySelector throw and aborts the loop that called it.
      */
     function findRowModelLabel(rowId) {
-        const container = document.querySelector('.ai-services-configurator');
-        if (!container) return null;
-
-        return Array.from(container.querySelectorAll('[data-row-model]')).find(function (el) {
-            return el.getAttribute('data-row-model') === rowId;
-        }) || null;
+        return findByAttribute('data-row-model', rowId);
     }
 
     function syncRowModel(rowId, serviceCode) {
@@ -342,6 +431,70 @@ require(['prototype'], function () {
             field.dataset.modelSynced = '1';
             field.addEventListener('change', function () { syncRowModel(rowId, serviceCode); });
             field.addEventListener('input', function () { syncRowModel(rowId, serviceCode); });
+        }
+    }
+
+    /**
+     * Lead the row's heading with the name an administrator gave it, and keep the provider behind
+     * it: a row called "Chat AI" still has to say which backend it bills.
+     */
+    function syncRowHeading(rowId, serviceCode, serviceName) {
+        const heading = findByAttribute('data-row-heading', rowId);
+        const field = findByAttribute('data-row-label', rowId);
+        if (!heading) return;
+
+        const typed = field ? field.value.trim() : '';
+        heading.textContent = typed === '' ? serviceName : typed + ' \u00b7 ' + serviceName;
+
+        if (field && !field.dataset.headingSynced) {
+            field.dataset.headingSynced = '1';
+            field.addEventListener('input', function () {
+                syncRowHeading(rowId, serviceCode, serviceName);
+            });
+        }
+    }
+
+    /**
+     * Elements are matched on an attribute rather than through a selector built from the row ID,
+     * for the reason findField() gives: a stored ID containing a double quote makes querySelector
+     * throw and aborts the loop that called it. The selector stays a literal for the same reason,
+     * so nothing this function is called with can reach the selector parser.
+     */
+    function findByAttribute(attribute, value) {
+        const container = document.querySelector('.ai-services-configurator');
+        if (!container) return null;
+
+        const candidates = container.querySelectorAll(
+            '[data-row-heading], [data-row-label], [data-row-model], [data-row-name-row], [data-row-enabled]'
+        );
+
+        return Array.from(candidates).find(function (el) {
+            return el.getAttribute(attribute) === value;
+        }) || null;
+    }
+
+    /**
+     * Reflect the toggle in the row itself: a disabled service is not called by anything, so the
+     * controls that call one are switched off with it rather than left to fail on click.
+     */
+    function syncRowEnabled(rowId) {
+        const toggle = findByAttribute('data-row-enabled', rowId);
+        const row = document.getElementById(rowId);
+        if (!toggle || !row) return;
+
+        const enabled = toggle.checked;
+        row.classList.toggle('ai-service-row-disabled', !enabled);
+        row.querySelectorAll('.action-test-connection, .ai-refresh-models').forEach(function (button) {
+            button.disabled = !enabled;
+            button.title = enabled ? button.dataset.enabledTitle || button.title : '{$disabledNoteJs}';
+        });
+
+        if (!toggle.dataset.enabledSynced) {
+            toggle.dataset.enabledSynced = '1';
+            row.querySelectorAll('.action-test-connection, .ai-refresh-models').forEach(function (button) {
+                button.dataset.enabledTitle = button.title;
+            });
+            toggle.addEventListener('change', function () { syncRowEnabled(rowId); });
         }
     }
 
@@ -360,8 +513,14 @@ require(['prototype'], function () {
             updateEmptyState();
             // Land the caret in the row that just appeared, so adding a provider continues into
             // filling it in instead of leaving focus on the button and the new row unannounced.
-            const firstField = document.getElementById(rowId)
-                ? document.getElementById(rowId).querySelector('input, select')
+            // The name field is hidden until asked for, and focusing a hidden input does nothing.
+            // Visibility is read off the element rather than matched with `tr:not([hidden])`,
+            // which selects every input in the row: the row itself is a tr that is not hidden.
+            const newRow = document.getElementById(rowId);
+            const firstField = newRow
+                ? Array.from(newRow.querySelectorAll('input, select')).find(function (el) {
+                    return el.offsetParent !== null;
+                })
                 : null;
             if (firstField) firstField.focus();
         });
@@ -372,7 +531,7 @@ require(['prototype'], function () {
      * the action column, where a provider's error message wrapped to five lines in 260 pixels.
      */
     function resultElementFor(button) {
-        const row = button.closest('tr');
+        const row = button.closest('tr[id]');
         return row ? row.querySelector('.ai-test-result') : null;
     }
 
@@ -510,6 +669,11 @@ require(['prototype'], function () {
             refreshModels(refreshButton);
             return;
         }
+        const renameButton = e.target.closest('.ai-service-rename');
+        if (renameButton) {
+            toggleNameField(renameButton);
+            return;
+        }
         const copyButton = e.target.closest('.ai-service-copy-command');
         if (copyButton) {
             copyInstallCommand(copyButton);
@@ -526,6 +690,25 @@ require(['prototype'], function () {
         if (row) row.remove();
         updateEmptyState();
     });
+
+    /**
+     * Show or hide the name field of the row whose pencil was pressed, and put the caret in it, so
+     * the click that asked to rename something is the last one needed before typing.
+     */
+    function toggleNameField(button) {
+        const rowId = button.dataset.rowRename;
+        const nameRow = findByAttribute('data-row-name-row', rowId);
+        if (!nameRow) return;
+
+        const reveal = nameRow.hidden;
+        nameRow.hidden = !reveal;
+        button.setAttribute('aria-expanded', reveal ? 'true' : 'false');
+
+        if (reveal) {
+            const field = findByAttribute('data-row-label', rowId);
+            if (field) field.focus();
+        }
+    }
 
     /**
      * The install hint exists to be pasted into a shell, and it is long enough to be clipped, so
