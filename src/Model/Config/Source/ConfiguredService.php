@@ -6,9 +6,9 @@ namespace MageOS\AiBase\Model\Config\Source;
 
 use Magento\Framework\Data\OptionSourceInterface;
 use MageOS\AiBase\Api\AiServiceSelectorInterface;
-use MageOS\AiBase\Api\Data\AiServiceConfigurationInterface;
 use MageOS\AiBase\Api\Data\AiServiceInterface;
 use MageOS\AiBase\Model\Client\BridgeRegistry;
+use MageOS\AiBase\Model\ServiceRegistry;
 
 /**
  * Option source listing the AI services an administrator has configured, for reuse in the
@@ -36,12 +36,12 @@ class ConfiguredService implements OptionSourceInterface
 
     /**
      * @param AiServiceSelectorInterface $serviceSelector
-     * @param AiServiceConfigurationInterface[] $services Service code => backend definition
+     * @param ServiceRegistry $serviceRegistry
      * @param BridgeRegistry $bridgeRegistry
      */
     public function __construct(
         private readonly AiServiceSelectorInterface $serviceSelector,
-        private readonly array $services,
+        private readonly ServiceRegistry $serviceRegistry,
         private readonly BridgeRegistry $bridgeRegistry,
     ) {
     }
@@ -49,7 +49,7 @@ class ConfiguredService implements OptionSourceInterface
     /**
      * @inheritdoc
      *
-     * @return array<int, array{value: string, label: string}>
+     * @return array<int,array{value:string,label:string}>
      */
     public function toOptionArray(): array
     {
@@ -72,14 +72,21 @@ class ConfiguredService implements OptionSourceInterface
      */
     private function getLabel(AiServiceInterface $service): string
     {
+        $name = $service->getLabel();
+        $providerName = $this->getServiceName($service->getCode());
+
+        // A row an administrator named is listed under that name, because the name is the purpose
+        // they picked it for. The provider moves into the details, since a row called "Chat AI"
+        // still has to say which backend it bills.
         $details = array_values(array_filter([
+            $name === null ? null : $providerName,
             $this->getModel($service),
             $this->getUsabilityNote($service->getCode()),
         ]));
 
         return $details === []
-            ? $this->getServiceName($service->getCode())
-            : sprintf('%s (%s)', $this->getServiceName($service->getCode()), implode(', ', $details));
+            ? ($name ?? $providerName)
+            : sprintf('%s (%s)', $name ?? $providerName, implode(', ', $details));
     }
 
     /**
@@ -93,9 +100,7 @@ class ConfiguredService implements OptionSourceInterface
      */
     private function getServiceName(string $code): string
     {
-        return ($this->services[$code] ?? null) instanceof AiServiceConfigurationInterface
-            ? $this->services[$code]->getName()
-            : $code;
+        return $this->serviceRegistry->get($code)?->getName() ?? $code;
     }
 
     /**
@@ -135,8 +140,8 @@ class ConfiguredService implements OptionSourceInterface
      * Two rows of the same backend with the same model are a legitimate setup (two accounts, two
      * billing owners), and an administrator cannot pick between two identical option labels.
      *
-     * @param array $options Option rows, each with a value and a label
-     * @return array<int, array{value: string, label: string}>
+     * @param array<int,array{value:string,label:string}> $options Option rows, each with a value and a label
+     * @return array<int,array{value:string,label:string}>
      */
     private function numberDuplicateLabels(array $options): array
     {

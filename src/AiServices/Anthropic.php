@@ -79,7 +79,7 @@ class Anthropic implements AiServiceConfigurationInterface, ModelListProviderInt
     public function fetchModels(array $configuration): array
     {
         $response = $this->modelListFetcher->getJson(self::MODELS_URL, [
-            'x-api-key' => (string) ($configuration['api_key'] ?? ''),
+            'x-api-key' => $this->resolveApiKey($configuration),
             'anthropic-version' => self::API_VERSION,
         ]);
 

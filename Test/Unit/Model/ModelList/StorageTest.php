@@ -81,4 +81,16 @@ final class StorageTest extends TestCase
         self::assertNull($this->subject->getModels('openai'));
         self::assertNull($this->subject->getFetchedAt('openai'));
     }
+
+    /**
+     * The payload is read back out of core_config_data, so a hand-edited row can hold anything,
+     * and the admin form renders these entries straight into option labels.
+     */
+    public function test_get_models_drops_entries_whose_label_is_not_a_string(): void
+    {
+        $this->scopeConfig->method('getValue')
+            ->willReturn('{"fetched_at":1750000000,"models":{"gpt-4o":"GPT-4o","o1":{"nested":true},"o3":null}}');
+
+        self::assertSame(['gpt-4o' => 'GPT-4o'], $this->subject->getModels('openai'));
+    }
 }

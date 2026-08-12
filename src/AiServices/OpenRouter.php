@@ -70,7 +70,7 @@ class OpenRouter implements AiServiceConfigurationInterface, ModelListProviderIn
     public function fetchModels(array $configuration): array
     {
         $headers = [];
-        $apiKey = (string) ($configuration['api_key'] ?? '');
+        $apiKey = $this->resolveApiKey($configuration);
         if ($apiKey !== '') {
             $headers['Authorization'] = 'Bearer ' . $apiKey;
         }

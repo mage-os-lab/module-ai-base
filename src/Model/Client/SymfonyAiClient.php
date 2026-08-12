@@ -6,10 +6,13 @@ namespace MageOS\AiBase\Model\Client;
 
 use Magento\Framework\Exception\LocalizedException;
 use MageOS\AiBase\Api\AiClientInterface;
+use MageOS\AiBase\Api\PlatformAwareInterface;
 use MageOS\AiBase\Api\Data\ChatMessageInterface;
 use MageOS\AiBase\Api\Data\ChatRequestInterface;
 use MageOS\AiBase\Api\Data\ChatResponseInterface;
+use MageOS\AiBase\Api\Data\FinishReason;
 use MageOS\AiBase\Api\Data\MessageRole;
+use MageOS\AiBase\Api\Data\StreamChunkInterface;
 use MageOS\AiBase\Api\Data\StreamChunkType;
 use MageOS\AiBase\Api\Data\ToolDefinitionInterface;
 use MageOS\AiBase\Model\Chat\ChatMessage;
@@ -24,16 +27,46 @@ use MageOS\AiBase\Model\Chat\ToolCall;
  *
  * The Symfony AI classes are referenced lazily (string FQCNs, guarded by
  * class_exists in ClientFactory) so this module does not hard-require
- * symfony/ai-platform. Written against symfony/ai-platform v0.12.0; the
+ * symfony/ai-platform. Native signatures therefore say `object`, while the
+ * docblocks name the real platform type: annotations are never autoloaded, so
+ * static analysis gets to check these calls without the runtime gaining a
+ * dependency on a package that may be absent. Written against symfony/ai-platform v0.12.0; the
  * component is experimental and not covered by Symfony's BC promise, so
  * pin the version and re-verify on upgrade.
  */
-class SymfonyAiClient implements AiClientInterface
+class SymfonyAiClient implements AiClientInterface, PlatformAwareInterface
 {
     /**
      * Metadata key the platform stores extracted token counts under.
      */
     private const METADATA_TOKEN_USAGE = 'token_usage';
+
+    /**
+     * Metadata key the platform stores the normalized stop reason under.
+     */
+    private const METADATA_FINISH_REASON = 'finish_reason';
+
+    /**
+     * Provider stop-reason wordings, for bridges reporting a bare string instead of a mapped value.
+     *
+     * The platform normalizes the reason itself for every bundled bridge; this is the fallback for
+     * a third-party bridge that only forwards what its provider wrote.
+     */
+    private const RAW_FINISH_REASONS = [
+        'stop' => FinishReason::Stop,
+        'end_turn' => FinishReason::Stop,
+        'complete' => FinishReason::Stop,
+        'length' => FinishReason::Length,
+        'max_tokens' => FinishReason::Length,
+        'model_length' => FinishReason::Length,
+        'tool_use' => FinishReason::ToolCall,
+        'tool_calls' => FinishReason::ToolCall,
+        'function_call' => FinishReason::ToolCall,
+        'content_filter' => FinishReason::ContentFilter,
+        'refusal' => FinishReason::ContentFilter,
+        'safety' => FinishReason::ContentFilter,
+        'stop_sequence' => FinishReason::StopSequence,
+    ];
 
     /**
      * Placeholder execution target for tool definitions.
@@ -44,14 +77,18 @@ class SymfonyAiClient implements AiClientInterface
     private const TOOL_EXECUTION_PLACEHOLDER_METHOD = 'toolsAreExecutedByTheConsumer';
 
     /**
-     * @param object $platform \Symfony\AI\Platform\PlatformInterface
-     * @param string $model
+     * @param \Symfony\AI\Platform\PlatformInterface $platform
+     * @param non-empty-string $model Guaranteed by ClientFactory, which refuses a row without one
      * @param string $serviceCode
+     * @param string $serviceId Configured row this client was built from
+     * @param OptionNormalizer $optionNormalizer
      */
     public function __construct(
         private readonly object $platform,
         private readonly string $model,
         private readonly string $serviceCode,
+        private readonly string $serviceId,
+        private readonly OptionNormalizer $optionNormalizer,
     ) {
     }
 
@@ -82,12 +119,36 @@ class SymfonyAiClient implements AiClientInterface
             throw $this->wrap($e);
         }
 
+        $text = '';
+        $toolCalls = [];
+        $usage = null;
+
         foreach ($deltas as $delta) {
-            $chunk = $this->toStreamChunk($delta);
-            if ($chunk !== null) {
+            foreach ($this->toStreamChunks($delta) as $chunk) {
+                $text .= $chunk->getType() === StreamChunkType::Text ? $chunk->getText() : '';
+                $toolCall = $chunk->getToolCall();
+                if ($toolCall !== null) {
+                    $toolCalls[] = $toolCall;
+                }
+                $usage = $chunk->getUsage() ?? $usage;
                 yield $chunk;
             }
         }
+
+        // Token counts and the stop reason arrive at the very end of a stream, and the platform
+        // lifts both out of the delta sequence into the result metadata rather than letting them
+        // through as deltas. Reading them here is what makes a usage chunk reachable at all.
+        if ($usage === null && ($usage = $this->extractUsage($result)) !== null) {
+            yield new StreamChunk(StreamChunkType::Usage, '', null, $usage);
+        }
+
+        return new ChatResponse(
+            $text,
+            $toolCalls,
+            $usage,
+            $this->extractFinishReason($result),
+            $this->extractRawFinishReason($result),
+        );
     }
 
     /**
@@ -110,39 +171,108 @@ class SymfonyAiClient implements AiClientInterface
     }
 
     /**
+     * @inheritdoc
+     */
+    public function getServiceId(): string
+    {
+        return $this->serviceId;
+    }
+
+    /**
+     * @inheritdoc
+     */
+    public function getModel(): string
+    {
+        return $this->model;
+    }
+
+    /**
+     * @inheritdoc
+     */
+    public function getPlatform(): object
+    {
+        return $this->platform;
+    }
+
+    /**
+     * @inheritdoc
+     */
+    public function normalizeOptions(array $options): array
+    {
+        return $this->optionNormalizer->normalize($this->serviceCode, $options);
+    }
+
+    /**
      * Send the request to the platform.
      *
      * @param ChatRequestInterface $request
-     * @param array $options
-     * @return object
+     * @param array<string,mixed> $options
+     * @return \Symfony\AI\Platform\Result\DeferredResult
      * @throws LocalizedException
      */
     private function invoke(ChatRequestInterface $request, array $options): object
     {
+        $model = $this->modelFor($options);
+        unset($options[AiClientInterface::OPTION_MODEL]);
+
+        $options = $this->normalizeOptions($options);
+
         $tools = $this->toTools($request->getTools());
         if ($tools !== []) {
             $options['tools'] = $tools;
         }
 
         try {
-            return $this->platform->invoke($this->model, $this->toMessageBag($request), $options);
+            return $this->platform->invoke($model, $this->toMessageBag($request), $options);
         } catch (\Throwable $e) {
             throw $this->wrap($e);
         }
     }
 
     /**
+     * The model this call runs against: the caller's, or the one the row was configured with.
+     *
+     * The model is the one call parameter that used to live only in configuration, which forced a
+     * second configured row, credentials and all, on anyone who wanted the same account with a
+     * cheaper model for bulk work. It is removed from the options before they are normalized
+     * because the platform takes it as its own argument, not as a field of the request body.
+     *
+     * @param array<string,mixed> $options
+     * @return non-empty-string
+     * @throws LocalizedException When the caller names a model that is not a usable name
+     */
+    private function modelFor(array $options): string
+    {
+        if (!array_key_exists(AiClientInterface::OPTION_MODEL, $options)) {
+            return $this->model;
+        }
+
+        $requested = $options[AiClientInterface::OPTION_MODEL];
+        $model = is_string($requested) ? trim($requested) : '';
+        if ($model === '') {
+            throw new LocalizedException(__(
+                'The "%1" option for AI service "%2" must be a model name. '
+                . 'Leave it out to use the model the service is configured with.',
+                AiClientInterface::OPTION_MODEL,
+                $this->serviceCode
+            ));
+        }
+
+        return $model;
+    }
+
+    /**
      * Build the platform's message bag from the request's conversation.
      *
      * @param ChatRequestInterface $request
-     * @return object \Symfony\AI\Platform\Message\MessageBag
+     * @return \Symfony\AI\Platform\Message\MessageBag
      */
     private function toMessageBag(ChatRequestInterface $request): object
     {
         $messageBagClass = \Symfony\AI\Platform\Message\MessageBag::class;
 
         return new $messageBagClass(...array_map(
-            fn (ChatMessageInterface $message): object => $this->toMessage($message),
+            fn (ChatMessageInterface $message) => $this->toMessage($message),
             $request->getMessages(),
         ));
     }
@@ -151,7 +281,7 @@ class SymfonyAiClient implements AiClientInterface
      * Translate one message into the platform's equivalent.
      *
      * @param ChatMessageInterface $message
-     * @return object \Symfony\AI\Platform\Message\MessageInterface
+     * @return \Symfony\AI\Platform\Message\MessageInterface
      */
     private function toMessage(ChatMessageInterface $message): object
     {
@@ -177,7 +307,7 @@ class SymfonyAiClient implements AiClientInterface
      * empty text part is not something every provider accepts.
      *
      * @param ChatMessageInterface $message
-     * @return array
+     * @return list<string|object> Text first, then one platform ToolCall per requested call
      */
     private function toAssistantParts(ChatMessageInterface $message): array
     {
@@ -193,7 +323,7 @@ class SymfonyAiClient implements AiClientInterface
      * Translate a tool call into the platform's own value object.
      *
      * @param \MageOS\AiBase\Api\Data\ToolCallInterface|null $toolCall
-     * @return object \Symfony\AI\Platform\Result\ToolCall
+     * @return \Symfony\AI\Platform\Result\ToolCall
      * @throws LocalizedException
      */
     private function toPlatformToolCall(?object $toolCall): object
@@ -212,8 +342,8 @@ class SymfonyAiClient implements AiClientInterface
     /**
      * Translate offered tools into the platform's Tool objects.
      *
-     * @param ToolDefinitionInterface[] $tools
-     * @return array
+     * @param list<ToolDefinitionInterface> $tools
+     * @return list<\Symfony\AI\Platform\Tool\Tool>
      */
     private function toTools(array $tools): array
     {
@@ -225,6 +355,10 @@ class SymfonyAiClient implements AiClientInterface
                 new $referenceClass(self::class, self::TOOL_EXECUTION_PLACEHOLDER_METHOD),
                 $tool->getName(),
                 $tool->getDescription(),
+                // Symfony spells the whole JSON Schema out as an array shape. This one is written
+                // by the consumer at runtime and only the provider can rule on it, so the shape is
+                // unprovable here; restating it would reject valid schemas Symfony left out.
+                // @phpstan-ignore argument.type
                 $tool->getParameters(),
             ),
             $tools,
@@ -237,7 +371,7 @@ class SymfonyAiClient implements AiClientInterface
      * The result type is inspected rather than asked for: asText() throws when the model only
      * requested tools, which is exactly what the first turn of a tool loop returns.
      *
-     * @param object $result
+     * @param \Symfony\AI\Platform\Result\DeferredResult $result
      * @return ChatResponseInterface
      */
     private function toChatResponse(object $result): ChatResponseInterface
@@ -248,14 +382,16 @@ class SymfonyAiClient implements AiClientInterface
             $this->extractText($parts),
             $this->extractToolCalls($parts),
             $this->extractUsage($result),
+            $this->extractFinishReason($result),
+            $this->extractRawFinishReason($result),
         );
     }
 
     /**
      * Flatten a result into its parts, so single and multi-part results read the same.
      *
-     * @param object $result
-     * @return array
+     * @param \Symfony\AI\Platform\Result\ResultInterface $result
+     * @return list<\Symfony\AI\Platform\Result\ResultInterface>
      */
     private function toResultParts(object $result): array
     {
@@ -267,7 +403,7 @@ class SymfonyAiClient implements AiClientInterface
     /**
      * Concatenate the text of every text part.
      *
-     * @param array $parts
+     * @param list<\Symfony\AI\Platform\Result\ResultInterface> $parts
      * @return string
      */
     private function extractText(array $parts): string
@@ -285,8 +421,8 @@ class SymfonyAiClient implements AiClientInterface
     /**
      * Collect every tool call across the result's parts.
      *
-     * @param array $parts
-     * @return array
+     * @param list<\Symfony\AI\Platform\Result\ResultInterface> $parts
+     * @return list<ToolCall>
      */
     private function extractToolCalls(array $parts): array
     {
@@ -306,60 +442,139 @@ class SymfonyAiClient implements AiClientInterface
     /**
      * Read token counts off the result metadata, where the platform stores them.
      *
-     * @param object $result
-     * @return \MageOS\AiBase\Api\Data\TokenUsageInterface|null
+     * Metadata is an untyped bag any bridge may write to, so the entry is checked rather than
+     * assumed: a third-party bridge storing its own idea of usage under this key would otherwise
+     * take down a working call over numbers nothing needs.
+     *
+     * @param \Symfony\AI\Platform\Result\DeferredResult $result
+     * @return TokenUsage|null
      */
-    private function extractUsage(object $result): ?object
+    private function extractUsage(object $result): ?TokenUsage
     {
         $usage = $result->getMetadata()->get(self::METADATA_TOKEN_USAGE);
 
-        return $usage === null ? null : $this->toAiBaseUsage($usage);
+        return $usage instanceof \Symfony\AI\Platform\TokenUsage\TokenUsageInterface
+            ? $this->toAiBaseUsage($usage)
+            : null;
     }
 
     /**
-     * Translate one streamed delta, or null for deltas that carry no payload of their own.
+     * Read the stop reason off the result metadata and normalize it.
+     *
+     * The platform maps each provider's wording onto its own case set per bridge, so the object it
+     * stores already answers "was this truncated?"; only its vocabulary has to be translated.
+     *
+     * Anything else under that key falls through to the raw wording below, which is the same path a
+     * bridge reporting a bare provider string takes, so an unrecognized entry costs nothing.
+     *
+     * @param \Symfony\AI\Platform\Result\DeferredResult $result
+     * @return FinishReason|null
+     */
+    private function extractFinishReason(object $result): ?FinishReason
+    {
+        $reason = $result->getMetadata()->get(self::METADATA_FINISH_REASON);
+        if ($reason === null) {
+            return null;
+        }
+
+        $case = $reason instanceof \Symfony\AI\Platform\FinishReason\FinishReason
+            ? $reason->getCase()->value
+            : null;
+
+        return match ($case) {
+            'stop' => FinishReason::Stop,
+            'length' => FinishReason::Length,
+            'tool-call' => FinishReason::ToolCall,
+            'content-filter' => FinishReason::ContentFilter,
+            'stop-sequence' => FinishReason::StopSequence,
+            'other' => FinishReason::Other,
+            default => $this->toFinishReasonFromRaw((string) $this->extractRawFinishReason($result)),
+        };
+    }
+
+    /**
+     * The stop reason exactly as the provider wrote it.
+     *
+     * @param \Symfony\AI\Platform\Result\DeferredResult $result
+     * @return string|null
+     */
+    private function extractRawFinishReason(object $result): ?string
+    {
+        $reason = $result->getMetadata()->get(self::METADATA_FINISH_REASON);
+        if ($reason === null) {
+            return null;
+        }
+
+        $raw = is_object($reason) && method_exists($reason, 'getRaw') ? $reason->getRaw() : $reason;
+
+        return is_scalar($raw) || $raw instanceof \Stringable ? (string) $raw : null;
+    }
+
+    /**
+     * Best effort meaning for a bridge that reported a bare provider string.
+     *
+     * @param string $raw
+     * @return FinishReason
+     */
+    private function toFinishReasonFromRaw(string $raw): FinishReason
+    {
+        return self::RAW_FINISH_REASONS[strtolower($raw)] ?? FinishReason::Other;
+    }
+
+    /**
+     * Translate one streamed delta into the chunks it carries.
+     *
+     * A list rather than a single chunk because one delta is not one event: a model requesting
+     * several tools in the same turn produces exactly one ToolCallComplete holding all of them.
+     * Deltas that carry no payload of their own translate to nothing.
      *
      * @param mixed $delta
-     * @return \MageOS\AiBase\Api\Data\StreamChunkInterface|null
+     * @return list<StreamChunkInterface>
      */
-    private function toStreamChunk(mixed $delta): ?object
+    private function toStreamChunks(mixed $delta): array
     {
         if ($delta instanceof \Symfony\AI\Platform\Result\Stream\Delta\TextDelta) {
-            return new StreamChunk(StreamChunkType::Text, $delta->getText());
+            return [new StreamChunk(StreamChunkType::Text, $delta->getText())];
         }
         if ($delta instanceof \Symfony\AI\Platform\Result\Stream\Delta\ThinkingDelta) {
-            return new StreamChunk(StreamChunkType::Thinking, $delta->getThinking());
+            return [new StreamChunk(StreamChunkType::Thinking, $delta->getThinking())];
         }
         if ($delta instanceof \Symfony\AI\Platform\Result\Stream\Delta\ToolCallComplete) {
-            return $this->toToolCallChunk($delta);
+            return $this->toToolCallChunks($delta);
         }
         if ($delta instanceof \Symfony\AI\Platform\TokenUsage\TokenUsageInterface) {
-            return new StreamChunk(StreamChunkType::Usage, '', null, $this->toAiBaseUsage($delta));
+            return [new StreamChunk(StreamChunkType::Usage, '', null, $this->toAiBaseUsage($delta))];
         }
 
-        return null;
+        return [];
     }
 
     /**
-     * A completed tool call block, arguments already accumulated and decoded by the bridge.
+     * One chunk per completed tool call, arguments already accumulated and decoded by the bridge.
      *
-     * @param object $delta
-     * @return \MageOS\AiBase\Api\Data\StreamChunkInterface|null
+     * ToolCallComplete signals that *all* of the turn's tool calls are finished and carries them
+     * together, so taking only the first would drop every tool but one from a parallel-tool turn,
+     * which the buffered path does not do.
+     *
+     * @param \Symfony\AI\Platform\Result\Stream\Delta\ToolCallComplete $delta
+     * @return list<StreamChunkInterface>
      */
-    private function toToolCallChunk(object $delta): ?object
+    private function toToolCallChunks(object $delta): array
     {
-        $toolCalls = $delta->getToolCalls();
-        $toolCall = $toolCalls[array_key_first($toolCalls)] ?? null;
-
-        return $toolCall === null
-            ? null
-            : new StreamChunk(StreamChunkType::ToolCall, '', $this->toAiBaseToolCall($toolCall));
+        return array_map(
+            fn (object $toolCall): StreamChunkInterface => new StreamChunk(
+                StreamChunkType::ToolCall,
+                '',
+                $this->toAiBaseToolCall($toolCall),
+            ),
+            array_values($delta->getToolCalls()),
+        );
     }
 
     /**
      * Translate a platform tool call into this module's own.
      *
-     * @param object $toolCall \Symfony\AI\Platform\Result\ToolCall
+     * @param \Symfony\AI\Platform\Result\ToolCall $toolCall
      * @return ToolCall
      */
     private function toAiBaseToolCall(object $toolCall): ToolCall
@@ -370,7 +585,7 @@ class SymfonyAiClient implements AiClientInterface
     /**
      * Translate platform token counts into this module's own.
      *
-     * @param object $usage \Symfony\AI\Platform\TokenUsage\TokenUsageInterface
+     * @param \Symfony\AI\Platform\TokenUsage\TokenUsageInterface $usage
      * @return TokenUsage
      */
     private function toAiBaseUsage(object $usage): TokenUsage

@@ -16,6 +16,20 @@ class AiServiceSelector implements AiServiceSelectorInterface
     private const CONFIG_PATH_AI_SERVICES = 'mageos_ai/services/configuration';
 
     /**
+     * Raw stored value the memoized services were parsed from.
+     *
+     * @var string|null
+     */
+    private ?string $parsedRaw = null;
+
+    /**
+     * Services parsed from $parsedRaw.
+     *
+     * @var list<AiServiceInterface>
+     */
+    private array $parsedServices = [];
+
+    /**
      * @param ScopeConfigInterface $scopeConfig
      * @param AiServiceInterfaceFactory $aiServiceFactory
      * @param SensitiveDataProcessor $sensitiveDataProcessor
@@ -63,13 +77,24 @@ class AiServiceSelector implements AiServiceSelectorInterface
     /**
      * Read and defensively parse the stored services configuration.
      *
-     * @return AiServiceInterface[]
+     * Disabled rows are left out: see the filter below for why that happens here.
+     *
+     * Parsing decrypts every credential of every configured row, which a tool loop resolving its
+     * service once per iteration would otherwise pay for on every turn. The memo is keyed on the
+     * raw stored value rather than simply held: reading it back is cheap, and a store switch
+     * (emulation in cron or a transactional email) has to re-parse rather than serve another
+     * scope's credentials.
+     *
+     * @return list<AiServiceInterface>
      */
     private function getParsedConfig(): array
     {
         $raw = $this->scopeConfig->getValue(self::CONFIG_PATH_AI_SERVICES, ScopeInterface::SCOPE_STORE);
         if (!is_string($raw) || $raw === '') {
             return [];
+        }
+        if ($raw === $this->parsedRaw) {
+            return $this->parsedServices;
         }
 
         $decoded = json_decode($raw, true);
@@ -87,13 +112,23 @@ class AiServiceSelector implements AiServiceSelectorInterface
             if (!is_string($code) || !is_array($configuration)) {
                 continue;
             }
-            $services[] = $this->aiServiceFactory->create([
+            $service = $this->aiServiceFactory->create([
                 'id' => (string) $rowId,
                 'code' => $code,
                 'configuration' => $this->sensitiveDataProcessor->decryptRow($code, $configuration),
             ]);
+
+            // A disabled row is dropped here rather than at each call site, because every way a
+            // consumer reaches a configured service goes through this class. Filtering once is
+            // what makes "disabled" mean the same thing to the option source, the client factory
+            // and a module reading credentials to call a provider itself.
+            if ($service->isEnabled()) {
+                $services[] = $service;
+            }
         }
 
-        return $services;
+        $this->parsedRaw = $raw;
+
+        return $this->parsedServices = $services;
     }
 }

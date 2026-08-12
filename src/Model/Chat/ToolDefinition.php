@@ -16,7 +16,7 @@ class ToolDefinition implements ToolDefinitionInterface
     /**
      * @param string $name
      * @param string $description
-     * @param array $parameters JSON Schema; defaults to an empty object schema
+     * @param array<string,mixed> $parameters JSON Schema; defaults to an empty object schema
      */
     public function __construct(
         private readonly string $name,

@@ -5,7 +5,7 @@ declare(strict_types=1);
 namespace MageOS\AiBase\Model\Config;
 
 use Magento\Framework\Encryption\EncryptorInterface;
-use MageOS\AiBase\Api\Data\AiServiceConfigurationInterface;
+use MageOS\AiBase\Model\ServiceRegistry;
 
 /**
  * Encrypts/decrypts sensitive keys inside a single service configuration array.
@@ -43,17 +43,17 @@ class SensitiveDataProcessor
     /**
      * Lazily built map of service code => [field name => encrypted flag].
      *
-     * @var array<string, array<string, bool>>|null
+     * @var array<string,array<string,bool>>|null
      */
     private ?array $fieldSchema = null;
 
     /**
      * @param EncryptorInterface $encryptor
-     * @param array<string,mixed> $services Registered AI backends providing the field schema
+     * @param ServiceRegistry $serviceRegistry Registered AI backends providing the field schema
      */
     public function __construct(
         private readonly EncryptorInterface $encryptor,
-        private readonly array $services = [],
+        private readonly ServiceRegistry $serviceRegistry,
     ) {
     }
 
@@ -61,8 +61,8 @@ class SensitiveDataProcessor
      * Encrypt sensitive values in a service configuration row.
      *
      * @param string $serviceCode
-     * @param array<string,mixed> $configuration
-     * @return array<string,mixed>
+     * @param array<array-key,mixed> $configuration
+     * @return array<array-key,mixed>
      */
     public function encryptRow(string $serviceCode, array $configuration): array
     {
@@ -79,8 +79,8 @@ class SensitiveDataProcessor
      * Plaintext values (rows saved before encryption was introduced) are returned unchanged.
      *
      * @param string $serviceCode
-     * @param array<string,mixed> $configuration
-     * @return array<string,mixed>
+     * @param array<array-key,mixed> $configuration
+     * @return array<array-key,mixed>
      */
     public function decryptRow(string $serviceCode, array $configuration): array
     {
@@ -95,8 +95,8 @@ class SensitiveDataProcessor
      * Replace sensitive values with the obscured placeholder for admin form display.
      *
      * @param string $serviceCode
-     * @param array<string,mixed> $configuration
-     * @return array<string,mixed>
+     * @param array<array-key,mixed> $configuration
+     * @return array<array-key,mixed>
      */
     public function maskRow(string $serviceCode, array $configuration): array
     {
@@ -115,9 +115,9 @@ class SensitiveDataProcessor
      * the literal placeholder as a credential.
      *
      * @param string $serviceCode
-     * @param array<string,mixed> $configuration Submitted service configuration row
-     * @param array<string,mixed> $previous Previously stored (still encrypted) configuration row
-     * @return array<string,mixed>
+     * @param array<array-key,mixed> $configuration Submitted service configuration row
+     * @param array<array-key,mixed> $previous Previously stored (still encrypted) configuration row
+     * @return array<array-key,mixed>
      */
     public function restoreRow(string $serviceCode, array $configuration, array $previous): array
     {
@@ -135,9 +135,9 @@ class SensitiveDataProcessor
      * Apply a processor to every sensitive string value in the row.
      *
      * @param string $serviceCode
-     * @param array $configuration
+     * @param array<array-key,mixed> $configuration
      * @param callable $processor
-     * @return array
+     * @return array<array-key,mixed>
      */
     private function processRow(string $serviceCode, array $configuration, callable $processor): array
     {
@@ -173,23 +173,15 @@ class SensitiveDataProcessor
     /**
      * Build (once) the encrypted-field schema from the registered services.
      *
-     * @return array<string, array<string, bool>>
-     * @throws \InvalidArgumentException When a registered service has the wrong type
+     * @return array<string,array<string,bool>>
      */
     private function getFieldSchema(): array
     {
         if ($this->fieldSchema === null) {
             $this->fieldSchema = [];
-            foreach ($this->services as $service) {
-                if (!$service instanceof AiServiceConfigurationInterface) {
-                    throw new \InvalidArgumentException(sprintf(
-                        'Each registered service must implement %s, got %s',
-                        AiServiceConfigurationInterface::class,
-                        get_debug_type($service),
-                    ));
-                }
+            foreach ($this->serviceRegistry->getAll() as $code => $service) {
                 foreach ($service->getConfigurationFields() as $field) {
-                    $this->fieldSchema[$service->getCode()][$field->getName()] = $field->isEncrypted();
+                    $this->fieldSchema[$code][$field->getName()] = $field->isEncrypted();
                 }
             }
         }

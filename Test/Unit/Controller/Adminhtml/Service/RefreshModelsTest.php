@@ -15,6 +15,7 @@ use MageOS\AiBase\Api\Data\AiServiceConfigurationInterface;
 use MageOS\AiBase\Api\Data\AiServiceInterface;
 use MageOS\AiBase\Controller\Adminhtml\Service\RefreshModels;
 use MageOS\AiBase\Model\ModelList\Storage;
+use MageOS\AiBase\Model\ServiceRegistry;
 use PHPUnit\Framework\MockObject\MockObject;
 use PHPUnit\Framework\TestCase;
 
@@ -54,7 +55,7 @@ final class RefreshModelsTest extends TestCase
     /**
      * Build the controller under test with the given registered service definitions.
      *
-     * @param array<string, AiServiceConfigurationInterface> $services
+     * @param AiServiceConfigurationInterface[] $services
      * @return RefreshModels
      */
     private function createSubject(array $services): RefreshModels
@@ -70,12 +71,29 @@ final class RefreshModelsTest extends TestCase
         $jsonFactory = $this->createMock(JsonFactory::class);
         $jsonFactory->method('create')->willReturn($json);
 
-        return new RefreshModels($context, $jsonFactory, $this->serviceSelector, $this->storage, $services);
+        return new RefreshModels(
+            $context,
+            $jsonFactory,
+            $this->serviceSelector,
+            $this->storage,
+            new ServiceRegistry($services),
+        );
+    }
+
+    /**
+     * @param array<string, string|null> $params
+     * @return void
+     */
+    private function stubParams(array $params): void
+    {
+        $this->request->method('getParam')->willReturnCallback(
+            static fn (string $name) => $params[$name] ?? null
+        );
     }
 
     public function test_execute_rejects_missing_service_code(): void
     {
-        $this->request->method('getParam')->with('service_code')->willReturn(null);
+        $this->stubParams([]);
 
         $this->createSubject([])->execute();
 
@@ -85,14 +103,14 @@ final class RefreshModelsTest extends TestCase
 
     public function test_execute_rejects_service_without_model_list_support(): void
     {
-        $this->request->method('getParam')->with('service_code')->willReturn('azure');
+        $this->stubParams(['service_code' => 'azure']);
 
         $azure = $this->createMock(AiServiceConfigurationInterface::class);
         $azure->method('getCode')->willReturn('azure');
         $this->serviceSelector->expects(self::never())->method('getByCode');
         $this->storage->expects(self::never())->method('save');
 
-        $this->createSubject(['azure' => $azure])->execute();
+        $this->createSubject([$azure])->execute();
 
         self::assertFalse($this->resultData['success']);
         self::assertSame('Model list refresh is not supported for this service.', $this->resultData['error']);
@@ -100,11 +118,11 @@ final class RefreshModelsTest extends TestCase
 
     public function test_execute_reports_missing_saved_configuration(): void
     {
-        $this->request->method('getParam')->with('service_code')->willReturn('openai');
+        $this->stubParams(['service_code' => 'openai']);
         $this->serviceSelector->method('getByCode')->with('openai')->willReturn([]);
         $this->storage->expects(self::never())->method('save');
 
-        $this->createSubject(['openai' => $this->openAi])->execute();
+        $this->createSubject([$this->openAi])->execute();
 
         self::assertFalse($this->resultData['success']);
         self::assertSame('No AI service configured for code "openai".', $this->resultData['error']);
@@ -112,7 +130,7 @@ final class RefreshModelsTest extends TestCase
 
     public function test_execute_fetches_persists_and_returns_model_map(): void
     {
-        $this->request->method('getParam')->with('service_code')->willReturn('openai');
+        $this->stubParams(['service_code' => 'openai']);
 
         $configured = $this->createMock(AiServiceInterface::class);
         $configured->method('getConfiguration')->willReturn(['api_key' => 'sk-test', 'model' => 'gpt-4o']);
@@ -124,7 +142,7 @@ final class RefreshModelsTest extends TestCase
             ->willReturn($models);
         $this->storage->expects(self::once())->method('save')->with('openai', $models);
 
-        $this->createSubject(['openai' => $this->openAi])->execute();
+        $this->createSubject([$this->openAi])->execute();
 
         self::assertTrue($this->resultData['success']);
         self::assertSame(2, $this->resultData['count']);
@@ -133,7 +151,7 @@ final class RefreshModelsTest extends TestCase
 
     public function test_execute_passes_localized_exception_message_through(): void
     {
-        $this->request->method('getParam')->with('service_code')->willReturn('openai');
+        $this->stubParams(['service_code' => 'openai']);
 
         $configured = $this->createMock(AiServiceInterface::class);
         $configured->method('getConfiguration')->willReturn(['api_key' => 'bad']);
@@ -143,7 +161,7 @@ final class RefreshModelsTest extends TestCase
             ->willThrowException(new LocalizedException(__('Request to %1 returned HTTP status %2.', 'x', 401)));
         $this->storage->expects(self::never())->method('save');
 
-        $this->createSubject(['openai' => $this->openAi])->execute();
+        $this->createSubject([$this->openAi])->execute();
 
         self::assertFalse($this->resultData['success']);
         self::assertSame('Request to x returned HTTP status 401.', $this->resultData['error']);
@@ -151,7 +169,7 @@ final class RefreshModelsTest extends TestCase
 
     public function test_execute_wraps_generic_throwable_in_generic_message(): void
     {
-        $this->request->method('getParam')->with('service_code')->willReturn('openai');
+        $this->stubParams(['service_code' => 'openai']);
 
         $configured = $this->createMock(AiServiceInterface::class);
         $configured->method('getConfiguration')->willReturn([]);
@@ -159,9 +177,33 @@ final class RefreshModelsTest extends TestCase
 
         $this->openAi->method('fetchModels')->willThrowException(new \RuntimeException('boom'));
 
-        $this->createSubject(['openai' => $this->openAi])->execute();
+        $this->createSubject([$this->openAi])->execute();
 
         self::assertFalse($this->resultData['success']);
         self::assertSame('Model list refresh failed: boom', $this->resultData['error']);
+    }
+
+    /**
+     * Model lists are per provider, but the key that fetches one belongs to a row. Refreshing from
+     * the first row of a code no matter which button was pressed reports another account's error
+     * against the key the administrator is looking at.
+     */
+    public function test_execute_fetches_with_the_credentials_of_the_row_the_button_belongs_to(): void
+    {
+        $this->stubParams(['service_id' => '_second_openai_row', 'service_code' => 'openai']);
+
+        $configured = $this->createMock(AiServiceInterface::class);
+        $configured->method('getConfiguration')->willReturn(['api_key' => 'key-of-the-second-row']);
+        $this->serviceSelector->expects(self::once())->method('getById')
+            ->with('_second_openai_row')->willReturn($configured);
+        $this->serviceSelector->expects(self::never())->method('getByCode');
+
+        $this->openAi->expects(self::once())->method('fetchModels')
+            ->with(['api_key' => 'key-of-the-second-row'])
+            ->willReturn(['gpt-4o' => 'GPT-4o']);
+
+        $this->createSubject([$this->openAi])->execute();
+
+        self::assertTrue($this->resultData['success']);
     }
 }

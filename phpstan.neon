@@ -2,6 +2,8 @@ includes:
     - vendor/bitexpert/phpstan-magento/extension.neon
 
 parameters:
-    level: 5
+    # 10 is the highest level PHPStan 2.x defines, written out rather than as `max` so a minor
+    # PHPStan release introducing a new level cannot turn a green build red without a change here.
+    level: 10
     paths:
         - src

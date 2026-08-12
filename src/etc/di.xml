@@ -6,6 +6,19 @@
     <preference for="MageOS\AiBase\Api\Data\FieldDescriptorInterface" type="MageOS\AiBase\Model\FieldDescriptor"/>
     <preference for="MageOS\AiBase\Api\AiClientFactoryInterface" type="MageOS\AiBase\Model\Client\ClientFactory"/>
 
+    <!-- Chat value objects. Consumer modules are told to type-hint against Api only, which is only
+         honest if there is a way to obtain one without naming a Model class: these preferences are
+         what make the generated *InterfaceFactory classes (and ChatRequestBuilderInterfaceFactory)
+         resolve. Without them, following that rule is impossible. -->
+    <preference for="MageOS\AiBase\Api\ChatRequestBuilderInterface" type="MageOS\AiBase\Model\Chat\ChatRequestBuilder"/>
+    <preference for="MageOS\AiBase\Api\Data\ChatRequestInterface" type="MageOS\AiBase\Model\Chat\ChatRequest"/>
+    <preference for="MageOS\AiBase\Api\Data\ChatMessageInterface" type="MageOS\AiBase\Model\Chat\ChatMessage"/>
+    <preference for="MageOS\AiBase\Api\Data\ChatResponseInterface" type="MageOS\AiBase\Model\Chat\ChatResponse"/>
+    <preference for="MageOS\AiBase\Api\Data\ToolDefinitionInterface" type="MageOS\AiBase\Model\Chat\ToolDefinition"/>
+    <preference for="MageOS\AiBase\Api\Data\ToolCallInterface" type="MageOS\AiBase\Model\Chat\ToolCall"/>
+    <preference for="MageOS\AiBase\Api\Data\TokenUsageInterface" type="MageOS\AiBase\Model\Chat\TokenUsage"/>
+    <preference for="MageOS\AiBase\Api\Data\StreamChunkInterface" type="MageOS\AiBase\Model\Chat\StreamChunk"/>
+
     <!-- The services config holds provider credentials, so keep it out of `app:config:dump`.
          Without this, the value is written into app/etc/config.php, which is commonly committed,
          and the field then becomes read-only in the admin because deployment config wins over
@@ -20,123 +33,161 @@
         </arguments>
     </type>
 
+    <!-- Every AI backend this module knows about, in one place. The admin form, the option source
+         consumer modules point their own system.xml at, the sensitive-data processor and the
+         model-list refresh controller all read this same registry, so registering a provider is
+         this entry and nothing else. A provider missing from one consumer does not fail loudly, it
+         degrades: a raw machine code in an admin dropdown, or credentials falling back to a
+         field-name heuristic instead of the provider's declared field schema. -->
+    <type name="MageOS\AiBase\Model\ServiceRegistry">
+        <arguments>
+            <argument name="services" xsi:type="array">
+                <item name="anthropic" xsi:type="object">MageOS\AiBase\AiServices\Anthropic</item>
+                <item name="azure" xsi:type="object">MageOS\AiBase\AiServices\Azure</item>
+                <item name="deepseek" xsi:type="object">MageOS\AiBase\AiServices\Deepseek</item>
+                <item name="google" xsi:type="object">MageOS\AiBase\AiServices\Google</item>
+                <item name="huggingface" xsi:type="object">MageOS\AiBase\AiServices\HuggingFace</item>
+                <item name="lmstudio" xsi:type="object">MageOS\AiBase\AiServices\LmStudio</item>
+                <item name="ollama" xsi:type="object">MageOS\AiBase\AiServices\Ollama</item>
+                <item name="openrouter" xsi:type="object">MageOS\AiBase\AiServices\OpenRouter</item>
+                <item name="openai" xsi:type="object">MageOS\AiBase\AiServices\OpenAi</item>
+            </argument>
+        </arguments>
+    </type>
+
     <!-- Symfony AI provider bridges. Soft dependency: FQCN strings, resolved only when a client
          is created, and the package name so the admin form can say what to install. Since
          symfony/ai-platform 0.12 each bridge ships as its own package. Every bundled provider has
          one; a third party registering a provider without a bridge is marked unsupported in the
-         admin form, since there is nothing an administrator could install for it. -->
+         admin form, since there is nothing an administrator could install for it.
+
+         `dialect` names the request-option shape the bridge speaks, which decides how the universal
+         options are spelled on the wire (see Model\Client\OptionNormalizer below). It belongs here
+         because it is a property of the bridge, not of the provider's credentials. -->
     <type name="MageOS\AiBase\Model\Client\BridgeRegistry">
         <arguments>
             <argument name="bridges" xsi:type="array">
                 <item name="anthropic" xsi:type="array">
                     <item name="factory" xsi:type="string">Symfony\AI\Platform\Bridge\Anthropic\Factory</item>
                     <item name="package" xsi:type="string">symfony/ai-anthropic-platform</item>
+                    <item name="dialect" xsi:type="string">anthropic_messages</item>
                 </item>
                 <item name="azure" xsi:type="array">
                     <item name="factory" xsi:type="string">Symfony\AI\Platform\Bridge\Azure\OpenAi\Factory</item>
                     <item name="package" xsi:type="string">symfony/ai-azure-platform</item>
+                    <item name="dialect" xsi:type="string">openai_responses</item>
                 </item>
                 <item name="deepseek" xsi:type="array">
                     <item name="factory" xsi:type="string">Symfony\AI\Platform\Bridge\DeepSeek\Factory</item>
                     <item name="package" xsi:type="string">symfony/ai-deep-seek-platform</item>
+                    <item name="dialect" xsi:type="string">openai_chat</item>
                 </item>
                 <item name="google" xsi:type="array">
                     <item name="factory" xsi:type="string">Symfony\AI\Platform\Bridge\Gemini\Factory</item>
                     <item name="package" xsi:type="string">symfony/ai-gemini-platform</item>
+                    <item name="dialect" xsi:type="string">gemini</item>
                 </item>
                 <item name="huggingface" xsi:type="array">
                     <item name="factory" xsi:type="string">Symfony\AI\Platform\Bridge\HuggingFace\Factory</item>
                     <item name="package" xsi:type="string">symfony/ai-hugging-face-platform</item>
+                    <item name="dialect" xsi:type="string">openai_chat</item>
                 </item>
                 <item name="lmstudio" xsi:type="array">
                     <item name="factory" xsi:type="string">Symfony\AI\Platform\Bridge\LmStudio\Factory</item>
                     <item name="package" xsi:type="string">symfony/ai-lm-studio-platform</item>
+                    <item name="dialect" xsi:type="string">openai_chat</item>
                 </item>
                 <item name="ollama" xsi:type="array">
                     <item name="factory" xsi:type="string">Symfony\AI\Platform\Bridge\Ollama\Factory</item>
                     <item name="package" xsi:type="string">symfony/ai-ollama-platform</item>
+                    <item name="dialect" xsi:type="string">ollama</item>
                 </item>
                 <item name="openrouter" xsi:type="array">
                     <item name="factory" xsi:type="string">Symfony\AI\Platform\Bridge\OpenRouter\Factory</item>
                     <item name="package" xsi:type="string">symfony/ai-open-router-platform</item>
+                    <item name="dialect" xsi:type="string">openai_chat</item>
                 </item>
                 <item name="openai" xsi:type="array">
                     <item name="factory" xsi:type="string">Symfony\AI\Platform\Bridge\OpenAi\Factory</item>
                     <item name="package" xsi:type="string">symfony/ai-open-ai-platform</item>
+                    <item name="dialect" xsi:type="string">openai_responses</item>
                 </item>
             </argument>
         </arguments>
     </type>
 
-    <!-- The sensitive-data processor decides field sensitivity from the same provider
-         field schema the admin form renders; keep this item list in sync with the
-         Block\Adminhtml\Configuration\Services "services" argument below. -->
-    <type name="MageOS\AiBase\Model\Config\SensitiveDataProcessor">
-        <arguments>
-            <argument name="services" xsi:type="array">
-                <item name="anthropic" xsi:type="object">MageOS\AiBase\AiServices\Anthropic</item>
-                <item name="azure" xsi:type="object">MageOS\AiBase\AiServices\Azure</item>
-                <item name="deepseek" xsi:type="object">MageOS\AiBase\AiServices\Deepseek</item>
-                <item name="google" xsi:type="object">MageOS\AiBase\AiServices\Google</item>
-                <item name="huggingface" xsi:type="object">MageOS\AiBase\AiServices\HuggingFace</item>
-                <item name="lmstudio" xsi:type="object">MageOS\AiBase\AiServices\LmStudio</item>
-                <item name="ollama" xsi:type="object">MageOS\AiBase\AiServices\Ollama</item>
-                <item name="openrouter" xsi:type="object">MageOS\AiBase\AiServices\OpenRouter</item>
-                <item name="openai" xsi:type="object">MageOS\AiBase\AiServices\OpenAi</item>
-            </argument>
-        </arguments>
-    </type>
+    <!-- How each request-option dialect spells the options every provider has. Verified against the
+         bridge packages at symfony/ai-platform 0.12: options are merged into the provider's request
+         body nearly untouched, and OpenAI-compatible endpoints reject unknown body fields with a
+         400, so a wrong name is a hard failure rather than a no-op.
 
-    <type name="MageOS\AiBase\Block\Adminhtml\Configuration\Services">
-        <arguments>
-            <argument name="services" xsi:type="array">
-                <item name="anthropic" xsi:type="object">MageOS\AiBase\AiServices\Anthropic</item>
-                <item name="azure" xsi:type="object">MageOS\AiBase\AiServices\Azure</item>
-                <item name="deepseek" xsi:type="object">MageOS\AiBase\AiServices\Deepseek</item>
-                <item name="google" xsi:type="object">MageOS\AiBase\AiServices\Google</item>
-                <item name="huggingface" xsi:type="object">MageOS\AiBase\AiServices\HuggingFace</item>
-                <item name="lmstudio" xsi:type="object">MageOS\AiBase\AiServices\LmStudio</item>
-                <item name="ollama" xsi:type="object">MageOS\AiBase\AiServices\Ollama</item>
-                <item name="openrouter" xsi:type="object">MageOS\AiBase\AiServices\OpenRouter</item>
-                <item name="openai" xsi:type="object">MageOS\AiBase\AiServices\OpenAi</item>
-            </argument>
-        </arguments>
-    </type>
+         `lists` names the options a provider wants as an array of strings, so a caller can pass a
+         single stop sequence everywhere. `defaults` covers a provider that requires an option the
+         others default themselves: Anthropic's Messages API rejects a request without max_tokens,
+         which would make the same call fail on Anthropic alone. 4096 is below every current Claude
+         model's output ceiling; raise it per request when a longer answer is wanted.
 
-    <!-- Option source for consumer modules' own system.xml fields. It receives the same backend
-         definitions as the admin form block, to label a configured row with its provider's display
-         name rather than a machine code. Model\Config\Source\ConfiguredServiceWithAutomatic extends
-         ConfiguredService and inherits these arguments through DI type inheritance. -->
-    <type name="MageOS\AiBase\Model\Config\Source\ConfiguredService">
+         An option absent from a dialect's `map` is not supported by that provider and raises an
+         error naming both, rather than being dropped on the way to the wire. -->
+    <type name="MageOS\AiBase\Model\Client\OptionNormalizer">
         <arguments>
-            <argument name="services" xsi:type="array">
-                <item name="anthropic" xsi:type="object">MageOS\AiBase\AiServices\Anthropic</item>
-                <item name="azure" xsi:type="object">MageOS\AiBase\AiServices\Azure</item>
-                <item name="deepseek" xsi:type="object">MageOS\AiBase\AiServices\Deepseek</item>
-                <item name="google" xsi:type="object">MageOS\AiBase\AiServices\Google</item>
-                <item name="huggingface" xsi:type="object">MageOS\AiBase\AiServices\HuggingFace</item>
-                <item name="lmstudio" xsi:type="object">MageOS\AiBase\AiServices\LmStudio</item>
-                <item name="ollama" xsi:type="object">MageOS\AiBase\AiServices\Ollama</item>
-                <item name="openrouter" xsi:type="object">MageOS\AiBase\AiServices\OpenRouter</item>
-                <item name="openai" xsi:type="object">MageOS\AiBase\AiServices\OpenAi</item>
-            </argument>
-        </arguments>
-    </type>
-
-    <!-- Refresh Models controller receives the same backend definitions as the admin form block;
-         backends implementing Api\ModelListProviderInterface opt in to the live refresh. -->
-    <type name="MageOS\AiBase\Controller\Adminhtml\Service\RefreshModels">
-        <arguments>
-            <argument name="services" xsi:type="array">
-                <item name="anthropic" xsi:type="object">MageOS\AiBase\AiServices\Anthropic</item>
-                <item name="azure" xsi:type="object">MageOS\AiBase\AiServices\Azure</item>
-                <item name="deepseek" xsi:type="object">MageOS\AiBase\AiServices\Deepseek</item>
-                <item name="google" xsi:type="object">MageOS\AiBase\AiServices\Google</item>
-                <item name="huggingface" xsi:type="object">MageOS\AiBase\AiServices\HuggingFace</item>
-                <item name="lmstudio" xsi:type="object">MageOS\AiBase\AiServices\LmStudio</item>
-                <item name="ollama" xsi:type="object">MageOS\AiBase\AiServices\Ollama</item>
-                <item name="openrouter" xsi:type="object">MageOS\AiBase\AiServices\OpenRouter</item>
-                <item name="openai" xsi:type="object">MageOS\AiBase\AiServices\OpenAi</item>
+            <argument name="dialects" xsi:type="array">
+                <item name="openai_chat" xsi:type="array">
+                    <item name="map" xsi:type="array">
+                        <item name="max_tokens" xsi:type="string">max_tokens</item>
+                        <item name="temperature" xsi:type="string">temperature</item>
+                        <item name="top_p" xsi:type="string">top_p</item>
+                        <item name="stop" xsi:type="string">stop</item>
+                    </item>
+                </item>
+                <!-- The Responses API, which the OpenAI and Azure bridges both target. It renamed
+                     max_tokens to max_output_tokens and has no stop-sequence parameter at all. -->
+                <item name="openai_responses" xsi:type="array">
+                    <item name="map" xsi:type="array">
+                        <item name="max_tokens" xsi:type="string">max_output_tokens</item>
+                        <item name="temperature" xsi:type="string">temperature</item>
+                        <item name="top_p" xsi:type="string">top_p</item>
+                    </item>
+                </item>
+                <item name="anthropic_messages" xsi:type="array">
+                    <item name="map" xsi:type="array">
+                        <item name="max_tokens" xsi:type="string">max_tokens</item>
+                        <item name="temperature" xsi:type="string">temperature</item>
+                        <item name="top_p" xsi:type="string">top_p</item>
+                        <item name="stop" xsi:type="string">stop_sequences</item>
+                    </item>
+                    <item name="lists" xsi:type="array">
+                        <item name="stop" xsi:type="string">stop</item>
+                    </item>
+                    <item name="defaults" xsi:type="array">
+                        <item name="max_tokens" xsi:type="number">4096</item>
+                    </item>
+                </item>
+                <!-- Gemini nests these under generationConfig and spells them in camelCase. -->
+                <item name="gemini" xsi:type="array">
+                    <item name="map" xsi:type="array">
+                        <item name="max_tokens" xsi:type="string">maxOutputTokens</item>
+                        <item name="temperature" xsi:type="string">temperature</item>
+                        <item name="top_p" xsi:type="string">topP</item>
+                        <item name="stop" xsi:type="string">stopSequences</item>
+                    </item>
+                    <item name="lists" xsi:type="array">
+                        <item name="stop" xsi:type="string">stop</item>
+                    </item>
+                </item>
+                <!-- Ollama's bridge moves everything it does not recognise as a top-level key into
+                     the nested `options` object for us, so only the name has to change. -->
+                <item name="ollama" xsi:type="array">
+                    <item name="map" xsi:type="array">
+                        <item name="max_tokens" xsi:type="string">num_predict</item>
+                        <item name="temperature" xsi:type="string">temperature</item>
+                        <item name="top_p" xsi:type="string">top_p</item>
+                        <item name="stop" xsi:type="string">stop</item>
+                    </item>
+                    <item name="lists" xsi:type="array">
+                        <item name="stop" xsi:type="string">stop</item>
+                    </item>
+                </item>
             </argument>
         </arguments>
     </type>

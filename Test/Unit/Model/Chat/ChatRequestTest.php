@@ -7,6 +7,7 @@ namespace MageOS\AiBase\Test\Unit\Model\Chat;
 use MageOS\AiBase\Api\Data\MessageRole;
 use MageOS\AiBase\Model\Chat\ChatMessage;
 use MageOS\AiBase\Model\Chat\ChatRequest;
+use MageOS\AiBase\Model\Chat\ChatResponse;
 use MageOS\AiBase\Model\Chat\ToolCall;
 use MageOS\AiBase\Model\Chat\ToolDefinition;
 use PHPUnit\Framework\TestCase;
@@ -123,5 +124,24 @@ final class ChatRequestTest extends TestCase
         $this->expectException(\InvalidArgumentException::class);
 
         new ChatRequest([]);
+    }
+
+    /**
+     * The assistant turn has to go back into the conversation with its tool calls attached, or the
+     * provider rejects results answering calls it cannot see. Appending the text and forgetting the
+     * calls is the ordinary way to get that wrong.
+     */
+    public function test_appends_the_models_own_turn_with_its_tool_calls_intact(): void
+    {
+        $call = new ToolCall('toolu_01', 'get_orders', ['status' => 'pending']);
+        $request = new ChatRequest([new ChatMessage(MessageRole::User, 'Which are pending?')]);
+
+        $next = $request->withAssistantTurn(new ChatResponse('Let me look', [$call]));
+
+        self::assertCount(1, $request->getMessages(), 'The original request must be untouched.');
+        self::assertCount(2, $next->getMessages());
+        self::assertSame(MessageRole::Assistant, $next->getMessages()[1]->getRole());
+        self::assertSame('Let me look', $next->getMessages()[1]->getContent());
+        self::assertSame([$call], $next->getMessages()[1]->getToolCalls());
     }
 }

@@ -9,11 +9,43 @@
 @ai-test-result__error__color: #e22626;
 @ai-service-unavailable__background: #f0f0f0;
 @ai-service-unavailable__border-color: #b3b3b3;
-@ai-service-unavailable__color: #5a5a5a;
-@ai-service-badge__color: #6f6f6f;
+@ai-service-unavailable__color: #40484f;
+@ai-service-badge__color: #57606a;
 @ai-service-note__background: #fdf6e3;
 @ai-service-note__border-color: #e0c97f;
 @ai-service-install-hint__background: #fff;
+@ai-service-row-heading__border-color: #d6d6d6;
+@ai-service-field__border-color: #e3e3e3;
+@ai-service-row-model__color: #5a5a5a;
+@ai-refresh-models__border-color: #adadad;
+@ai-refresh-models__color: #514943;
+@ai-refresh-models__hover__background: #e3e3e3;
+
+//
+//  The Mage-OS configuration tab
+//  Declared in system.xml with the 'mageos-tab' class; Magento puts that class on the nav block,
+//  and the logo goes on its title. The icon is the one the Mage-OS admin theme ships, so the tab
+//  looks like the platform rather than like this module.
+//  --------------------------------------------------------------------------
+
+//  The second selector is not redundant. When the tab is open the theme sets `background` on the
+//  title as a shorthand, at a higher specificity than a single class can reach, and a shorthand
+//  resets background-image to none: the logo vanished on exactly the page the section lives on.
+//  This out-specifies it while leaving the grey highlight the shorthand also carries.
+.admin__page-nav.mageos-tab .admin__page-nav-title,
+.admin__page-nav._collapsed._show.mageos-tab .admin__page-nav-title._collapsible {
+    background-image: url('../images/mage-os-icon.svg');
+    background-position: 15px center;
+    background-repeat: no-repeat;
+    //  The icon is roughly twice as wide as it is tall, so its height decides how much room the
+    //  label has to move over. These two belong together; changing one without the other either
+    //  overlaps the text or leaves it adrift.
+    background-size: auto 30%;
+
+    strong {
+        padding-left: 46px;
+    }
+}
 
 .add-ai-service {
     align-items: center;
@@ -52,20 +84,103 @@
     }
 }
 
-.add-ai-service + .add-ai-service {
-    margin-left: 8px;
+//
+//  The buttons and the text around them are their own block under the configured rows, so they
+//  need room from the last row above and from whatever follows the field below.
+//  --------------------------------------------------------------------------
+
+//  Scoped through the table because the theme's own `td` padding out-specifies a single class,
+//  which left this block with four different edges. The `:first-child` variant is not redundant:
+//  this cell spans the row, so it is also the first, and the theme narrows the left padding of a
+//  first cell separately.
+.ai-services-configurator .admin__control-table td.col-actions-add,
+.ai-services-configurator .admin__control-table td.col-actions-add:first-child {
+    padding: 16px;
 }
 
-.action-test-connection {
-    display: block;
-    margin-top: 8px;
+//
+//  The provider buttons wrap onto several lines at every admin width, and inline spacing only
+//  separates them sideways, so the rows sat directly against each other. A flex container spaces
+//  them on both axes with one rule.
+//  --------------------------------------------------------------------------
+
+.col-actions-add > ul {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    list-style: none;
+    margin: 0 0 4px;
+    padding: 0;
 }
+
+//
+//  Row actions
+//  Both sit on one line, level with the row heading, at the size of the refresh control beside
+//  the model field. Test Connection as a full-width pill was the loudest thing in a row that is
+//  otherwise inputs, and it pushed the delete icon into a corner of its own.
+//  --------------------------------------------------------------------------
+
+.ai-service-row-actions {
+    align-items: center;
+    display: flex;
+    gap: 6px;
+    justify-content: flex-end;
+}
+
+.ai-service-row-action {
+    align-items: center;
+    background: transparent;
+    border: 1px solid @ai-refresh-models__border-color;
+    border-radius: 3px;
+    color: @ai-refresh-models__color;
+    cursor: pointer;
+    display: inline-flex;
+    font-size: 13px;
+    font-weight: 400;
+    height: 32px;
+    justify-content: center;
+    padding: 0 10px;
+
+    &:hover,
+    &:focus {
+        background: @ai-refresh-models__hover__background;
+        color: @ai-refresh-models__color;
+    }
+
+    &[disabled] {
+        cursor: default;
+        opacity: .5;
+    }
+}
+
+//  The delete action keeps the theme's trash glyph and drops its label to an icon-sized square.
+.action-delete.ai-service-row-action {
+    padding: 0;
+    width: 32px;
+}
+
+.ai-service-row-action-label {
+    border: 0;
+    clip: rect(0, 0, 0, 0);
+    height: 1px;
+    overflow: hidden;
+    position: absolute;
+    width: 1px;
+}
+
+//
+//  The result of Test Connection and Refresh Models sits under the row's fields, not in the
+//  action column: a provider's error is a sentence, and 260px wrapped one into five lines.
+//  --------------------------------------------------------------------------
 
 .ai-test-result {
     display: block;
-    margin-top: 6px;
-    max-width: 260px;
+    margin: 8px 0 4px;
     word-break: break-word;
+
+    &:empty {
+        display: none;
+    }
 }
 
 .ai-test-result-success {
@@ -74,6 +189,228 @@
 
 .ai-test-result-error {
     color: @ai-test-result__error__color;
+}
+
+//
+//  Row identity
+//  A row's fields never say which provider they configure, and two rows of the same backend
+//  (two accounts, two billing owners) are otherwise identical down to the pixel.
+//  --------------------------------------------------------------------------
+
+.ai-service-row-heading {
+    align-items: center;
+    border-bottom: 1px solid @ai-service-row-heading__border-color;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-bottom: 10px;
+    padding-bottom: 6px;
+}
+
+//  The actions are pushed to the far end of the heading, which is where a row's controls are
+//  looked for, and where they cost the fields below no width at all.
+.ai-service-row-heading > .ai-service-row-actions {
+    margin-left: auto;
+}
+
+.ai-service-row-name {
+    font-size: 15px;
+    font-weight: 600;
+}
+
+//  The toggle leads the heading: whether a row is in use is the first thing to know about it, and
+//  the rest of the row is styled as consequence of it.
+.ai-service-toggle {
+    align-items: center;
+    cursor: pointer;
+    display: inline-flex;
+    gap: 6px;
+    margin: 0;
+}
+
+.ai-service-toggle-label {
+    border: 0;
+    clip: rect(0, 0, 0, 0);
+    height: 1px;
+    overflow: hidden;
+    position: absolute;
+    width: 1px;
+}
+
+//  A disabled row keeps its credentials and stays editable, so it is dimmed rather than hidden or
+//  locked. The toggle itself keeps full contrast, because it is the way back.
+.ai-service-row-disabled {
+    .ai-service-row-heading,
+    table,
+    .ai-test-result {
+        opacity: .55;
+    }
+
+    .ai-service-toggle {
+        opacity: 1;
+    }
+}
+
+//  The pencil is an affordance on the heading, not a button competing with the row actions, so it
+//  carries no chrome until it is hovered or focused.
+.ai-service-rename {
+    align-items: center;
+    background: transparent;
+    border: 1px solid transparent;
+    border-radius: 3px;
+    color: @ai-service-row-model__color;
+    cursor: pointer;
+    display: inline-flex;
+    height: 24px;
+    justify-content: center;
+    padding: 0;
+    width: 24px;
+
+    &:hover,
+    &:focus {
+        background: @ai-refresh-models__hover__background;
+        border-color: @ai-refresh-models__border-color;
+        color: @ai-refresh-models__color;
+    }
+}
+
+.ai-service-rename-icon {
+    font-size: 13px;
+    line-height: 1;
+}
+
+.ai-service-row-model {
+    color: @ai-service-row-model__color;
+    font-size: 12px;
+
+    &:not(:empty)::before {
+        content: '·';
+        margin-right: 8px;
+    }
+}
+
+//
+//  A field and the control that acts on it stand next to each other, so the refresh icon reads as
+//  belonging to the model dropdown rather than to the row as a whole.
+//  --------------------------------------------------------------------------
+
+.ai-field-control {
+    align-items: center;
+    display: flex;
+    gap: 6px;
+
+    > input,
+    > select {
+        flex: 1 1 auto;
+        min-width: 0;
+    }
+}
+
+.ai-refresh-models {
+    align-items: center;
+    background: transparent;
+    border: 1px solid @ai-refresh-models__border-color;
+    border-radius: 3px;
+    color: @ai-refresh-models__color;
+    cursor: pointer;
+    display: inline-flex;
+    flex: 0 0 auto;
+    height: 32px;
+    justify-content: center;
+    padding: 0;
+    width: 32px;
+
+    &:hover,
+    &:focus {
+        background: @ai-refresh-models__hover__background;
+    }
+
+    &[disabled] {
+        cursor: default;
+        opacity: .5;
+    }
+}
+
+.ai-refresh-models-icon {
+    font-size: 17px;
+    line-height: 1;
+}
+
+//  The label stays in the markup for screen readers and for anyone who cannot hover a tooltip.
+.ai-refresh-models-label {
+    border: 0;
+    clip: rect(0, 0, 0, 0);
+    height: 1px;
+    overflow: hidden;
+    position: absolute;
+    width: 1px;
+}
+
+.ai-services-empty-state td {
+    color: @ai-service-row-model__color;
+    font-style: italic;
+    padding: 16px 0;
+}
+
+//
+//  Magento lays the config form out as an auto-layout table, so this field's cell is only as wide
+//  as its content asks for. The width used to come from the one thing here that could not wrap,
+//  the composer command, which is also why the field label collapsed to one letter per line once
+//  the viewport got narrow. Claiming the cell explicitly makes the width deliberate instead.
+//
+//  Matched by what the cell contains rather than by the ID Magento generates for the row. The
+//  rule is about the cell this control sits in, and saying so survives a rename of the section,
+//  the group or the field.
+//
+//  The admin theme sets `.accordion .config .value { width: 44% }`, so the selector has to carry
+//  more classes than that to win; the shorter forms below are the fallback for a theme that does
+//  not nest the section that way.
+//  --------------------------------------------------------------------------
+
+.accordion .config .value:has(> .ai-services-configurator) {
+    width: 100%;
+}
+
+.config .value:has(> .ai-services-configurator) {
+    width: 100%;
+}
+
+.admin__field-value:has(> .ai-services-configurator) {
+    width: 100%;
+}
+
+.ai-services-configurator {
+    max-width: 100%;
+    width: 100%;
+
+    .admin__control-table {
+        table-layout: auto;
+        width: 100%;
+    }
+
+    //  The per-row field table is what holds the inputs; left to shrink-wrap it leaves the row
+    //  narrow while the outer table stretches, so the two are tied together explicitly.
+    .admin__control-table > tbody > tr > td > table {
+        width: 100%;
+
+        //  The rule between two fields is drawn across the row rather than under the label alone,
+        //  which left a stub of a line that read as an artefact instead of a separator.
+        > tbody > tr > th,
+        > tbody > tr > td {
+            border-bottom: 1px solid @ai-service-field__border-color;
+        }
+
+        > tbody > tr:last-child > th,
+        > tbody > tr:last-child > td {
+            border-bottom: 0;
+        }
+
+        > tbody > tr > th {
+            white-space: nowrap;
+            width: 1px;
+        }
+    }
+
 }
 
 //
@@ -107,12 +444,22 @@
     white-space: nowrap;
 }
 
+//  The block's own padding sets the distance to its edges; everything inside only spaces itself
+//  from its neighbours, so the four sides stay equal.
+.ai-service-add-hint {
+    margin: 0 0 10px;
+}
+
+.ai-service-availability-hint {
+    color: @ai-service-row-model__color;
+    margin: 12px 0 0;
+}
+
 .ai-service-availability-note {
     background: @ai-service-note__background;
     border: 1px solid @ai-service-note__border-color;
     border-radius: 4px;
-    margin-top: 12px;
-    max-width: 760px;
+    margin: 12px 0 0;
     padding: 10px 14px;
 
     p {
@@ -124,12 +471,30 @@
     }
 }
 
+.ai-service-install-hint-wrapper {
+    align-items: flex-start;
+    display: flex;
+    gap: 8px;
+    margin-bottom: 6px;
+}
+
+//
+//  The command wraps rather than scrolling. It ran past the edge of its box at every width the
+//  admin is used at, and an overlay scrollbar gives no sign that there is more of it.
+//  --------------------------------------------------------------------------
+
 .ai-service-install-hint {
     background: @ai-service-install-hint__background;
     border: 1px solid @ai-service-note__border-color;
     border-radius: 3px;
-    margin: 0 0 6px;
-    overflow-x: auto;
+    flex: 1 1 auto;
+    margin: 0;
+    min-width: 0;
+    overflow-wrap: anywhere;
     padding: 8px 10px;
-    white-space: pre;
+    white-space: pre-wrap;
+}
+
+.ai-service-copy-command {
+    flex: 0 0 auto;
 }

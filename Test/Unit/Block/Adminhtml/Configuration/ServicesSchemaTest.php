@@ -11,6 +11,7 @@ use MageOS\AiBase\Api\Data\FieldDescriptorInterface;
 use MageOS\AiBase\Block\Adminhtml\Configuration\Services;
 use MageOS\AiBase\Model\FieldDescriptor;
 use MageOS\AiBase\Model\ModelList\Resolver;
+use MageOS\AiBase\Model\ServiceRegistry;
 use PHPUnit\Framework\MockObject\MockObject;
 use PHPUnit\Framework\TestCase;
 
@@ -170,7 +171,7 @@ final class ServicesSchemaTest extends TestCase
         $block = $reflection->newInstanceWithoutConstructor();
 
         $reflection->getProperty('jsonSerializer')->setValue($block, new Json());
-        $reflection->getProperty('services')->setValue($block, [$service]);
+        $reflection->getProperty('serviceRegistry')->setValue($block, new ServiceRegistry([$service]));
         $reflection->getProperty('modelListResolver')->setValue($block, $this->modelListResolver);
 
         return $block;

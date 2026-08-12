@@ -59,7 +59,7 @@ class HttpFetcher
         }
 
         if ($status < 200 || $status >= 300) {
-            throw new LocalizedException(__('Request to %1 returned HTTP status %2.', $url, $status));
+            throw new LocalizedException($this->describeStatus($url, $status));
         }
 
         try {
@@ -73,5 +73,52 @@ class HttpFetcher
         }
 
         return $decoded;
+    }
+
+    /**
+     * Say what a failing status means before saying what it was.
+     *
+     * An administrator reading "HTTP status 401" has to know that a model listing is authenticated
+     * with the same key the rest of the provider is, and that this provider spells a rejected key
+     * that way. The three statuses below are the ones a wrong or unfinished configuration actually
+     * produces; the number stays in the message either way, because it is what a bug report needs.
+     *
+     * @param string $url
+     * @param int $status
+     * @return \Magento\Framework\Phrase
+     */
+    private function describeStatus(string $url, int $status): \Magento\Framework\Phrase
+    {
+        return match ($status) {
+            401, 403 => __(
+                'The API key was rejected by %1 (HTTP %2). Check the key saved for this service.',
+                $this->hostOf($url),
+                $status
+            ),
+            404 => __(
+                '%1 has no model list at %2 (HTTP 404). Check the base URL saved for this service.',
+                $this->hostOf($url),
+                $url
+            ),
+            429 => __(
+                '%1 is rate limiting this account (HTTP 429). Wait and try again.',
+                $this->hostOf($url)
+            ),
+            default => __('Request to %1 returned HTTP status %2.', $url, $status),
+        };
+    }
+
+    /**
+     * The provider's host, which is the part of the URL an administrator recognises.
+     *
+     * Matched rather than parsed: Magento's coding standard discourages parse_url(), and the only
+     * thing needed here is the authority of a URL this module built from its own configuration.
+     *
+     * @param string $url
+     * @return string
+     */
+    private function hostOf(string $url): string
+    {
+        return preg_match('~^[a-z][a-z0-9+.-]*://([^/?\#]+)~i', $url, $matches) === 1 ? $matches[1] : $url;
     }
 }

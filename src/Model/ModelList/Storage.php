@@ -57,7 +57,9 @@ class Storage
      */
     public function save(string $serviceCode, array $models): void
     {
-        $payload = $this->jsonSerializer->serialize([
+        // SerializerInterface still declares the string|bool return of the pre-exception days;
+        // Json::serialize throws instead of returning false, so the cast only narrows the type.
+        $payload = (string) $this->jsonSerializer->serialize([
             self::KEY_FETCHED_AT => time(),
             self::KEY_MODELS => $models,
         ]);
@@ -69,15 +71,29 @@ class Storage
     /**
      * Load the stored model list for a service code.
      *
+     * Entries are validated on the way out rather than trusted: the payload is read back from
+     * `core_config_data`, where a hand-edited row or a list written by an older version of this
+     * module can hold anything, and the admin form renders these straight into option labels.
+     *
      * @param string $serviceCode
-     * @return array<string, string>|null Map of model value => label, or null when nothing is stored
+     * @return array<string,string>|null Map of model value => label, or null when nothing is stored
      */
     public function getModels(string $serviceCode): ?array
     {
         $payload = $this->getPayload($serviceCode);
         $models = $payload[self::KEY_MODELS] ?? null;
+        if (!is_array($models)) {
+            return null;
+        }
 
-        return is_array($models) ? $models : null;
+        $validated = [];
+        foreach ($models as $value => $label) {
+            if (is_string($label)) {
+                $validated[(string) $value] = $label;
+            }
+        }
+
+        return $validated;
     }
 
     /**
@@ -98,7 +114,7 @@ class Storage
      * Read and defensively decode the stored payload for a service code.
      *
      * @param string $serviceCode
-     * @return array<string, mixed>|null
+     * @return array<array-key,mixed>|null
      */
     private function getPayload(string $serviceCode): ?array
     {

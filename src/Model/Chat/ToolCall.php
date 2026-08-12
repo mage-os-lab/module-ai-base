@@ -11,7 +11,7 @@ class ToolCall implements ToolCallInterface
     /**
      * @param string $id
      * @param string $name
-     * @param array $arguments Decoded from the provider JSON
+     * @param array<string,mixed> $arguments Decoded from the provider JSON
      */
     public function __construct(
         private readonly string $id,

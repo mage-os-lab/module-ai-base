@@ -11,7 +11,7 @@ use MageOS\AiBase\Api\Data\ToolCallInterface;
 class ChatMessage implements ChatMessageInterface
 {
     /**
-     * @var ToolCallInterface[]
+     * @var list<ToolCallInterface>
      */
     private readonly array $toolCalls;
 
@@ -37,7 +37,7 @@ class ChatMessage implements ChatMessageInterface
      * by the property type is actually enforced.
      *
      * @param array<mixed> $toolCalls
-     * @return ToolCallInterface[]
+     * @return list<ToolCallInterface>
      */
     private function assertToolCalls(array $toolCalls): array
     {

@@ -6,6 +6,8 @@ namespace MageOS\AiBase\Block\Adminhtml\Configuration;
 
 use Magento\Backend\Block\Template\Context;
 use Magento\Config\Block\System\Config\Form\Field\FieldArray\AbstractFieldArray;
+use Magento\Framework\App\State;
+use Magento\Framework\Exception\LocalizedException;
 use Magento\Framework\Serialize\Serializer\Json;
 use Magento\Framework\View\Helper\SecureHtmlRenderer;
 use MageOS\AiBase\Api\Data\AiServiceConfigurationInterface;
@@ -13,6 +15,7 @@ use MageOS\AiBase\Api\Data\FieldDescriptorInterface;
 use MageOS\AiBase\Api\ModelListProviderInterface;
 use MageOS\AiBase\Model\Client\BridgeRegistry;
 use MageOS\AiBase\Model\ModelList\Resolver;
+use MageOS\AiBase\Model\ServiceRegistry;
 
 class Services extends AbstractFieldArray
 {
@@ -22,14 +25,9 @@ class Services extends AbstractFieldArray
     protected $_template = 'MageOS_AiBase::system/config/form/field/services.phtml';
 
     /**
-     * @var array<string,AiServiceConfigurationInterface>
-     */
-    private readonly array $services;
-
-    /**
      * @param Context $context
      * @param Json $jsonSerializer
-     * @param array<string,mixed> $services Service code => backend definition, validated below
+     * @param ServiceRegistry $serviceRegistry Registered backends; it validates its own entries
      * @param Resolver $modelListResolver
      * @param BridgeRegistry $bridgeRegistry
      * @param array<string,mixed> $data
@@ -38,41 +36,71 @@ class Services extends AbstractFieldArray
     public function __construct(
         Context $context,
         private readonly Json $jsonSerializer,
-        array $services,
+        private readonly ServiceRegistry $serviceRegistry,
         private readonly Resolver $modelListResolver,
         private readonly BridgeRegistry $bridgeRegistry,
         array $data = [],
         ?SecureHtmlRenderer $secureRenderer = null,
     ) {
         parent::__construct($context, $data, $secureRenderer);
-
-        $this->services = $this->assertServices($services);
     }
 
     /**
-     * Reject a di.xml entry that is not a backend definition.
+     * Whether the install is one where the reader of this page can act on a composer command.
      *
-     * DI array arguments are not type-checked by the framework, so this is the only place the
-     * promise made by the property type is actually enforced.
+     * Nobody runs composer against a production install from the admin, so the instructions for
+     * installing a bridge package, and the providers those instructions are about, are addressed
+     * to a developer and shown only where a developer is the one looking.
      *
-     * @param array<string,mixed> $services
-     * @return array<string,AiServiceConfigurationInterface>
+     * A mode Magento cannot report (a deployment config that predates the setting) is treated as
+     * production, because the cost of being wrong is a page telling an administrator to run a
+     * command they cannot run.
+     *
+     * Read off the block context rather than injected: every Template block already carries the
+     * application state, and adding a constructor argument to a block breaks every install whose
+     * generated interceptor was compiled against the old signature until it is recompiled.
+     *
+     * @return bool
      */
-    private function assertServices(array $services): array
+    public function isDeveloperMode(): bool
     {
-        $validated = [];
-        foreach ($services as $code => $service) {
-            if (!$service instanceof AiServiceConfigurationInterface) {
-                throw new \InvalidArgumentException(sprintf(
-                    'Each registered service must implement %s, got %s',
-                    AiServiceConfigurationInterface::class,
-                    get_debug_type($service),
-                ));
-            }
-            $validated[$code] = $service;
+        try {
+            return $this->_appState->getMode() === State::MODE_DEVELOPER;
+        } catch (LocalizedException) {
+            return false;
+        }
+    }
+
+    /**
+     * The providers offered as buttons on this install.
+     *
+     * In production the unusable ones are left out entirely rather than greyed out: their label
+     * explains a package that the person reading cannot install, and the row it would add cannot
+     * be tested from here. Developer mode keeps them, because there the label is actionable.
+     *
+     * Only the buttons are filtered. The field schema still carries every registered provider, so
+     * a row saved for one of them keeps rendering and keeps its configuration.
+     *
+     * @return array<string,array{code:string,name:string,available:bool,supported:bool,package:string}>
+     */
+    public function getSelectableServices(): array
+    {
+        $buttons = $this->getServicesButtons();
+        if ($this->isDeveloperMode()) {
+            return $buttons;
         }
 
-        return $validated;
+        return array_filter($buttons, static fn (array $button): bool => $button['available']);
+    }
+
+    /**
+     * Whether any provider is being kept off this page because it cannot be used here.
+     *
+     * @return bool
+     */
+    public function hasHiddenServices(): bool
+    {
+        return count($this->getSelectableServices()) < count($this->getServicesButtons());
     }
 
     /**
@@ -90,7 +118,7 @@ class Services extends AbstractFieldArray
                 'supported' => $this->bridgeRegistry->isSupported($service->getCode()),
                 'package' => (string) $this->bridgeRegistry->getPackage($service->getCode()),
             ],
-            $this->services,
+            $this->serviceRegistry->getAll(),
         );
     }
 
@@ -155,14 +183,18 @@ class Services extends AbstractFieldArray
      * model-list resolver, so a previously refreshed list wins over the curated defaults.
      *
      * @return string JSON object keyed by service code:
-     *         {fields: array[], supportsModelRefresh: bool}
+     *         {name: string, fields: array[], supportsModelRefresh: bool}
      */
     public function getServicesSchemaJson(): string
     {
         $schema = [];
-        foreach ($this->services as $service) {
+        foreach ($this->serviceRegistry->getAll() as $code => $service) {
             $models = $this->modelListResolver->getModels($service);
-            $schema[$service->getCode()] = [
+            $schema[$code] = [
+                // The rows are built in JavaScript, so the display name has to travel with the
+                // schema. Without it a row shows its fields and never says which provider they
+                // belong to, which is the one thing two rows of the same backend differ by.
+                'name' => $service->getName(),
                 'fields' => array_map(
                     fn (FieldDescriptorInterface $field) => [
                         'name'      => $field->getName(),
@@ -177,7 +209,9 @@ class Services extends AbstractFieldArray
                 'supportsModelRefresh' => $service instanceof ModelListProviderInterface,
             ];
         }
-        return $this->jsonSerializer->serialize($schema);
+        // SerializerInterface still declares the string|bool return of the pre-exception days;
+        // Json::serialize throws instead of returning false, so the cast only narrows the type.
+        return (string) $this->jsonSerializer->serialize($schema);
     }
 
     /**
@@ -190,7 +224,7 @@ class Services extends AbstractFieldArray
      *
      * @param FieldDescriptorInterface $field
      * @param array<string,string> $models Resolved model list (stored or curated) as value => label
-     * @return array<int, array{value: string, label: string}>
+     * @return array<int,array{value:string,label:string}>
      */
     private function resolveFieldOptions(FieldDescriptorInterface $field, array $models): array
     {

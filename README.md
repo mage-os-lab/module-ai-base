@@ -2,6 +2,14 @@
 
 The goal of this module is to provide a way to allow to configure multiple AI backends.
 
+![The AI Configuration section: two configured services, one named Chat AI on Anthropic and enabled, one named Bulk summaries on OpenAI and switched off, each with its own Test Connection and model refresh, above the provider buttons and the install hint for providers whose bridge package is missing](docs/images/admin-configuration.png)
+
+Every row names the provider it configures and the model it is set to, so the same backend can be
+added more than once (one row per account) and still be told apart; the pencil gives a row a name of
+its own, and the toggle takes it out of use without deleting its credentials. **Test Connection** and
+**Refresh Models** act on the row they sit in. In developer mode the form also offers providers whose
+Symfony AI bridge package is missing, and says what to install; in production those are left out.
+
 ## Installation
 
 ```bash
@@ -9,7 +17,7 @@ composer require mage-os/module-ai-base
 php bin/magento module:enable MageOS_AiBase
 ```
 
-You can find the new configuration option in System > Configuration > Services -> AI Configuration.
+You can find the new configuration option in Stores > Configuration > Mage-OS > AI Configuration.
 
 ## Usage
 
@@ -24,6 +32,17 @@ AiServiceSelectorInterface::getById(string $id): ?AiServiceInterface
 ```
 
 `getAll()` and `getByCode()` return an array of `\MageOS\AiBase\Api\Data\AiServiceInterface` objects (multiple entries per code are possible because admins can register the same backend more than once); `getById()` returns the single row with that id, or `null` once the admin deletes it.
+
+None of them return a service an administrator has **disabled**. A disabled row keeps its id and its
+credentials and stays in the admin form, but it is not a service anything may call, so it is absent
+from every lookup here rather than being something each caller has to check. A row can also be given
+a **name** for the purpose it serves, which is what an administrator recognises when your module asks
+them to pick one:
+
+```php
+$service->getLabel();     // 'Chat AI', or null when unnamed
+$service->isEnabled();    // always true for anything this selector hands you
+```
 
 ```php
 use MageOS\AiBase\Api\AiServiceSelectorInterface;
@@ -50,12 +69,20 @@ final class MyAiFunctionality
 
 Instead of reading raw configuration, consumer modules can request a ready-to-use,
 provider-agnostic client. The bundled implementation is backed by
-[symfony/ai-platform](https://github.com/symfony/ai), which is a *soft* dependency —
+[symfony/ai-platform](https://github.com/symfony/ai), which is a *soft* dependency:
 install it only if you use the client layer:
 
 ```bash
 composer require symfony/ai-platform
 ```
+
+> **symfony/ai-platform is experimental.** Experimental features are not covered by Symfony's
+> [Backward Compatibility Promise](https://symfony.com/doc/current/contributing/code/bc.html).
+>
+> `MageOS\AiBase\Api\*` is this module's own contract and is insulated from that: when Symfony
+> changes, the adapter behind these interfaces absorbs it. Code written against symfony/ai types
+> directly (see [the escape hatch](#reaching-the-platform-directly)) is not insulated, and has to
+> be re-verified on every symfony/ai-platform upgrade. Pin the version either way.
 
 ```php
 use MageOS\AiBase\Api\AiClientFactoryInterface;
@@ -111,25 +138,69 @@ and returns text, requested tool calls, token counts and the stop reason, and `s
 returns a generator of typed chunks:
 
 ```php
+$request = $this->chatRequestBuilderFactory->create()
+    ->withSystemMessage('You are a Magento support assistant.')
+    ->withUserMessage($question)
+    ->withTool('get_orders', 'Lists orders by status', $schema)
+    ->build();
+
 $response = $client->chat($request);
 $response->getText();
 $response->getToolCalls();
 $response->getUsage();
+$response->getFinishReason();     // normalized across providers; Length means truncated
 
-foreach ($client->streamChat($request) as $chunk) {
+$stream = $client->streamChat($request);
+foreach ($stream as $chunk) {
     // StreamChunkType::Text | Thinking | ToolCall | Usage
 }
+$turn = $stream->getReturn();     // the assembled ChatResponseInterface, ready to append
 ```
 
 This module never executes tools. It reports what the model asked for; you run it and feed the
-result back with `ChatRequestInterface::withToolResult()`. Streamed tool calls arrive complete,
-with arguments already decoded, so there is no SSE parsing to do. Full example with the tool
-loop: [docs/CONSUMING.md](docs/CONSUMING.md).
+result back with `ChatRequestInterface::withToolResult()`, after putting the model's own turn
+back with `withAssistantTurn()`. Streamed tool calls arrive complete, with arguments already
+decoded, so there is no SSE parsing to do. Full example with the tool loop:
+[docs/CONSUMING.md](docs/CONSUMING.md).
 
-Provider bridges are mapped per service code in `etc/di.xml` (`platformFactories`
-argument of `Model\Client\ClientFactory`); third-party modules can register additional
-providers there, or replace the implementation entirely by preferencing
-`AiClientFactoryInterface`.
+The four options every provider has (`max_tokens`, `temperature`, `top_p`, `stop`) are
+translated to whatever the configured backend calls them, so moving a workload between
+providers does not silently change the cap it runs under. Anything else passes through
+untouched.
+
+Provider bridges are registered per service code in `etc/di.xml` (`bridges` argument of
+`Model\Client\BridgeRegistry`); third-party modules can register additional providers there,
+or replace the implementation entirely by preferencing `AiClientFactoryInterface`.
+
+### Reaching the platform directly
+
+symfony/ai-platform does much more than chat and streaming: executed tool loops via
+`symfony/ai-agent`, message stores via `symfony/ai-chat`, structured output, embeddings, vector
+stores, image and audio. Rather than mirror all of that, this module hands over the platform it
+already built for you, with credentials resolved and the right bridge selected:
+
+```php
+use MageOS\AiBase\Api\PlatformAwareInterface;
+
+$client = $this->aiClientFactory->createById($serviceId);
+
+if ($client instanceof PlatformAwareInterface) {
+    $result = $client->getPlatform()->invoke(
+        $client->getModel(),
+        $messageBag,
+        $client->normalizeOptions(['max_tokens' => 400]),   // keeps the option translation
+    );
+}
+```
+
+The `instanceof` check is the point: it makes the coupling deliberate, and a store that
+preferences its own client stack simply does not implement the interface.
+
+**Everything past `getPlatform()` is outside this module's compatibility promise**, for the
+reason in the note above. `normalizeOptions()` is offered separately because calling the platform
+directly otherwise opts you out of the option translation too, and that is the piece most worth
+keeping. Full example, including a `symfony/ai-agent` loop:
+[docs/CONSUMING.md](docs/CONSUMING.md).
 
 ### Credential encryption
 

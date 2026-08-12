@@ -3,6 +3,7 @@
          xsi:noNamespaceSchemaLocation="vendor/phpunit/phpunit/phpunit.xsd"
          bootstrap="vendor/autoload.php"
          colors="true"
+         failOnEmptyTestSuite="true"
          cacheDirectory=".phpunit.cache">
     <testsuites>
         <testsuite name="Unit">
@@ -24,6 +25,12 @@
             <directory>Test/Unit/Model/Chat</directory>
             <file>Test/Unit/Model/Client/SymfonyAiClientChatTest.php</file>
         </testsuite>
+        <!--
+            Needs a running Magento install with the integration test framework, so it cannot be
+            run from this repo directly; see CLAUDE.md for the command. CI runs it through the
+            reusable workflow's `integration_test` job, which points Magento's own
+            dev/tests/integration/phpunit.xml.dist at this directory inside the installed module.
+        -->
         <testsuite name="Integration">
             <directory>Test/Integration</directory>
         </testsuite>

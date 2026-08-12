@@ -76,7 +76,7 @@ class OpenAi implements AiServiceConfigurationInterface, ModelListProviderInterf
     public function fetchModels(array $configuration): array
     {
         $response = $this->modelListFetcher->getJson(self::MODELS_URL, [
-            'Authorization' => 'Bearer ' . (string) ($configuration['api_key'] ?? ''),
+            'Authorization' => 'Bearer ' . $this->resolveApiKey($configuration),
         ]);
 
         return $this->parseDataModelList($response);

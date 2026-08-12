@@ -11,9 +11,10 @@ use Magento\Framework\Controller\Result\Json;
 use Magento\Framework\Controller\Result\JsonFactory;
 use Magento\Framework\Exception\LocalizedException;
 use MageOS\AiBase\Api\AiServiceSelectorInterface;
-use MageOS\AiBase\Api\Data\AiServiceConfigurationInterface;
+use MageOS\AiBase\Api\Data\AiServiceInterface;
 use MageOS\AiBase\Api\ModelListProviderInterface;
 use MageOS\AiBase\Model\ModelList\Storage;
+use MageOS\AiBase\Model\ServiceRegistry;
 
 /**
  * Live-fetches the model list of a configured AI service and persists it for the admin form.
@@ -33,14 +34,14 @@ class RefreshModels extends Action implements HttpPostActionInterface
      * @param JsonFactory $jsonFactory
      * @param AiServiceSelectorInterface $serviceSelector
      * @param Storage $modelListStorage
-     * @param array<string,mixed> $services Registered backends, same array the admin form block gets
+     * @param ServiceRegistry $serviceRegistry Registered backends, the same set the admin form gets
      */
     public function __construct(
         Context $context,
         private readonly JsonFactory $jsonFactory,
         private readonly AiServiceSelectorInterface $serviceSelector,
         private readonly Storage $modelListStorage,
-        private readonly array $services = [],
+        private readonly ServiceRegistry $serviceRegistry,
     ) {
         parent::__construct($context);
     }
@@ -53,7 +54,7 @@ class RefreshModels extends Action implements HttpPostActionInterface
     public function execute(): Json
     {
         $result = $this->jsonFactory->create();
-        $serviceCode = (string) $this->getRequest()->getParam('service_code');
+        $serviceCode = $this->getRequestedParam('service_code');
         if ($serviceCode === '') {
             return $result->setData([
                 'success' => false,
@@ -62,7 +63,7 @@ class RefreshModels extends Action implements HttpPostActionInterface
         }
 
         try {
-            $definition = $this->getServiceDefinition($serviceCode);
+            $definition = $this->serviceRegistry->get($serviceCode);
             if (!$definition instanceof ModelListProviderInterface) {
                 return $result->setData([
                     'success' => false,
@@ -70,15 +71,15 @@ class RefreshModels extends Action implements HttpPostActionInterface
                 ]);
             }
 
-            $configured = $this->serviceSelector->getByCode($serviceCode);
-            if ($configured === []) {
+            $configured = $this->resolveRow($this->getRequestedParam('service_id'), $serviceCode);
+            if ($configured === null) {
                 return $result->setData([
                     'success' => false,
                     'error' => (string) __('No AI service configured for code "%1".', $serviceCode),
                 ]);
             }
 
-            $models = $definition->fetchModels($configured[0]->getConfiguration());
+            $models = $definition->fetchModels($configured->getConfiguration());
             $this->modelListStorage->save($serviceCode, $models);
 
             return $result->setData([
@@ -100,19 +101,39 @@ class RefreshModels extends Action implements HttpPostActionInterface
     }
 
     /**
-     * Find the registered backend definition for a service code.
+     * The configured row whose credentials the list is fetched with.
      *
+     * Model lists are per provider, but the key that fetches one belongs to a row. An administrator
+     * with two rows of the same provider, which is the setup row ids exist for, would otherwise
+     * refresh from the first row's account no matter which button they pressed, and read the
+     * resulting error against the key in front of them.
+     *
+     * @param string $serviceId
      * @param string $serviceCode
-     * @return AiServiceConfigurationInterface|null
+     * @return AiServiceInterface|null
      */
-    private function getServiceDefinition(string $serviceCode): ?AiServiceConfigurationInterface
+    private function resolveRow(string $serviceId, string $serviceCode): ?AiServiceInterface
     {
-        foreach ($this->services as $service) {
-            if ($service instanceof AiServiceConfigurationInterface && $service->getCode() === $serviceCode) {
-                return $service;
-            }
+        if ($serviceId !== '') {
+            return $this->serviceSelector->getById($serviceId);
         }
 
-        return null;
+        return $this->serviceSelector->getByCode($serviceCode)[0] ?? null;
+    }
+
+    /**
+     * A request parameter, ignoring one that did not arrive as a string.
+     *
+     * Query parameters are whatever the caller put in the URL: `?service_code[]=x` arrives as an
+     * array, and casting that hands the string `Array` to the registry as if it were a code.
+     *
+     * @param string $name
+     * @return string
+     */
+    private function getRequestedParam(string $name): string
+    {
+        $value = $this->getRequest()->getParam($name);
+
+        return is_string($value) ? $value : '';
     }
 }

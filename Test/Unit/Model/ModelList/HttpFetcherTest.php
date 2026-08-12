@@ -52,13 +52,43 @@ final class HttpFetcherTest extends TestCase
         self::assertSame(['models' => []], $this->subject->getJson('http://localhost:11434/api/tags'));
     }
 
-    public function test_get_json_throws_localized_exception_on_non_2xx_status(): void
+    /**
+     * An administrator reading "HTTP status 401" has to know that a model listing is authenticated
+     * with the same key as everything else, and that this is how the provider spells a rejected
+     * one. The status stays in the message, because that is what a bug report needs.
+     */
+    public function test_get_json_says_a_rejected_key_is_a_rejected_key(): void
     {
         $this->client->method('getStatus')->willReturn(401);
         $this->client->method('getBody')->willReturn('{"error":"unauthorized"}');
 
         $this->expectException(LocalizedException::class);
-        $this->expectExceptionMessage('returned HTTP status 401');
+        $this->expectExceptionMessage('The API key was rejected by api.example.com (HTTP 401).');
+
+        $this->subject->getJson('https://api.example.com/v1/models');
+    }
+
+    public function test_get_json_points_a_404_at_the_base_url_that_produced_it(): void
+    {
+        $this->client->method('getStatus')->willReturn(404);
+        $this->client->method('getBody')->willReturn('');
+
+        $this->expectException(LocalizedException::class);
+        $this->expectExceptionMessage('has no model list at');
+
+        $this->subject->getJson('https://api.example.com/v1/models');
+    }
+
+    /**
+     * A status this module has nothing specific to say about still has to report itself.
+     */
+    public function test_get_json_reports_an_unrecognised_status_as_it_is(): void
+    {
+        $this->client->method('getStatus')->willReturn(503);
+        $this->client->method('getBody')->willReturn('');
+
+        $this->expectException(LocalizedException::class);
+        $this->expectExceptionMessage('returned HTTP status 503');
 
         $this->subject->getJson('https://api.example.com/v1/models');
     }

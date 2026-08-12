@@ -157,16 +157,67 @@ final class ClientFactoryTest extends TestCase
         $subject->create('openai');
     }
 
+    /**
+     * Every platform takes the model as a required name. Passing an empty one on reaches the
+     * provider as a request for nothing and comes back as the provider's own words about a model
+     * it cannot find, naming neither this module nor the row an administrator has to go fix.
+     */
+    public function test_create_refuses_a_row_with_no_model_selected(): void
+    {
+        $this->serviceSelector->method('getByCode')->with('openai')
+            ->willReturn([new AiService('row_openai', 'openai', ['api_key' => 'k'])]);
+        $this->clientFactory->expects(self::never())->method('create');
+
+        $subject = new ClientFactory(
+            $this->serviceSelector,
+            $this->clientFactory,
+            new BridgeRegistry(['openai' => [
+                'factory' => FakePlatformFactory::class,
+                'package' => 'symfony/ai-open-ai-platform',
+            ]]),
+        );
+
+        $this->expectException(LocalizedException::class);
+        $this->expectExceptionMessage('no model selected');
+
+        $subject->create('openai');
+    }
+
+    /**
+     * A bridge is registered in di.xml, so what its factory returns is only as good as that entry.
+     */
+    public function test_create_refuses_a_bridge_factory_that_returns_no_platform(): void
+    {
+        $this->serviceSelector->method('getByCode')->with('openai')
+            ->willReturn([new AiService('row_openai', 'openai', ['api_key' => 'k', 'model' => 'gpt-4o'])]);
+        $this->clientFactory->expects(self::never())->method('create');
+
+        $subject = new ClientFactory(
+            $this->serviceSelector,
+            $this->clientFactory,
+            new BridgeRegistry(['openai' => [
+                'factory' => FakePlatformlessFactory::class,
+                'package' => 'symfony/ai-open-ai-platform',
+            ]]),
+        );
+
+        $this->expectException(LocalizedException::class);
+        $this->expectExceptionMessage('did not return a platform object');
+
+        $subject->create('openai');
+    }
+
     public function test_create_builds_client_from_registered_bridge(): void
     {
         $this->serviceSelector->method('getByCode')->with('openai')
             ->willReturn([new AiService('row_openai', 'openai', ['api_key' => 'k', 'model' => 'gpt-4o'])]);
 
-        $client = new SymfonyAiClient(new \stdClass(), 'gpt-4o', 'openai');
+        $client = $this->createMock(SymfonyAiClient::class);
         $this->clientFactory->expects(self::once())->method('create')
             ->with(self::callback(
                 fn (array $data) => $data['model'] === 'gpt-4o'
                     && $data['serviceCode'] === 'openai'
+                    && $data['serviceId'] === 'row_openai'
                     && $data['platform'] instanceof \stdClass
             ))
             ->willReturn($client);
@@ -193,7 +244,9 @@ final class ClientFactoryTest extends TestCase
             ->willReturn(new AiService('_row_b', 'openai', ['api_key' => 'k2', 'model' => 'o1-mini']));
         $this->clientFactory->expects(self::once())->method('create')
             ->with(self::callback(
-                fn (array $data) => $data['model'] === 'o1-mini' && $data['serviceCode'] === 'openai'
+                fn (array $data) => $data['model'] === 'o1-mini'
+                    && $data['serviceCode'] === 'openai'
+                    && $data['serviceId'] === '_row_b'
             ))
             ->willReturn($this->createMock(SymfonyAiClient::class));
 
@@ -245,5 +298,16 @@ final class FakePlatformFactory
     public static function createPlatform(string $apiKey): object
     {
         return new \stdClass();
+    }
+}
+
+/**
+ * Stand-in for a bridge registered against a class whose createPlatform() builds nothing.
+ */
+final class FakePlatformlessFactory
+{
+    public static function createPlatform(string $apiKey): mixed
+    {
+        return null;
     }
 }

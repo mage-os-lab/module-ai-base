@@ -11,6 +11,7 @@ use Magento\Framework\Controller\Result\Json;
 use Magento\Framework\Controller\Result\JsonFactory;
 use Magento\Framework\Exception\LocalizedException;
 use MageOS\AiBase\Api\AiClientFactoryInterface;
+use MageOS\AiBase\Api\AiClientInterface;
 
 /**
  * Tests connectivity of a configured AI service by sending a minimal prompt.
@@ -49,23 +50,24 @@ class Test extends Action implements HttpPostActionInterface
     }
 
     /**
-     * Run a connectivity test for the requested service code and report the outcome as JSON.
+     * Run a connectivity test for the requested row and report the outcome as JSON.
      *
      * @return Json
      */
     public function execute(): Json
     {
         $result = $this->jsonFactory->create();
-        $serviceCode = (string)$this->getRequest()->getParam('service_code');
-        if ($serviceCode === '') {
+        $serviceId = $this->getRequestedParam('service_id');
+        $serviceCode = $this->getRequestedParam('service_code');
+        if ($serviceId === '' && $serviceCode === '') {
             return $result->setData([
                 'success' => false,
-                'error' => (string)__('service_code is required'),
+                'error' => (string)__('service_id is required'),
             ]);
         }
 
         try {
-            $client = $this->clientFactory->create($serviceCode);
+            $client = $this->resolveClient($serviceId, $serviceCode);
             $start = microtime(true);
             $response = $client->complete(self::TEST_PROMPT, ['max_tokens' => 16]);
             $latencyMs = (int)round((microtime(true) - $start) * 1000);
@@ -86,5 +88,41 @@ class Test extends Action implements HttpPostActionInterface
                 'error' => (string)__('Connection test failed: %1', $e->getMessage()),
             ]);
         }
+    }
+
+    /**
+     * The client for the row the button belongs to.
+     *
+     * The row id is what the form sends, because a service code cannot address a row: an
+     * administrator with two rows of the same provider, which is the setup row ids exist for, would
+     * otherwise test the first row's credentials from the second row's button and be told the key
+     * they are looking at works. The code remains as a fallback for a caller that has only that.
+     *
+     * @param string $serviceId
+     * @param string $serviceCode
+     * @return AiClientInterface
+     * @throws LocalizedException
+     */
+    private function resolveClient(string $serviceId, string $serviceCode): AiClientInterface
+    {
+        return $serviceId !== ''
+            ? $this->clientFactory->createById($serviceId)
+            : $this->clientFactory->create($serviceCode);
+    }
+
+    /**
+     * A request parameter, ignoring one that did not arrive as a string.
+     *
+     * Query parameters are whatever the caller put in the URL: `?service_code[]=x` arrives as an
+     * array, and casting that hands the string `Array` to the registry as if it were a code.
+     *
+     * @param string $name
+     * @return string
+     */
+    private function getRequestedParam(string $name): string
+    {
+        $value = $this->getRequest()->getParam($name);
+
+        return is_string($value) ? $value : '';
     }
 }

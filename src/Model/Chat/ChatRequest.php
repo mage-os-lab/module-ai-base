@@ -6,6 +6,7 @@ namespace MageOS\AiBase\Model\Chat;
 
 use MageOS\AiBase\Api\Data\ChatMessageInterface;
 use MageOS\AiBase\Api\Data\ChatRequestInterface;
+use MageOS\AiBase\Api\Data\ChatResponseInterface;
 use MageOS\AiBase\Api\Data\MessageRole;
 use MageOS\AiBase\Api\Data\ToolCallInterface;
 use MageOS\AiBase\Api\Data\ToolDefinitionInterface;
@@ -55,6 +56,16 @@ class ChatRequest implements ChatRequestInterface
     /**
      * @inheritdoc
      */
+    public function withAssistantTurn(ChatResponseInterface $response): ChatRequestInterface
+    {
+        return $this->withMessage(
+            new ChatMessage(MessageRole::Assistant, $response->getText(), $response->getToolCalls())
+        );
+    }
+
+    /**
+     * @inheritdoc
+     */
     public function withToolResult(ToolCallInterface $toolCall, string $result): ChatRequestInterface
     {
         return $this->withMessage(new ChatMessage(MessageRole::Tool, $result, [], $toolCall));
@@ -63,7 +74,7 @@ class ChatRequest implements ChatRequestInterface
     /**
      * Reject a heterogeneous list before it reaches a provider as a malformed payload.
      *
-     * @param array $items
+     * @param array<mixed> $items
      * @param string $expected
      * @return void
      */

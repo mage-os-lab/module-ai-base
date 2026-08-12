@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace MageOS\AiBase\Test\Unit\Model\Chat;
 
+use MageOS\AiBase\Api\Data\FinishReason;
 use MageOS\AiBase\Api\Data\StreamChunkType;
 use MageOS\AiBase\Model\Chat\ChatResponse;
 use MageOS\AiBase\Model\Chat\StreamChunk;
@@ -16,12 +17,19 @@ final class ChatResponseTest extends TestCase
     public function test_exposes_text_tool_calls_usage_and_finish_reason(): void
     {
         $call = new ToolCall('toolu_01', 'get_orders', ['status' => 'pending']);
-        $response = new ChatResponse('Let me look', [$call], new TokenUsage(120, 45), 'tool_use');
+        $response = new ChatResponse(
+            'Let me look',
+            [$call],
+            new TokenUsage(120, 45),
+            FinishReason::ToolCall,
+            'tool_use',
+        );
 
         self::assertSame('Let me look', $response->getText());
         self::assertSame([$call], $response->getToolCalls());
         self::assertSame(120, $response->getUsage()?->getPromptTokens());
-        self::assertSame('tool_use', $response->getFinishReason());
+        self::assertSame(FinishReason::ToolCall, $response->getFinishReason());
+        self::assertSame('tool_use', $response->getRawFinishReason());
     }
 
     /**

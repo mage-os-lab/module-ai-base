@@ -29,7 +29,13 @@ class BridgeRegistry
     private const KEY_PACKAGE = 'package';
 
     /**
-     * @param array<string,array{factory?:string,package?:string}> $bridges Service code => bridge and package
+     * Key of the request-option dialect within a bridge definition.
+     */
+    private const KEY_DIALECT = 'dialect';
+
+    /**
+     * @param array<string,array{factory?:string,package?:string,dialect?:string}> $bridges
+     *        Service code => bridge, package and request-option dialect
      */
     public function __construct(
         private readonly array $bridges = [],
@@ -73,9 +79,7 @@ class BridgeRegistry
      */
     public function getFactoryClass(string $serviceCode): ?string
     {
-        $factoryClass = $this->bridges[$serviceCode][self::KEY_FACTORY] ?? null;
-
-        return is_string($factoryClass) && $factoryClass !== '' ? $factoryClass : null;
+        return $this->readString($serviceCode, self::KEY_FACTORY);
     }
 
     /**
@@ -86,8 +90,36 @@ class BridgeRegistry
      */
     public function getPackage(string $serviceCode): ?string
     {
-        $package = $this->bridges[$serviceCode][self::KEY_PACKAGE] ?? null;
+        return $this->readString($serviceCode, self::KEY_PACKAGE);
+    }
 
-        return is_string($package) && $package !== '' ? $package : null;
+    /**
+     * Request-option dialect this service's bridge speaks, or null when it declares none.
+     *
+     * Providers reuse a handful of request shapes (the OpenAI chat-completions body, the Responses
+     * API body, Anthropic's messages body, Gemini's generationConfig, Ollama's nested options), and
+     * which one a service speaks is a property of its bridge. Naming it here rather than in a
+     * second list keeps registering a provider to one entry. See Model\Client\OptionNormalizer.
+     *
+     * @param string $serviceCode
+     * @return string|null
+     */
+    public function getDialect(string $serviceCode): ?string
+    {
+        return $this->readString($serviceCode, self::KEY_DIALECT);
+    }
+
+    /**
+     * Read a non-empty string off a bridge definition.
+     *
+     * @param string $serviceCode
+     * @param string $key
+     * @return string|null
+     */
+    private function readString(string $serviceCode, string $key): ?string
+    {
+        $value = $this->bridges[$serviceCode][$key] ?? null;
+
+        return is_string($value) && $value !== '' ? $value : null;
     }
 }
