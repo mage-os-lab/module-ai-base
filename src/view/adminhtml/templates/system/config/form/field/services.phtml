@@ -369,7 +369,7 @@ require(['prototype'], function () {
 
         const rowHtml = '<tr id="' + escapeHtml(rowId) + '">'
             + '<td>' + headingHtml
-            + '<table>' + rows + '</table>'
+            + '<table class="ai-service-row-fields">' + rows + '</table>'
             + '<div class="ai-test-result" role="status" aria-live="polite"></div></td>'
             + '</tr>';
 
@@ -511,17 +511,19 @@ require(['prototype'], function () {
             const trigger = e.target.closest('.add-ai-service');
             const rowId = addRow(trigger.dataset.aiService);
             updateEmptyState();
-            // Land the caret in the row that just appeared, so adding a provider continues into
-            // filling it in instead of leaving focus on the button and the new row unannounced.
-            // The name field is hidden until asked for, and focusing a hidden input does nothing.
-            // Visibility is read off the element rather than matched with `tr:not([hidden])`,
-            // which selects every input in the row: the row itself is a tr that is not hidden.
+            // Land the caret in the row's first field, so adding a provider continues into filling
+            // it in. Scoped to the field table on purpose: the heading carries the enable toggle
+            // and the rename pencil, and the toggle is the first focusable control in the row, so
+            // an unscoped search would put the caret on it and the next Space would switch the row
+            // straight back off. The name field is skipped by the visibility test, since it stays
+            // hidden until the pencil asks for it and focusing a hidden input does nothing.
             const newRow = document.getElementById(rowId);
-            const firstField = newRow
-                ? Array.from(newRow.querySelectorAll('input, select')).find(function (el) {
-                    return el.offsetParent !== null;
-                })
-                : null;
+            const fieldControls = newRow
+                ? newRow.querySelectorAll('.ai-service-row-fields input, .ai-service-row-fields select')
+                : [];
+            const firstField = Array.from(fieldControls).find(function (el) {
+                return el.offsetParent !== null;
+            });
             if (firstField) firstField.focus();
         });
     });

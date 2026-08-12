@@ -17,6 +17,20 @@ use MageOS\AiBase\Api\Data\ChatResponseInterface;
 interface AiClientInterface
 {
     /**
+     * Request option naming the model a single call should run against.
+     *
+     * Every other option is a provider setting that reaches the request body; this one replaces
+     * the model the service was configured with, for this call only. It exists because the model
+     * is a property of the work rather than of the account: a module summarising a catalogue wants
+     * a cheap model on the same key a chat assistant uses a strong one on, and pinning the model to
+     * configuration meant configuring that key twice.
+     *
+     * Leave it out to use the configured model. A consumer that does not know which provider an
+     * administrator picked should leave it out, since a model name is only valid at one provider.
+     */
+    public const OPTION_MODEL = 'model';
+
+    /**
      * Send a conversation and return what the model replied.
      *
      * The response carries text, any tools the model wants run, token counts and the provider's
@@ -25,7 +39,8 @@ interface AiClientInterface
      * policy that belongs to the module owning the tool.
      *
      * @param ChatRequestInterface $request
-     * @param array<string,mixed> $options Provider options (e.g. temperature, max_tokens)
+     * @param array<string,mixed> $options Provider options (e.g. temperature, max_tokens), plus
+     *        self::OPTION_MODEL to run this one call against a different model
      * @return ChatResponseInterface
      * @throws LocalizedException When the underlying platform is unavailable or the call fails
      */
@@ -54,7 +69,8 @@ interface AiClientInterface
      * turn to append.
      *
      * @param ChatRequestInterface $request
-     * @param array<string,mixed> $options Provider options (e.g. temperature, max_tokens)
+     * @param array<string,mixed> $options Provider options (e.g. temperature, max_tokens), plus
+     *        self::OPTION_MODEL to run this one call against a different model
      * @return \Generator<int, \MageOS\AiBase\Api\Data\StreamChunkInterface, mixed, ChatResponseInterface>
      * @throws LocalizedException When the underlying platform is unavailable or the call fails
      */
@@ -66,7 +82,8 @@ interface AiClientInterface
      * Convenience over chat() for prompt-in, text-out work.
      *
      * @param string $prompt
-     * @param array<string,mixed> $options Provider options (e.g. temperature, max_tokens)
+     * @param array<string,mixed> $options Provider options (e.g. temperature, max_tokens), plus
+     *        self::OPTION_MODEL to run this one call against a different model
      * @return string
      * @throws LocalizedException When the underlying platform is unavailable or the call fails
      */
@@ -94,7 +111,8 @@ interface AiClientInterface
      * Model this client sends to (e.g. "gpt-4o"), as configured on the service row.
      *
      * Cost and token accounting is per model, not per provider, so a consumer logging usage needs
-     * this alongside getServiceCode().
+     * this alongside getServiceCode(). This is the configured default: a call that passed
+     * self::OPTION_MODEL ran against that model instead, and this value did not change.
      *
      * @return string
      */

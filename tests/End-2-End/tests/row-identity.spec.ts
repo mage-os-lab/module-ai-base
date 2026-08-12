@@ -116,17 +116,31 @@ test.describe('Row identity', () => {
         await expect(page.locator('.ai-services-empty-state')).toBeHidden();
     });
 
-    test('adding a provider puts the caret in the row that appeared', async ({ page }) => {
+    /**
+     * Asserting only that focus landed somewhere in the row is too weak: the heading carries the
+     * enable toggle, which is the row's first focusable control, and focus went there once. That
+     * is worse than no focus at all, because the next Space switches the new row off.
+     */
+    test('adding a provider puts the caret in the first field, not on the row controls', async ({ page }) => {
         const section = new AiConfigurationSection(page);
         await section.open();
         await section.addProvider('anthropic');
 
-        const focusedRow = await page.evaluate(() => {
-            const active = document.activeElement as HTMLInputElement | null;
-            return active ? active.closest('tr[id]')?.id ?? null : null;
+        const focused = await page.evaluate(() => {
+            const active = document.activeElement as HTMLElement | null;
+            if (!active) return null;
+            return {
+                rowId: active.closest('tr[id]')?.id ?? null,
+                name: active.getAttribute('name'),
+                insideFields: !!active.closest('.ai-service-row-fields'),
+                type: (active as HTMLInputElement).type ?? null,
+            };
         });
         const rowId = await section.row(0).getAttribute('id');
 
-        expect(focusedRow).toBe(rowId);
+        expect(focused?.rowId).toBe(rowId);
+        expect(focused?.insideFields).toBe(true);
+        expect(focused?.name).toContain('[api_key]');
+        expect(focused?.type).not.toBe('checkbox');
     });
 });

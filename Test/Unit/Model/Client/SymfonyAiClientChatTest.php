@@ -626,6 +626,67 @@ final class SymfonyAiClientChatTest extends TestCase
     {
         return new ChatRequest([new ChatMessage(MessageRole::User, 'Hello')]);
     }
+
+    /**
+     * The model is a property of the work, not of the account: the same key serves a chat
+     * assistant and a bulk summariser that wants something cheaper. Before this, the second one
+     * meant configuring the same credentials a second time.
+     */
+    public function test_a_caller_can_run_one_call_against_a_different_model(): void
+    {
+        $platform = new FakePlatform(new FakeResult(new TextResult('Hi')));
+
+        $this->client($platform)->chat($this->helloRequest(), ['model' => 'gpt-4o-mini']);
+
+        self::assertSame('gpt-4o-mini', $platform->model);
+    }
+
+    public function test_the_configured_model_is_used_when_the_caller_names_none(): void
+    {
+        $platform = new FakePlatform(new FakeResult(new TextResult('Hi')));
+
+        $client = $this->client($platform);
+        $client->chat($this->helloRequest());
+
+        self::assertSame($client->getModel(), $platform->model);
+    }
+
+    /**
+     * The platform takes the model as its own argument. Left in the options it would also reach
+     * the request body, where a provider either rejects the unknown field or, worse, honours it.
+     */
+    public function test_the_model_option_does_not_also_reach_the_request_body(): void
+    {
+        $platform = new FakePlatform(new FakeResult(new TextResult('Hi')));
+
+        $this->client($platform)->chat($this->helloRequest(), ['model' => 'gpt-4o-mini']);
+
+        self::assertArrayNotHasKey('model', $platform->options);
+    }
+
+    public function test_streaming_honours_the_same_override(): void
+    {
+        $platform = new FakePlatform(new FakeResult(new TextResult('Hi')));
+
+        $stream = $this->client($platform)->streamChat($this->helloRequest(), ['model' => 'o1-mini']);
+        iterator_to_array($stream);
+
+        self::assertSame('o1-mini', $platform->model);
+    }
+
+    /**
+     * A caller naming a model meant it. Falling back to the configured one would hide the mistake
+     * and bill a model they did not ask for.
+     */
+    public function test_an_unusable_model_override_is_refused_rather_than_ignored(): void
+    {
+        $platform = new FakePlatform(new FakeResult(new TextResult('Hi')));
+
+        $this->expectException(LocalizedException::class);
+        $this->expectExceptionMessage('must be a model name');
+
+        $this->client($platform)->chat($this->helloRequest(), ['model' => '   ']);
+    }
 }
 
 /**

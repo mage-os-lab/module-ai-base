@@ -212,6 +212,9 @@ class SymfonyAiClient implements AiClientInterface, PlatformAwareInterface
      */
     private function invoke(ChatRequestInterface $request, array $options): object
     {
+        $model = $this->modelFor($options);
+        unset($options[AiClientInterface::OPTION_MODEL]);
+
         $options = $this->normalizeOptions($options);
 
         $tools = $this->toTools($request->getTools());
@@ -220,10 +223,42 @@ class SymfonyAiClient implements AiClientInterface, PlatformAwareInterface
         }
 
         try {
-            return $this->platform->invoke($this->model, $this->toMessageBag($request), $options);
+            return $this->platform->invoke($model, $this->toMessageBag($request), $options);
         } catch (\Throwable $e) {
             throw $this->wrap($e);
         }
+    }
+
+    /**
+     * The model this call runs against: the caller's, or the one the row was configured with.
+     *
+     * The model is the one call parameter that used to live only in configuration, which forced a
+     * second configured row, credentials and all, on anyone who wanted the same account with a
+     * cheaper model for bulk work. It is removed from the options before they are normalized
+     * because the platform takes it as its own argument, not as a field of the request body.
+     *
+     * @param array<string,mixed> $options
+     * @return non-empty-string
+     * @throws LocalizedException When the caller names a model that is not a usable name
+     */
+    private function modelFor(array $options): string
+    {
+        if (!array_key_exists(AiClientInterface::OPTION_MODEL, $options)) {
+            return $this->model;
+        }
+
+        $requested = $options[AiClientInterface::OPTION_MODEL];
+        $model = is_string($requested) ? trim($requested) : '';
+        if ($model === '') {
+            throw new LocalizedException(__(
+                'The "%1" option for AI service "%2" must be a model name. '
+                . 'Leave it out to use the model the service is configured with.',
+                AiClientInterface::OPTION_MODEL,
+                $this->serviceCode
+            ));
+        }
+
+        return $model;
     }
 
     /**
