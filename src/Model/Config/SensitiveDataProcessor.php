@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace MageOS\AiBase\Model\Config;
 
 use Magento\Framework\Encryption\EncryptorInterface;
+use Magento\Framework\Exception\LocalizedException;
 use MageOS\AiBase\Model\ServiceRegistry;
 
 /**
@@ -33,6 +34,15 @@ class SensitiveDataProcessor
      * that hold credentials but were not flagged as encrypted.
      */
     private const SENSITIVE_KEYS = ['apikey', 'api_key', 'token', 'secret'];
+
+    /**
+     * Fields naming the host a row's credentials are sent to.
+     *
+     * Moving one of these is what turns a stored credential into something the person editing the
+     * row can read back, which is why restoreRow() refuses to carry a masked value across a change
+     * to any of them.
+     */
+    private const ENDPOINT_KEYS = ['base_url', 'endpoint'];
 
     /**
      * Magento encryptor envelope, e.g. "0:3:<base64>". Values not matching this
@@ -121,14 +131,58 @@ class SensitiveDataProcessor
      */
     public function restoreRow(string $serviceCode, array $configuration, array $previous): array
     {
+        $redirected = $this->isRedirected($configuration, $previous);
+
         foreach ($configuration as $key => $value) {
             if ($value === self::OBSCURED_PLACEHOLDER && $this->isSensitive($serviceCode, (string)$key)) {
+                if ($redirected) {
+                    throw new LocalizedException(
+                        __(
+                            'The endpoint of the "%1" service changed, so its %2 has to be entered '
+                            . 'again. A stored credential is never carried over to a host it was '
+                            . 'not issued for.',
+                            $serviceCode,
+                            str_replace('_', ' ', (string)$key)
+                        )
+                    );
+                }
                 $stored = $previous[$key] ?? '';
                 $configuration[$key] = is_string($stored) ? $stored : '';
             }
         }
 
         return $configuration;
+    }
+
+    /**
+     * Whether this save points an existing row at a different host.
+     *
+     * The obscured placeholder exists so an administrator can save the form without ever seeing a
+     * stored credential. An editable endpoint would hand it back to them: point the row at a host
+     * you control, leave the key masked so it is restored from storage, press Test Connection, and
+     * read the credential off your own server. Whoever moves the endpoint therefore has to supply
+     * the credential for it, which is something only someone who already holds it can do.
+     *
+     * A brand-new row has nothing stored to leak, so this only guards edits.
+     *
+     * @param array<array-key,mixed> $configuration Submitted service configuration row
+     * @param array<array-key,mixed> $previous Previously stored configuration row
+     * @return bool
+     */
+    private function isRedirected(array $configuration, array $previous): bool
+    {
+        foreach (self::ENDPOINT_KEYS as $key) {
+            if (!array_key_exists($key, $previous)) {
+                continue;
+            }
+            $before = is_string($previous[$key]) ? trim($previous[$key]) : '';
+            $after = is_string($configuration[$key] ?? null) ? trim((string)$configuration[$key]) : '';
+            if (rtrim($before, '/') !== rtrim($after, '/')) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /**

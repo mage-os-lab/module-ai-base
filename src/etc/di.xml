@@ -71,46 +71,55 @@
                     <item name="factory" xsi:type="string">Symfony\AI\Platform\Bridge\Anthropic\Factory</item>
                     <item name="package" xsi:type="string">symfony/ai-anthropic-platform</item>
                     <item name="dialect" xsi:type="string">anthropic_messages</item>
+                    <item name="catalog" xsi:type="string">Symfony\AI\Platform\Bridge\Anthropic\ModelCatalog</item>
                 </item>
                 <item name="azure" xsi:type="array">
                     <item name="factory" xsi:type="string">Symfony\AI\Platform\Bridge\Azure\OpenAi\Factory</item>
                     <item name="package" xsi:type="string">symfony/ai-azure-platform</item>
                     <item name="dialect" xsi:type="string">openai_responses</item>
+                    <item name="catalog" xsi:type="string">Symfony\AI\Platform\Bridge\Azure\OpenAi\ModelCatalog</item>
                 </item>
                 <item name="deepseek" xsi:type="array">
                     <item name="factory" xsi:type="string">Symfony\AI\Platform\Bridge\DeepSeek\Factory</item>
                     <item name="package" xsi:type="string">symfony/ai-deep-seek-platform</item>
                     <item name="dialect" xsi:type="string">openai_chat</item>
+                    <item name="catalog" xsi:type="string">Symfony\AI\Platform\Bridge\DeepSeek\ModelCatalog</item>
                 </item>
                 <item name="google" xsi:type="array">
                     <item name="factory" xsi:type="string">Symfony\AI\Platform\Bridge\Gemini\Factory</item>
                     <item name="package" xsi:type="string">symfony/ai-gemini-platform</item>
                     <item name="dialect" xsi:type="string">gemini</item>
+                    <item name="catalog" xsi:type="string">Symfony\AI\Platform\Bridge\Gemini\ModelCatalog</item>
                 </item>
                 <item name="huggingface" xsi:type="array">
                     <item name="factory" xsi:type="string">Symfony\AI\Platform\Bridge\HuggingFace\Factory</item>
                     <item name="package" xsi:type="string">symfony/ai-hugging-face-platform</item>
                     <item name="dialect" xsi:type="string">openai_chat</item>
+                    <item name="catalog" xsi:type="string">Symfony\AI\Platform\Bridge\HuggingFace\ModelCatalog</item>
                 </item>
                 <item name="lmstudio" xsi:type="array">
                     <item name="factory" xsi:type="string">Symfony\AI\Platform\Bridge\LmStudio\Factory</item>
                     <item name="package" xsi:type="string">symfony/ai-lm-studio-platform</item>
                     <item name="dialect" xsi:type="string">openai_chat</item>
+                    <item name="catalog" xsi:type="string">Symfony\AI\Platform\Bridge\LmStudio\ModelCatalog</item>
                 </item>
                 <item name="ollama" xsi:type="array">
                     <item name="factory" xsi:type="string">Symfony\AI\Platform\Bridge\Ollama\Factory</item>
                     <item name="package" xsi:type="string">symfony/ai-ollama-platform</item>
                     <item name="dialect" xsi:type="string">ollama</item>
+                    <item name="catalog" xsi:type="string">Symfony\AI\Platform\Bridge\Ollama\ModelCatalog</item>
                 </item>
                 <item name="openrouter" xsi:type="array">
                     <item name="factory" xsi:type="string">Symfony\AI\Platform\Bridge\OpenRouter\Factory</item>
                     <item name="package" xsi:type="string">symfony/ai-open-router-platform</item>
                     <item name="dialect" xsi:type="string">openai_chat</item>
+                    <item name="catalog" xsi:type="string">Symfony\AI\Platform\Bridge\OpenRouter\ModelCatalog</item>
                 </item>
                 <item name="openai" xsi:type="array">
                     <item name="factory" xsi:type="string">Symfony\AI\Platform\Bridge\OpenAi\Factory</item>
                     <item name="package" xsi:type="string">symfony/ai-open-ai-platform</item>
                     <item name="dialect" xsi:type="string">openai_responses</item>
+                    <item name="catalog" xsi:type="string">Symfony\AI\Platform\Bridge\OpenAi\ModelCatalog</item>
                 </item>
             </argument>
         </arguments>

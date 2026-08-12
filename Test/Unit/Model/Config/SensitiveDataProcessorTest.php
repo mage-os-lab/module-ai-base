@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace MageOS\AiBase\Test\Unit\Model\Config;
 
 use Magento\Framework\Encryption\EncryptorInterface;
+use Magento\Framework\Exception\LocalizedException;
 use MageOS\AiBase\Api\Data\AiServiceConfigurationInterface;
 use MageOS\AiBase\Api\Data\FieldDescriptorInterface;
 use MageOS\AiBase\Model\Config\SensitiveDataProcessor;
@@ -201,6 +202,70 @@ final class SensitiveDataProcessorTest extends TestCase
         );
 
         self::assertSame(['api_key' => ''], $result);
+    }
+
+    /**
+     * The masking exists so an administrator can save the form without seeing a stored credential.
+     * Carrying that credential over to a host they just typed in hands it straight back to them.
+     */
+    public function test_restore_row_refuses_to_carry_a_masked_credential_to_a_new_endpoint(): void
+    {
+        $this->expectException(LocalizedException::class);
+        $this->expectExceptionMessage('has to be entered again');
+
+        $this->subject->restoreRow(
+            self::UNKNOWN_SERVICE,
+            ['api_key' => SensitiveDataProcessor::OBSCURED_PLACEHOLDER, 'base_url' => 'http://attacker.test'],
+            ['api_key' => '0:3:enc(secret-key)', 'base_url' => 'https://api.openai.com'],
+        );
+    }
+
+    /**
+     * Whoever moves the endpoint has to supply the credential for it, which only someone who
+     * already holds it can do. That save is legitimate and must go through.
+     */
+    public function test_restore_row_allows_a_new_endpoint_when_the_credential_is_re_entered(): void
+    {
+        $result = $this->subject->restoreRow(
+            self::UNKNOWN_SERVICE,
+            ['api_key' => 'typed-again', 'base_url' => 'http://gateway.internal'],
+            ['api_key' => '0:3:enc(secret-key)', 'base_url' => 'https://api.openai.com'],
+        );
+
+        self::assertSame(['api_key' => 'typed-again', 'base_url' => 'http://gateway.internal'], $result);
+    }
+
+    /**
+     * Editing anything else on a row must not force the credential to be retyped, or the masking
+     * becomes an obstacle rather than a protection.
+     */
+    public function test_restore_row_keeps_the_credential_when_the_endpoint_is_unchanged(): void
+    {
+        $result = $this->subject->restoreRow(
+            self::UNKNOWN_SERVICE,
+            [
+                'api_key'  => SensitiveDataProcessor::OBSCURED_PLACEHOLDER,
+                'base_url' => 'https://api.openai.com/',
+                'model'    => 'gpt-4.1',
+            ],
+            ['api_key' => '0:3:enc(secret-key)', 'base_url' => 'https://api.openai.com', 'model' => 'gpt-4o'],
+        );
+
+        self::assertSame('0:3:enc(secret-key)', $result['api_key'], 'A trailing slash is not a move.');
+    }
+
+    /**
+     * A row being created has no stored credential to leak, so it must not be held to this.
+     */
+    public function test_restore_row_does_not_guard_a_row_with_no_stored_endpoint(): void
+    {
+        $result = $this->subject->restoreRow(
+            self::UNKNOWN_SERVICE,
+            ['api_key' => SensitiveDataProcessor::OBSCURED_PLACEHOLDER, 'base_url' => 'http://new.test'],
+            [],
+        );
+
+        self::assertSame(['api_key' => '', 'base_url' => 'http://new.test'], $result);
     }
 
     public function test_restore_row_ignores_placeholder_in_non_sensitive_fields(): void

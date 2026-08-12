@@ -17,7 +17,7 @@ class LmStudio implements AiServiceConfigurationInterface, ModelListProviderInte
     /**
      * Default base URL of a local LM Studio instance.
      */
-    private const DEFAULT_BASE_URL = 'http://localhost:1234';
+    public const DEFAULT_BASE_URL = 'http://localhost:1234';
 
     /**
      * @param FieldDescriptorInterfaceFactory $fieldFactory

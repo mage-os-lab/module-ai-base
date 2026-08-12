@@ -34,8 +34,13 @@ class BridgeRegistry
     private const KEY_DIALECT = 'dialect';
 
     /**
-     * @param array<string,array{factory?:string,package?:string,dialect?:string}> $bridges
-     *        Service code => bridge, package and request-option dialect
+     * Key of the model catalogue FQCN within a bridge definition.
+     */
+    private const KEY_CATALOG = 'catalog';
+
+    /**
+     * @param array<string,array{factory?:string,package?:string,dialect?:string,catalog?:string}> $bridges
+     *        Service code => bridge, package, request-option dialect and model catalogue
      */
     public function __construct(
         private readonly array $bridges = [],
@@ -107,6 +112,22 @@ class BridgeRegistry
     public function getDialect(string $serviceCode): ?string
     {
         return $this->readString($serviceCode, self::KEY_DIALECT);
+    }
+
+    /**
+     * Model catalogue FQCN for a service code, or null when the bridge declares none.
+     *
+     * A bridge only routes models its catalogue lists, and that list is baked into the released
+     * package: a model the provider shipped after it cannot be reached at all, however valid the
+     * credentials. Knowing the catalogue class is what lets an administrator's own choice be
+     * registered alongside the built-in list. See Model\Client\ClientFactory.
+     *
+     * @param string $serviceCode
+     * @return string|null
+     */
+    public function getCatalogClass(string $serviceCode): ?string
+    {
+        return $this->readString($serviceCode, self::KEY_CATALOG);
     }
 
     /**
