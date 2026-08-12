@@ -7,6 +7,7 @@ namespace MageOS\AiBase\Test\Unit\AiServices;
 require_once __DIR__ . '/../Stubs/FieldDescriptorInterfaceFactoryStub.php';
 
 use Magento\Framework\Exception\LocalizedException;
+use MageOS\AiBase\AiServices\Anthropic;
 use MageOS\AiBase\AiServices\Ollama;
 use MageOS\AiBase\AiServices\OpenAi;
 use MageOS\AiBase\Api\Data\FieldDescriptorInterfaceFactory;
@@ -17,6 +18,7 @@ use PHPUnit\Framework\TestCase;
 /**
  * @covers \MageOS\AiBase\AiServices\OpenAi
  * @covers \MageOS\AiBase\AiServices\Ollama
+ * @covers \MageOS\AiBase\AiServices\Anthropic
  */
 final class ModelListFetchTest extends TestCase
 {
@@ -57,6 +59,26 @@ final class ModelListFetchTest extends TestCase
         $this->expectExceptionMessage('missing "data" list');
 
         $service->fetchModels(['api_key' => 'sk-test']);
+    }
+
+    public function test_anthropic_fetch_models_uses_default_base_url_and_prefers_display_names(): void
+    {
+        $this->fetcher->expects(self::once())->method('getJson')
+            ->with('https://api.anthropic.com/v1/models', [
+                'x-api-key' => 'sk-ant-test',
+                'anthropic-version' => '2023-06-01',
+            ])
+            ->willReturn(['data' => [
+                ['id' => 'claude-sonnet-4-6', 'display_name' => 'Claude Sonnet 4.6'],
+                ['id' => 'claude-opus-4-7'],
+            ]]);
+
+        $service = new Anthropic($this->fieldFactory, $this->fetcher);
+
+        self::assertSame(
+            ['claude-sonnet-4-6' => 'Claude Sonnet 4.6', 'claude-opus-4-7' => 'claude-opus-4-7'],
+            $service->fetchModels(['api_key' => 'sk-ant-test']),
+        );
     }
 
     public function test_ollama_fetch_models_uses_default_base_url_and_tags_shape(): void

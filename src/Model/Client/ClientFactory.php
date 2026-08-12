@@ -5,6 +5,8 @@ declare(strict_types=1);
 namespace MageOS\AiBase\Model\Client;
 
 use Magento\Framework\Exception\LocalizedException;
+use MageOS\AiBase\AiServices\LmStudio;
+use MageOS\AiBase\AiServices\Ollama;
 use MageOS\AiBase\Api\AiClientFactoryInterface;
 use MageOS\AiBase\Api\AiClientInterface;
 use MageOS\AiBase\Api\AiServiceSelectorInterface;
@@ -230,16 +232,31 @@ class ClientFactory implements AiClientFactoryInterface
         // against symfony/ai-platform v0.11.0): hosted providers take an API key;
         // local runtimes take an endpoint/base URL; Azure takes endpoint +
         // deployment (the selected model) + API version + key.
+        //
+        // Every arm ends in optionalArguments() so that no provider is left out of the model
+        // catalogue: the two that take their endpoint positionally are also the two with a
+        // free-text model field, which makes them the likeliest to hold a model no static
+        // catalogue lists.
         $platform = match ($code) {
-            'ollama' => $factoryClass::createPlatform($config['base_url'] ?? null),
-            'lmstudio' => $factoryClass::createPlatform($config['base_url'] ?? 'http://localhost:1234'),
-            'azure' => $factoryClass::createPlatform(
-                $config['endpoint'] ?? '',
-                $config['deployment'] ?? $config['model'] ?? '',
-                $config['api_version'] ?? '2024-10-21',
-                $config['api_key'] ?? ''
+            'ollama' => $factoryClass::createPlatform(
+                $this->resolveBaseUrl($config, Ollama::DEFAULT_BASE_URL),
+                ...$this->optionalArguments($factoryClass, $code, $config),
             ),
-            default => $factoryClass::createPlatform($config['api_key'] ?? ''),
+            'lmstudio' => $factoryClass::createPlatform(
+                $this->resolveBaseUrl($config, LmStudio::DEFAULT_BASE_URL),
+                ...$this->optionalArguments($factoryClass, $code, $config),
+            ),
+            'azure' => $factoryClass::createPlatform(
+                $this->stringValue($config, 'endpoint'),
+                $this->stringValue($config, 'deployment') ?: $this->stringValue($config, 'model'),
+                $this->stringValue($config, 'api_version', '2024-10-21'),
+                $this->stringValue($config, 'api_key'),
+                ...$this->optionalArguments($factoryClass, $code, $config),
+            ),
+            default => $factoryClass::createPlatform(
+                $this->stringValue($config, 'api_key'),
+                ...$this->optionalArguments($factoryClass, $code, $config),
+            ),
         };
 
         // The factory class comes from di.xml, so what it hands back is only ever as good as the
@@ -258,5 +275,178 @@ class ClientFactory implements AiClientFactoryInterface
         }
 
         return $platform;
+    }
+
+    /**
+     * Named arguments for a bridge factory beyond the API key, limited to the ones it declares.
+     *
+     * Bridge signatures differ, and they gain parameters between releases. Asking the factory what
+     * it accepts means an install running an older bridge silently goes without rather than dying
+     * on an unknown named argument, and a bridge that later grows one starts receiving it with no
+     * change here.
+     *
+     * @param string $factoryClass Bridge factory FQCN
+     * @param string $code Service code
+     * @param array<string,mixed> $config Stored service configuration
+     * @return array<string,mixed> Argument name => value
+     */
+    private function optionalArguments(string $factoryClass, string $code, array $config): array
+    {
+        $accepted = [];
+        foreach ((new \ReflectionMethod($factoryClass, 'createPlatform'))->getParameters() as $parameter) {
+            $accepted[$parameter->getName()] = true;
+        }
+
+        $model = $config['model'] ?? null;
+
+        $arguments = [];
+        $catalog = $this->createCatalog($code, is_string($model) ? $model : '');
+        if ($catalog !== null && isset($accepted['modelCatalog'])) {
+            $arguments['modelCatalog'] = $catalog;
+        }
+        return $arguments;
+    }
+
+    /**
+     * Read a string off a stored service row, treating anything that is not one as absent.
+     *
+     * The row is whatever json_decode made of the stored value, so a hand-edited or half-saved
+     * config can hold an array or an int where a credential belongs. Casting one would hand the
+     * bridge "Array" and get back an authentication failure; letting it through raises a TypeError
+     * from inside the bridge, naming neither the row nor the field.
+     *
+     * @param array<string,mixed> $config
+     * @param string $key
+     * @param string $default
+     * @return string
+     */
+    private function stringValue(array $config, string $key, string $default = ''): string
+    {
+        $value = $config[$key] ?? null;
+
+        return is_string($value) ? $value : $default;
+    }
+
+    /**
+     * Build the bridge's model catalogue, with the configured model added when it is not in it.
+     *
+     * A bridge routes by catalogue membership alone, and the catalogue is a static list frozen at
+     * the version installed. Models outlive releases: the provider ships one, the administrator
+     * picks it up through Refresh Models, and the call then fails at the router with "no provider
+     * found" long before any request goes out. Registering the administrator's own choice keeps
+     * that decision with the person who made it, and a model the provider does not actually serve
+     * fails against the provider, saying so, instead of being blocked locally on stale data.
+     *
+     * Capabilities are copied from the most capable model already in the catalogue, because they
+     * only gate features a caller asks for, and the provider is the real authority on what its own
+     * model can do.
+     *
+     * @param string $code Service code
+     * @param string $model Configured model
+     * @return object|null \Symfony\AI\Platform\ModelCatalog\ModelCatalogInterface, or null when the
+     *         bridge registers no catalogue or the configured model is already in it
+     */
+    private function createCatalog(string $code, string $model): ?object
+    {
+        $catalogClass = $this->bridgeRegistry->getCatalogClass($code);
+        if ($model === '' || $catalogClass === null || !class_exists($catalogClass)) {
+            return null;
+        }
+
+        // A catalogue whose constructor takes nothing cannot be extended, and one that demands an
+        // argument is not the shape this expects. Both exist upstream (FallbackModelCatalog takes
+        // none), and PHP would swallow the first silently: the extra argument is dropped, the model
+        // never lands, and the router rejects it exactly as if this code were not here.
+        try {
+            $constructor = (new \ReflectionClass($catalogClass))->getConstructor();
+            if ($constructor === null || $constructor->getNumberOfParameters() === 0) {
+                return null;
+            }
+
+            $models = $this->readModels(new $catalogClass());
+            if ($models === [] || isset($models[$model])) {
+                return null;
+            }
+
+            $template = $this->mostCapableEntry($models);
+            if ($template === []) {
+                return null;
+            }
+
+            $catalog = new $catalogClass([$model => $template]);
+
+            // Proof rather than assumption: a catalogue that merged the entry answers for it. One
+            // that ignored the argument is no better than none, and passing it would only pin the
+            // platform to a shape this code guessed at.
+            return isset($this->readModels($catalog)[$model]) ? $catalog : null;
+        } catch (\Throwable $e) {
+            return null;
+        }
+    }
+
+    /**
+     * Read the model map off a bridge catalogue, or an empty one when it does not offer it.
+     *
+     * The class comes from di.xml and this module never requires the bridge packages, so what it
+     * names is only ever as good as the registration.
+     *
+     * @param object $catalog
+     * @return array<mixed>
+     */
+    private function readModels(object $catalog): array
+    {
+        if (!method_exists($catalog, 'getModels')) {
+            return [];
+        }
+
+        $models = $catalog->getModels();
+
+        return is_array($models) ? $models : [];
+    }
+
+    /**
+     * The catalogue entry declaring the most capabilities, used as the template for an unknown model.
+     *
+     * @param array<mixed> $models
+     * @return array<string,mixed>
+     */
+    private function mostCapableEntry(array $models): array
+    {
+        $best = [];
+        $bestCount = -1;
+        foreach ($models as $entry) {
+            if (!is_array($entry)) {
+                continue;
+            }
+            $capabilities = $entry['capabilities'] ?? null;
+            $count = is_array($capabilities) ? count($capabilities) : 0;
+            if ($count > $bestCount) {
+                /** @var array<string,mixed> $entry */
+                $best = $entry;
+                $bestCount = $count;
+            }
+        }
+
+        return $best;
+    }
+
+    /**
+     * Read a base URL out of a stored service row, falling back to the provider's own host.
+     *
+     * Rows saved before the field existed have no `base_url` at all, and a row saved with the
+     * input cleared has an empty one; both mean "wherever the provider normally lives". The
+     * trailing slash goes because the bridges append their own path to whatever they are given,
+     * and a doubled separator is a 404 that reads like an authentication problem.
+     *
+     * @param array<string,mixed> $config Stored service configuration
+     * @param string $default Provider's own base URL
+     * @return string
+     */
+    private function resolveBaseUrl(array $config, string $default): string
+    {
+        $baseUrl = $config['base_url'] ?? null;
+        $baseUrl = is_string($baseUrl) && trim($baseUrl) !== '' ? trim($baseUrl) : $default;
+
+        return rtrim($baseUrl, '/');
     }
 }

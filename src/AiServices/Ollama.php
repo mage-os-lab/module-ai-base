@@ -18,7 +18,7 @@ class Ollama implements AiServiceConfigurationInterface, ModelListProviderInterf
     /**
      * Default base URL of a local Ollama instance.
      */
-    private const DEFAULT_BASE_URL = 'http://localhost:11434';
+    public const DEFAULT_BASE_URL = 'http://localhost:11434';
 
     /**
      * @param FieldDescriptorInterfaceFactory $fieldFactory

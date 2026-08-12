@@ -11,6 +11,7 @@ use MageOS\AiBase\Model\Client\BridgeRegistry;
 use MageOS\AiBase\Model\Client\ClientFactory;
 use MageOS\AiBase\Model\Client\SymfonyAiClient;
 use MageOS\AiBase\Model\Client\SymfonyAiClientFactory;
+use PHPUnit\Framework\Attributes\TestWith;
 use PHPUnit\Framework\MockObject\MockObject;
 use PHPUnit\Framework\TestCase;
 
@@ -23,6 +24,10 @@ final class ClientFactoryTest extends TestCase
     {
         $this->serviceSelector = $this->createMock(AiServiceSelectorInterface::class);
         $this->clientFactory = $this->createMock(SymfonyAiClientFactory::class);
+
+        RecordingAnthropicFactory::$apiKey = null;
+        RecordingAnthropicFactory::$modelCatalog = null;
+        RecordingLocalRuntimeFactory::$baseUrl = null;
     }
 
     /**
@@ -274,6 +279,139 @@ final class ClientFactoryTest extends TestCase
         $subject->createById('_deleted_row');
     }
 
+    /**
+     * The catalogue is frozen at the installed bridge version, so a model the provider shipped
+     * later is unroutable no matter how valid the credentials. The administrator's choice wins.
+     */
+    public function test_create_registers_a_model_the_bridge_catalogue_does_not_know(): void
+    {
+        $this->serviceSelector->method('getByCode')->with('anthropic')->willReturn([
+            new AiService('row_anthropic', 'anthropic', ['api_key' => 'k', 'model' => 'claude-from-the-future']),
+        ]);
+        $this->clientFactory->method('create')->willReturn($this->createMock(SymfonyAiClient::class));
+
+        $subject = new ClientFactory($this->serviceSelector, $this->clientFactory, new BridgeRegistry([
+            'anthropic' => [
+                'factory' => RecordingAnthropicFactory::class,
+                'package' => 'symfony/ai-anthropic-platform',
+                'catalog' => FakeModelCatalog::class,
+            ],
+        ]));
+
+        $subject->create('anthropic');
+
+        self::assertInstanceOf(FakeModelCatalog::class, RecordingAnthropicFactory::$modelCatalog);
+        self::assertArrayHasKey(
+            'claude-from-the-future',
+            RecordingAnthropicFactory::$modelCatalog->getModels(),
+            'The configured model has to reach the catalogue, or the router rejects it.'
+        );
+        self::assertSame(
+            ['a', 'b', 'c'],
+            RecordingAnthropicFactory::$modelCatalog->getModels()['claude-from-the-future']['capabilities'],
+            'An unknown model inherits the capabilities of the most capable one in the catalogue.'
+        );
+    }
+
+    /**
+     * Passing a catalogue that only repeats what the bridge already ships is pure risk: it pins the
+     * entry to whatever template this code picked instead of the bridge's own definition.
+     */
+    public function test_create_leaves_a_known_model_on_the_bridge_catalogue(): void
+    {
+        $this->serviceSelector->method('getByCode')->with('anthropic')->willReturn([
+            new AiService('row_anthropic', 'anthropic', ['api_key' => 'k', 'model' => 'known-model']),
+        ]);
+        $this->clientFactory->method('create')->willReturn($this->createMock(SymfonyAiClient::class));
+
+        $subject = new ClientFactory($this->serviceSelector, $this->clientFactory, new BridgeRegistry([
+            'anthropic' => [
+                'factory' => RecordingAnthropicFactory::class,
+                'package' => 'symfony/ai-anthropic-platform',
+                'catalog' => FakeModelCatalog::class,
+            ],
+        ]));
+
+        $subject->create('anthropic');
+
+        self::assertNull(RecordingAnthropicFactory::$modelCatalog);
+    }
+
+    /**
+     * Bridges gain parameters between releases. An install on an older one must go without the
+     * argument rather than die on an unknown named parameter.
+     */
+    public function test_create_withholds_arguments_a_bridge_factory_does_not_declare(): void
+    {
+        $this->serviceSelector->method('getByCode')->with('anthropic')->willReturn([
+            new AiService('row_anthropic', 'anthropic', [
+                'api_key' => 'k',
+                'model'   => 'claude-from-the-future',
+            ]),
+        ]);
+        $this->clientFactory->method('create')->willReturn($this->createMock(SymfonyAiClient::class));
+
+        $subject = new ClientFactory($this->serviceSelector, $this->clientFactory, new BridgeRegistry([
+            'anthropic' => [
+                'factory' => FakePlatformFactory::class,
+                'package' => 'symfony/ai-anthropic-platform',
+                'catalog' => FakeModelCatalog::class,
+            ],
+        ]));
+
+        self::assertInstanceOf(SymfonyAiClient::class, $subject->create('anthropic'));
+    }
+
+    /**
+     * A catalogue that ignores the argument is no better than none. PHP drops an extra argument to
+     * a no-parameter constructor silently, so without this the model would never land and the
+     * router would reject it exactly as if this code were not here.
+     */
+    public function test_create_passes_no_catalog_when_the_bridge_catalog_cannot_be_extended(): void
+    {
+        $this->serviceSelector->method('getByCode')->with('anthropic')->willReturn([
+            new AiService('row_anthropic', 'anthropic', ['api_key' => 'k', 'model' => 'claude-from-the-future']),
+        ]);
+        $this->clientFactory->method('create')->willReturn($this->createMock(SymfonyAiClient::class));
+
+        $subject = new ClientFactory($this->serviceSelector, $this->clientFactory, new BridgeRegistry([
+            'anthropic' => [
+                'factory' => RecordingAnthropicFactory::class,
+                'package' => 'symfony/ai-anthropic-platform',
+                'catalog' => UnextendableModelCatalog::class,
+            ],
+        ]));
+
+        $subject->create('anthropic');
+
+        self::assertNull(RecordingAnthropicFactory::$modelCatalog);
+    }
+
+    /**
+     * Both fields ship with a pre-filled default, so an administrator who wants the default back
+     * clears the input. That stores an empty string, which ?? does not catch and which reaches the
+     * bridge as the host to call.
+     */
+    #[TestWith(['ollama', 'http://localhost:11434'])]
+    #[TestWith(['lmstudio', 'http://localhost:1234'])]
+    public function test_create_falls_back_to_the_local_runtime_default_when_base_url_is_cleared(
+        string $code,
+        string $expected
+    ): void {
+        $this->serviceSelector->method('getByCode')->with($code)->willReturn([
+            new AiService('row_local', $code, ['model' => 'llama3', 'base_url' => '  ']),
+        ]);
+        $this->clientFactory->method('create')->willReturn($this->createMock(SymfonyAiClient::class));
+
+        $subject = new ClientFactory($this->serviceSelector, $this->clientFactory, new BridgeRegistry([
+            $code => ['factory' => RecordingLocalRuntimeFactory::class, 'package' => 'symfony/ai-' . $code],
+        ]));
+
+        $subject->create($code);
+
+        self::assertSame($expected, RecordingLocalRuntimeFactory::$baseUrl);
+    }
+
     public function test_create_by_id_reports_a_missing_bridge_for_the_selected_row(): void
     {
         $this->serviceSelector->method('getById')->with('_row_a')
@@ -298,6 +436,90 @@ final class FakePlatformFactory
     public static function createPlatform(string $apiKey): object
     {
         return new \stdClass();
+    }
+}
+
+/**
+ * Stand-in for the Anthropic bridge Factory, recording what it was handed.
+ *
+ * The parameters it ignores are the ones the real signature carries between the key and the base
+ * URL: reproducing them is what makes the named argument in ClientFactory meaningful here, since a
+ * two-parameter fake would accept a positional call the real bridge would misread as an HTTP client.
+ */
+final class RecordingAnthropicFactory
+{
+    public static ?string $apiKey = null;
+    public static ?object $modelCatalog = null;
+
+    public static function createPlatform(
+        string $apiKey,
+        ?object $httpClient = null,
+        ?object $modelCatalog = null,
+        ?object $contract = null,
+        ?object $eventDispatcher = null,
+        string $cacheRetention = 'short',
+        string $name = 'anthropic',
+        ?object $modelRouter = null,
+        string $baseUrl = 'https://api.anthropic.com',
+    ): object {
+        self::$apiKey = $apiKey;
+        self::$modelCatalog = $modelCatalog;
+
+        return new \stdClass();
+    }
+}
+
+/**
+ * Stand-in for a bridge whose endpoint is its first positional argument, as the local runtimes are.
+ */
+final class RecordingLocalRuntimeFactory
+{
+    public static ?string $baseUrl = null;
+
+    public static function createPlatform(?string $hostUrl = null, ?object $httpClient = null): object
+    {
+        self::$baseUrl = $hostUrl;
+
+        return new \stdClass();
+    }
+}
+
+/**
+ * Stand-in for a bridge ModelCatalog that takes no constructor argument, as FallbackModelCatalog
+ * does upstream. PHP drops the extra argument rather than complaining, so this cannot be extended.
+ */
+final class UnextendableModelCatalog
+{
+    /**
+     * @return array<string,array{class:string,capabilities:array<int,string>}>
+     */
+    public function getModels(): array
+    {
+        return ['known-model' => ['class' => 'Fake\\Model', 'capabilities' => ['a']]];
+    }
+}
+
+/**
+ * Stand-in for a bridge ModelCatalog, matching the shape ClientFactory reads and extends.
+ */
+final class FakeModelCatalog
+{
+    /**
+     * @param array<string,array{class:string,capabilities:array<int,string>}> $additionalModels
+     */
+    public function __construct(private readonly array $additionalModels = [])
+    {
+    }
+
+    /**
+     * @return array<string,array{class:string,capabilities:array<int,string>}>
+     */
+    public function getModels(): array
+    {
+        return array_merge([
+            'known-model' => ['class' => 'Fake\\Model', 'capabilities' => ['a']],
+            'richer-model' => ['class' => 'Fake\\Model', 'capabilities' => ['a', 'b', 'c']],
+        ], $this->additionalModels);
     }
 }
 
