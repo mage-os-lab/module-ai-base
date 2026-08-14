@@ -19,12 +19,16 @@
     <preference for="MageOS\AiBase\Api\Data\TokenUsageInterface" type="MageOS\AiBase\Model\Chat\TokenUsage"/>
     <preference for="MageOS\AiBase\Api\Data\StreamChunkInterface" type="MageOS\AiBase\Model\Chat\StreamChunk"/>
 
-    <!-- The services config holds provider credentials, so keep it out of `app:config:dump`.
-         Without this, the value is written into app/etc/config.php, which is commonly committed,
-         and the field then becomes read-only in the admin because deployment config wins over
-         the database. Values are encrypted at rest, so what would leak is ciphertext, but an
-         install that dumped config before credentials were encrypted has the plaintext key in
-         a tracked file. -->
+    <!-- The services config holds provider credentials, so keep it out of app/etc/config.php,
+         which is commonly committed. Values are encrypted at rest, so what would leak is
+         ciphertext, but an install that dumped config before credentials were encrypted has the
+         plaintext key in a tracked file.
+
+         This changes which file `app:config:dump` writes to, not whether it writes: a sensitive
+         path goes to app/etc/env.php instead, and deployment config wins over the database either
+         way, so the field is still read-only in the admin afterwards. That is why the admin form
+         checks and says so; see Block\Adminhtml\Configuration\Services::isReadOnly(). -->
+
     <type name="Magento\Config\Model\Config\TypePool">
         <arguments>
             <argument name="sensitive" xsi:type="array">

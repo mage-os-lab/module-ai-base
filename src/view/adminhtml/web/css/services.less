@@ -498,3 +498,20 @@
 .ai-service-copy-command {
     flex: 0 0 auto;
 }
+
+//
+//  A field set in deployment configuration is skipped by the save path, so the notice has to be
+//  the first thing read: without it the form stays fully interactive, reports success and stores
+//  nothing. The rows below it are dimmed for the same reason their controls are disabled.
+//  --------------------------------------------------------------------------
+
+.ai-services-locked-notice {
+    margin: 0 0 12px;
+}
+
+.ai-services-locked {
+    .ai-service-row-heading,
+    .ai-service-row-fields {
+        opacity: .75;
+    }
+}
