@@ -5,8 +5,21 @@
 
 $_htmlId = $block->getHtmlId() ?: '_' . uniqid();
 $_colspan = $block->isAddAfter() ? 2 : 1;
+$_isReadOnly = $block->isReadOnly();
 ?>
-<div class="ai-services-configurator design_theme_ua_regexp" id="grid<?= $escaper->escapeHtmlAttr($_htmlId) ?>">
+<div class="ai-services-configurator design_theme_ua_regexp<?= $_isReadOnly ? ' ai-services-locked' : '' ?>"
+     id="grid<?= $escaper->escapeHtmlAttr($_htmlId) ?>">
+    <?php if ($_isReadOnly): ?>
+        <div class="message message-warning ai-services-locked-notice">
+            <span><?= $escaper->escapeHtml(__(
+                'These services are set in deployment configuration, so this page can only show '
+                . 'them. Magento ignores anything saved here for this field, which is why an edit '
+                . 'appears to succeed and changes nothing. Remove the '
+                . '"mageos_ai/services/configuration" entry from the "system" section of '
+                . 'app/etc/env.php to edit them here again, or change it in that file.'
+            )) ?></span>
+        </div>
+    <?php endif; ?>
     <div class="admin__control-table-wrapper">
         <table class="admin__control-table" id="<?= $escaper->escapeHtmlAttr($block->getElement()->getId()) ?>">
             <thead>
@@ -19,7 +32,14 @@ $_colspan = $block->isAddAfter() ? 2 : 1;
             <tfoot>
                 <tr>
                     <td colspan="<?= count($block->getColumns()) ?>" class="col-actions-add">
-                        <?php if ($block->getSelectableServices() !== []): ?>
+                        <?php if ($_isReadOnly): ?>
+                            <p class="ai-service-add-hint">
+                                <?= $escaper->escapeHtml(__(
+                                    'A service cannot be added here while this field is set in '
+                                    . 'deployment configuration.'
+                                )) ?>
+                            </p>
+                        <?php elseif ($block->getSelectableServices() !== []): ?>
                             <p class="ai-service-add-hint">
                                 <?= $escaper->escapeHtml(__(
                                     'Choose a provider below to add a service. The same provider can be added more '
@@ -34,7 +54,7 @@ $_colspan = $block->isAddAfter() ? 2 : 1;
                             </p>
                         <?php endif; ?>
                         <ul>
-                            <?php foreach ($block->getSelectableServices() as $button): ?>
+                            <?php foreach ($_isReadOnly ? [] : $block->getSelectableServices() as $button): ?>
                                 <li data-ai-service="<?= $escaper->escapeHtmlAttr($button['code']) ?>"
                                     class="add-ai-service ai-service-<?= $escaper->escapeHtmlAttr($button['code']) ?><?=
                                         $button['available'] ? '' : ' ai-service-unavailable' ?>">
@@ -51,7 +71,7 @@ $_colspan = $block->isAddAfter() ? 2 : 1;
                                 </li>
                             <?php endforeach; ?>
                         </ul>
-                        <?php if (!$block->isDeveloperMode() && $block->hasHiddenServices()): ?>
+                        <?php if (!$_isReadOnly && !$block->isDeveloperMode() && $block->hasHiddenServices()): ?>
                             <p class="ai-service-availability-hint">
                                 <?= $escaper->escapeHtml(__(
                                     'More AI providers are available for this module, but their packages are not '
@@ -59,7 +79,7 @@ $_colspan = $block->isAddAfter() ? 2 : 1;
                                 )) ?>
                             </p>
                         <?php endif; ?>
-                        <?php if ($block->isDeveloperMode() && $block->hasUnavailableServices()): ?>
+                        <?php if (!$_isReadOnly && $block->isDeveloperMode() && $block->hasUnavailableServices()): ?>
                             <div class="ai-service-availability-note">
                                 <p>
                                     <?= $escaper->escapeHtml(__(
@@ -120,9 +140,9 @@ $_colspan = $block->isAddAfter() ? 2 : 1;
             <tbody class="ai-services-empty-state" hidden>
                 <tr>
                     <td colspan="<?= count($block->getColumns()) ?>">
-                        <?= $escaper->escapeHtml(__(
-                            'No AI service configured yet. Choose a provider below to add one.'
-                        )) ?>
+                        <?= $escaper->escapeHtml($_isReadOnly
+                            ? __('No AI service is set in deployment configuration.')
+                            : __('No AI service configured yet. Choose a provider below to add one.')) ?>
                     </td>
                 </tr>
             </tbody>
@@ -150,6 +170,10 @@ $_colspan = $block->isAddAfter() ? 2 : 1;
         __('Remove this service? Its saved credentials are deleted when you save the configuration.')
     );
     $htmlIdJs = $escaper->escapeJs($_htmlId);
+    // A locked field is skipped by the save path, so every control that edits one edits nothing.
+    // The rows themselves stay, and so do the two actions that read stored configuration rather
+    // than change it, since they are the only way to check what a locked install is actually using.
+    $readOnlyJs = $_isReadOnly ? 'true' : 'false';
     // Test Connection is only rendered for SAVED rows: the client factory reads
     // saved configuration, so unsaved rows cannot be tested. When multiple rows
     // share a service code, the factory uses the FIRST configured row of that
@@ -178,6 +202,8 @@ $_colspan = $block->isAddAfter() ? 2 : 1;
 require(['prototype'], function () {
     const schema = {$schemaJson};
     const fieldNameBase = '{$fieldNameJs}';
+    const readOnly = {$readOnlyJs};
+    const disabledAttr = readOnly ? ' disabled' : '';
 
     function escapeHtml(value) {
         if (value === null || value === undefined) return '';
@@ -233,7 +259,7 @@ require(['prototype'], function () {
         if (field.type === 'select') {
             return {
                 id: fieldId,
-                html: '<select id="' + fieldId + '" name="' + escapeHtml(base) + '">'
+                html: '<select id="' + fieldId + '" name="' + escapeHtml(base) + '"' + disabledAttr + '>'
                     + buildOptions(field.options, field.default) + '</select>',
             };
         }
@@ -252,7 +278,7 @@ require(['prototype'], function () {
             return {
                 id: fieldId,
                 html: '<input type="' + type + '" id="' + fieldId + '" name="' + escapeHtml(base) + '"'
-                    + defaultAttr + autocomplete + ' list="' + listId + '"/>'
+                    + defaultAttr + autocomplete + disabledAttr + ' list="' + listId + '"/>'
                     + '<datalist id="' + listId + '">' + buildOptions(field.options) + '</datalist>',
             };
         }
@@ -260,7 +286,7 @@ require(['prototype'], function () {
         return {
             id: fieldId,
             html: '<input type="' + type + '" id="' + fieldId + '" name="' + escapeHtml(base) + '"'
-                + defaultAttr + autocomplete + '/>',
+                + defaultAttr + autocomplete + disabledAttr + '/>',
         };
     }
 
@@ -291,7 +317,7 @@ require(['prototype'], function () {
             + '<th><label for="' + nameControlId + '">{$nameLabelJs}</label></th>'
             + '<td><div class="ai-field-control">'
             + '<input type="text" id="' + nameControlId + '" name="' + escapeHtml(nameField) + '"'
-            + ' autocomplete="off" data-row-label="' + escapeHtml(rowId) + '"'
+            + ' autocomplete="off" data-row-label="' + escapeHtml(rowId) + '"' + disabledAttr
             + ' placeholder="' + escapeHtml(serviceName) + '"/>'
             + '</div></td>'
             + '</tr>';
@@ -328,7 +354,7 @@ require(['prototype'], function () {
         // Both row actions sit on one line, level with the row's heading, and at a size that
         // matches the refresh control beside the model field. Test Connection as a full-width
         // pill made the action column the loudest thing in a row that is mostly inputs.
-        const deleteHtml = '<button class="action-delete ai-service-row-action" type="button"'
+        const deleteHtml = readOnly ? '' : '<button class="action-delete ai-service-row-action" type="button"'
             + ' data-row-id="' + escapeHtml(rowId) + '"'
             + ' title="{$deleteLabelJs}" aria-label="{$deleteLabelJs} ' + escapeHtml(serviceName) + '">'
             + '<span class="ai-service-row-action-label">{$deleteLabelJs}</span></button>';
@@ -346,23 +372,25 @@ require(['prototype'], function () {
         // from a row saved before this setting existed, which has to keep meaning enabled.
         const enabledField = fieldNameBase + '[' + rowId + '][' + serviceCode + '][{$enabledKeyJs}]';
         const enabledHtml = '<label class="ai-service-toggle" title="{$enabledLabelJs}">'
-            + '<input type="hidden" name="' + escapeHtml(enabledField) + '" value="0"/>'
+            + '<input type="hidden" name="' + escapeHtml(enabledField) + '" value="0"' + disabledAttr + '/>'
             + '<input type="checkbox" class="ai-service-toggle-input"'
-            + ' name="' + escapeHtml(enabledField) + '" value="1"'
+            + ' name="' + escapeHtml(enabledField) + '" value="1"' + disabledAttr
             + ' data-row-enabled="' + escapeHtml(rowId) + '"' + (isEnabled ? ' checked' : '') + '/>'
             + '<span class="ai-service-toggle-label">{$enabledLabelJs}</span>'
             + '</label>';
+
+        const renameHtml = readOnly ? '' : '<button type="button" class="ai-service-rename"'
+            + ' data-row-rename="' + escapeHtml(rowId) + '" aria-expanded="false"'
+            + ' title="{$renameLabelJs}" aria-label="{$renameLabelJs}">'
+            + '<span class="ai-service-rename-icon" aria-hidden="true">&#9998;</span>'
+            + '<span class="ai-service-row-action-label">{$renameLabelJs}</span>'
+            + '</button>';
 
         const headingHtml = '<div class="ai-service-row-heading">'
             + enabledHtml
             + '<span class="ai-service-row-name" data-row-heading="' + escapeHtml(rowId) + '">'
             + escapeHtml(serviceName) + '</span>'
-            + '<button type="button" class="ai-service-rename"'
-            + ' data-row-rename="' + escapeHtml(rowId) + '" aria-expanded="false"'
-            + ' title="{$renameLabelJs}" aria-label="{$renameLabelJs}">'
-            + '<span class="ai-service-rename-icon" aria-hidden="true">&#9998;</span>'
-            + '<span class="ai-service-row-action-label">{$renameLabelJs}</span>'
-            + '</button>'
+            + renameHtml
             + '<span class="ai-service-row-model" data-row-model="' + escapeHtml(rowId) + '"></span>'
             + actionsHtml
             + '</div>';

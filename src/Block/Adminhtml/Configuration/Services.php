@@ -7,6 +7,7 @@ namespace MageOS\AiBase\Block\Adminhtml\Configuration;
 use Magento\Backend\Block\Template\Context;
 use Magento\Config\Block\System\Config\Form\Field\FieldArray\AbstractFieldArray;
 use Magento\Framework\App\State;
+use Magento\Framework\DataObject;
 use Magento\Framework\Exception\LocalizedException;
 use Magento\Framework\Serialize\Serializer\Json;
 use Magento\Framework\View\Helper\SecureHtmlRenderer;
@@ -69,6 +70,29 @@ class Services extends AbstractFieldArray
         } catch (LocalizedException) {
             return false;
         }
+    }
+
+    /**
+     * Whether the stored value comes from deployment configuration instead of the database.
+     *
+     * `bin/magento app:config:dump` and `config:set --lock-env` write this path into
+     * `app/etc/env.php`, and deployment configuration wins over the database. Magento then marks
+     * the field disabled and `Magento\Config\Model\Config` skips it on save, without saying so
+     * anywhere: the section still reports "You saved the configuration" and stores nothing. Being
+     * registered `sensitive` does not prevent that, it only decides which file the dump writes to.
+     *
+     * This form builds every control itself, so nothing else on the page reflects that state. Read
+     * off the element the config form hands this renderer rather than asked of `SettingChecker`
+     * directly, so the form says read-only for the same reasons the save path refuses to write,
+     * including any added later.
+     *
+     * @return bool
+     */
+    public function isReadOnly(): bool
+    {
+        $element = $this->getData('element');
+
+        return $element instanceof DataObject && (bool) $element->getData('disabled');
     }
 
     /**

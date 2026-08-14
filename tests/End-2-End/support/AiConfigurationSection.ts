@@ -34,13 +34,46 @@ export class AiConfigurationSection {
     /**
      * The rows are built by JavaScript from a schema, so "the section loaded" is not the same as
      * "the rows exist".
+     *
+     * A section locked by deployment configuration offers no providers at all, so waiting for a
+     * provider button there waits forever. Waiting for either outcome lets `assertEditable()`
+     * report what is actually wrong instead of every spec timing out on the same line.
      */
     private async waitUntilRendered(): Promise<void> {
         await expect(this.page.locator('.ai-services-configurator')).toBeVisible();
         await this.page.waitForFunction(() => {
             const container = document.querySelector('.ai-services-configurator');
-            return !!container && container.querySelectorAll('.add-ai-service').length > 0;
+            if (!container) return false;
+            return container.querySelectorAll('.add-ai-service').length > 0
+                || container.classList.contains('ai-services-locked');
         });
+    }
+
+    /**
+     * Whether the section is showing a value that comes from deployment configuration.
+     *
+     * `app:config:dump` and `config:set --lock-env` write mageos_ai/services/configuration into
+     * app/etc/env.php, and deployment configuration wins over the database: Magento marks the field
+     * read-only and skips it on save.
+     */
+    async isLocked(): Promise<boolean> {
+        return (await this.page.locator('.ai-services-configurator.ai-services-locked').count()) > 0;
+    }
+
+    /**
+     * Nothing this suite does is meaningful against a locked section: every save is discarded and
+     * still answers with a success message, so specs fail one assertion at a time and none of them
+     * name the cause. Say it once, in full, the first time a spec needs to change something.
+     */
+    async assertEditable(): Promise<void> {
+        if (await this.isLocked()) {
+            throw new Error(
+                'The AI services field is set in deployment configuration on this install, so the '
+                + 'admin form cannot change it and every save is discarded. Remove the '
+                + '"mageos_ai/services/configuration" entry from the "system" section of '
+                + 'app/etc/env.php and flush the cache before running this suite.'
+            );
+        }
     }
 
     providerButton(code: string): Locator {
@@ -98,6 +131,7 @@ export class AiConfigurationSection {
     }
 
     async save(): Promise<void> {
+        await this.assertEditable();
         await this.page.click('#save');
         await this.page.waitForLoadState('networkidle');
         await expect(this.page.locator('.message-success')).toBeVisible();
@@ -109,6 +143,7 @@ export class AiConfigurationSection {
      */
     async reset(): Promise<void> {
         await this.open();
+        await this.assertEditable();
 
         const count = await this.rows().count();
         if (count === 0) {
