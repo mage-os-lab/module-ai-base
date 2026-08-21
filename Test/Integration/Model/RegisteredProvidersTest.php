@@ -143,11 +143,12 @@ final class RegisteredProvidersTest extends TestCase
     }
 
     /**
-     * Every package the admin form can tell someone to install has to be listed in `suggest`, so
-     * `composer suggest` and the form cannot drift apart. The file is the subject here, which is
-     * why this one reads it: composer metadata has no runtime representation to ask instead.
+     * Every package the admin form can tell someone to install has to be listed in composer, so
+     * the metadata and the form cannot drift apart. A bridge in `require` is always installed and
+     * cannot drift; every other bridge must sit in `suggest`. The file is the subject here, which
+     * is why this one reads it: composer metadata has no runtime representation to ask instead.
      */
-    public function test_every_bridge_package_is_listed_in_composer_suggest(): void
+    public function test_every_bridge_package_is_listed_in_composer(): void
     {
         $composer = json_decode(
             (string) file_get_contents(__DIR__ . '/../../../composer.json'),
@@ -156,13 +157,14 @@ final class RegisteredProvidersTest extends TestCase
             JSON_THROW_ON_ERROR
         );
         $suggested = array_keys($composer['suggest'] ?? []);
+        $required = array_keys($composer['require'] ?? []);
 
         $packages = array_values(array_unique(array_filter(array_map(
             fn (string $code): ?string => $this->bridgeRegistry->getPackage($code),
             array_keys($this->serviceRegistry->getAll()),
         ))));
 
-        self::assertSame([], array_values(array_diff($packages, $suggested)));
+        self::assertSame([], array_values(array_diff($packages, $suggested, $required)));
 
         self::assertNotContains(
             'symfony/ai-platform',
