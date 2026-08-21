@@ -140,7 +140,8 @@ mismatch is misleading rather than broken.
 ### 4. Wire a client bridge (optional but recommended)
 
 `AiClientFactoryInterface` builds clients from [symfony/ai-platform](https://github.com/symfony/ai)
-bridges — a **soft dependency** (the package is only required when a client is actually created;
+bridges. The OpenAI and Anthropic bridges ship with the module; every other bridge is a
+**soft dependency** (only needed when a client for that provider is actually created;
 `composer suggest`s it). Bridges are registered per service code:
 
 ```xml

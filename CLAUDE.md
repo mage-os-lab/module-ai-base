@@ -105,5 +105,5 @@ Stored data flow:
 - PHP 8 constructor property promotion + `readonly` is the norm; follow it for new classes.
 - `declare(strict_types=1)` in every file under `src/`; keep it that way.
 - Docblocks on every class, method and constant, including private ones, and they explain *why* rather than restating the signature. This is heavier than most Magento modules; match it.
-- `composer.json` requires `php: ^8.2` and `magento/framework: ^103.0 || ^104.0`. symfony/ai-platform is a `suggest`, never a `require` — see the decision record in `docs/ARCHITECTURE.md`.
+- `composer.json` requires `php: ^8.2` and `magento/framework: ^103.0.7 || ^104.0` (Magento 2.4.7+, the oldest line whose Symfony components resolve next to symfony/ai-platform). symfony/ai-platform and the OpenAI and Anthropic bridges are hard requirements pinned to `^0.12`; every other bridge stays a `suggest` — see the decision record in `docs/ARCHITECTURE.md`.
 - ACL resource: `MageOS_AiBase::configuration` (defined in `etc/acl.xml`), nested under `Magento_Backend::stores_attributes`.

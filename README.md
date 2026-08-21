@@ -19,6 +19,13 @@ php bin/magento module:enable MageOS_AiBase
 
 You can find the new configuration option in Stores > Configuration > Mage-OS > AI Configuration.
 
+The Symfony AI bridges for **OpenAI** and **Anthropic** are installed with the module, so those
+two providers work out of the box. Every other provider needs its bridge package installed
+before the bundled client can call it — the admin form names the exact package when it is
+missing. Because the bridges build on symfony/ai-platform, whose Symfony 7.3+ components
+conflict with the Symfony line older Magento releases pin, the module requires
+**Magento 2.4.7+** (`magento/framework` 103.0.7) or a Mage-OS release based on it.
+
 ## Usage
 
 If you have configured AI backends, you can fetch the configuration using these methods:
@@ -69,11 +76,12 @@ final class MyAiFunctionality
 
 Instead of reading raw configuration, consumer modules can request a ready-to-use,
 provider-agnostic client. The bundled implementation is backed by
-[symfony/ai-platform](https://github.com/symfony/ai), which is a *soft* dependency:
-install it only if you use the client layer:
+[symfony/ai-platform](https://github.com/symfony/ai), which ships with the module through the
+required OpenAI and Anthropic bridges. Bridges for the other providers are *soft* dependencies:
+install one only when you use that provider, e.g.:
 
 ```bash
-composer require symfony/ai-platform
+composer require symfony/ai-gemini-platform
 ```
 
 > **symfony/ai-platform is experimental.** Experimental features are not covered by Symfony's

@@ -28,28 +28,28 @@
     },
     "require": {
         "php": "^8.2",
-        "magento/framework": "^103.0 || ^104.0",
+        "magento/framework": "^103.0.7 || ^104.0",
         "magento/module-backend": "^102.0 || ^103.0",
         "magento/module-config": "^101.2 || ^102.0",
-        "magento/module-store": "^101.1 || ^102.0"
+        "magento/module-store": "^101.1 || ^102.0",
+        "symfony/ai-anthropic-platform": "^0.12",
+        "symfony/ai-open-ai-platform": "^0.12",
+        "symfony/ai-platform": "^0.12"
     },
     "suggest": {
-        "symfony/ai-anthropic-platform": "Enables the bundled AI client and Test Connection for Anthropic.",
         "symfony/ai-azure-platform": "Enables the bundled AI client and Test Connection for Azure OpenAI.",
         "symfony/ai-deep-seek-platform": "Enables the bundled AI client and Test Connection for Deepseek.",
         "symfony/ai-gemini-platform": "Enables the bundled AI client and Test Connection for Google Gemini.",
         "symfony/ai-hugging-face-platform": "Enables the bundled AI client and Test Connection for HuggingFace.",
         "symfony/ai-lm-studio-platform": "Enables the bundled AI client and Test Connection for LM Studio.",
         "symfony/ai-ollama-platform": "Enables the bundled AI client and Test Connection for Ollama.",
-        "symfony/ai-open-ai-platform": "Enables the bundled AI client and Test Connection for OpenAI.",
         "symfony/ai-open-router-platform": "Enables the bundled AI client and Test Connection for OpenRouter."
     },
     "require-dev": {
         "bitexpert/phpstan-magento": "^0.43",
         "magento/magento-coding-standard": "*",
         "phpstan/phpstan": "^2.0",
-        "phpunit/phpunit": "^10.5",
-        "symfony/ai-platform": "^0.12"
+        "phpunit/phpunit": "^10.5"
     },
     "autoload": {
         "files": [
