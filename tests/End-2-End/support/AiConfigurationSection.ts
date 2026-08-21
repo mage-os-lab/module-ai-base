@@ -130,11 +130,25 @@ export class AiConfigurationSection {
         await expect(this.rows()).toHaveCount(before + 1);
     }
 
+    /**
+     * The Save button is not a native submit: Magento arms it asynchronously through mage-init
+     * after the page reports itself idle, so a click that lands too early is silently swallowed
+     * and no amount of waiting afterwards will produce a save. Success is therefore defined as
+     * the save request leaving the browser, and a click that did not produce one within a moment
+     * is clicked again; posting the same form twice is idempotent, so a retry cannot corrupt the
+     * outcome it confirms.
+     */
     async save(): Promise<void> {
         await this.assertEditable();
-        await this.page.click('#save');
-        await this.page.waitForLoadState('networkidle');
-        await expect(this.page.locator('.message-success')).toBeVisible();
+        await expect(async () => {
+            const saved = this.page.waitForResponse(
+                (response) => response.url().includes('/system_config/save/'),
+                { timeout: 3_000 },
+            );
+            await this.page.click('#save');
+            await saved;
+        }).toPass();
+        await expect(this.page.locator('.message-success')).toBeVisible({ timeout: 15_000 });
         await this.waitUntilRendered();
     }
 
