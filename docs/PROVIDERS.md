@@ -197,7 +197,7 @@ An option absent from `map` is treated as unsupported by that provider and raise
 `LocalizedException` naming both, rather than being dropped on the way to the wire. Declaring no
 dialect at all passes every option through untouched.
 
-The factory signatures are verified against **symfony/ai-platform v0.12.0**; the component is
+The factory signatures are verified against **symfony/ai-platform v0.13.0**; the component is
 experimental with no BC promise — pin your version and re-verify on upgrade. Hosted providers
 pass the API key; local runtimes pass `base_url`; Azure passes endpoint/deployment/api_version/key
 (see `Model\Client\ClientFactory::createPlatform()` for the dispatch).
