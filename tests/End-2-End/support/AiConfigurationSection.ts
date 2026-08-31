@@ -137,18 +137,24 @@ export class AiConfigurationSection {
      * the save request leaving the browser, and a click that did not produce one within a moment
      * is clicked again; posting the same form twice is idempotent, so a retry cannot corrupt the
      * outcome it confirms.
+     *
+     * The retry watches the request rather than the response on purpose. Whether the click was
+     * armed is settled the instant the browser sends the form; how long the store then takes to
+     * answer is a property of the machine, and a slow runner that answered in more than a moment
+     * used to send this loop round again for the rest of the test timeout, clicking Save at a
+     * store that was already saving.
      */
     async save(): Promise<void> {
         await this.assertEditable();
         await expect(async () => {
-            const saved = this.page.waitForResponse(
-                (response) => response.url().includes('/system_config/save/'),
-                { timeout: 3_000 },
+            const submitted = this.page.waitForRequest(
+                (request) => request.url().includes('/system_config/save/'),
+                { timeout: 5_000 },
             );
             await this.page.click('#save');
-            await saved;
-        }).toPass();
-        await expect(this.page.locator('.message-success')).toBeVisible({ timeout: 15_000 });
+            await submitted;
+        }).toPass({ timeout: 30_000 });
+        await expect(this.page.locator('.message-success')).toBeVisible({ timeout: 60_000 });
         await this.waitUntilRendered();
     }
 

@@ -10,23 +10,38 @@ jobs:
   # every registered provider and explains what to install, production offers only the ones that
   # can be used. Both are shipped behaviour, so both are tested.
   #
-  # The suite runs against Magento Open Source and Mage-OS, on every PHP version the newest
-  # release of each supports. The include entries attach the right image name to each platform;
-  # bump the PLATFORM values when a new Magento or Mage-OS release is added to magento2-in-a-box.
+  # The full cross-product of platform, PHP version and mode is twelve jobs of half an hour, and
+  # the extra jobs re-run a suite that does not touch the PHP version at all. The combinations
+  # below are chosen instead: each platform is seen in both modes, and the PHP floor, the middle
+  # and the newest release each appear at least once. Bump the PLATFORM and PHP_VERSION values
+  # when a new Magento, Mage-OS or PHP release is added to magento2-in-a-box.
   e2e-tests:
     name: E2E (${{ matrix.PLATFORM }}, ${{ matrix.PHP_VERSION }}, ${{ matrix.MAGENTO_MODE }})
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
       matrix:
-        PLATFORM: [magento2.4.9, mage-os3.4.0]
-        PHP_VERSION: [php83-fpm, php84-fpm, php85-fpm]
-        MAGENTO_MODE: [developer, production]
         include:
           - PLATFORM: magento2.4.9
             IMAGE: magento-project-community-edition
+            PHP_VERSION: php83-fpm
+            MAGENTO_MODE: production
+          - PLATFORM: magento2.4.9
+            IMAGE: magento-project-community-edition
+            PHP_VERSION: php84-fpm
+            MAGENTO_MODE: developer
+          - PLATFORM: magento2.4.9
+            IMAGE: magento-project-community-edition
+            PHP_VERSION: php85-fpm
+            MAGENTO_MODE: production
           - PLATFORM: mage-os3.4.0
             IMAGE: mage-os-community-edition
+            PHP_VERSION: php83-fpm
+            MAGENTO_MODE: developer
+          - PLATFORM: mage-os3.4.0
+            IMAGE: mage-os-community-edition
+            PHP_VERSION: php85-fpm
+            MAGENTO_MODE: production
     env:
       MAGENTO_MODE: ${{ matrix.MAGENTO_MODE }}
       ADMIN_USER: e2e_admin
