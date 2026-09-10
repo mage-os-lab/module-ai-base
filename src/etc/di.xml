@@ -19,6 +19,42 @@
     <preference for="MageOS\AiBase\Api\Data\TokenUsageInterface" type="MageOS\AiBase\Model\Chat\TokenUsage"/>
     <preference for="MageOS\AiBase\Api\Data\StreamChunkInterface" type="MageOS\AiBase\Model\Chat\StreamChunk"/>
 
+    <!-- Same reasoning as the chat value objects above: the recording decorator and the
+         repository both build a UsageRecordInterface without naming Model\Usage\UsageRecord
+         directly, which is only possible if the generated UsageRecordInterfaceFactory has
+         something to resolve to. -->
+    <preference for="MageOS\AiBase\Api\Data\UsageRecordInterface" type="MageOS\AiBase\Model\Usage\UsageRecord"/>
+
+    <!-- The daily roll-up's repository (task 010) depends on the narrow
+         UsageDailyResourceInterface rather than the concrete resource model, so its unit tests can
+         hand it a small in-memory fake instead of a real database connection. This is what
+         resolves that interface to the one class that implements it. -->
+    <preference for="MageOS\AiBase\Model\ResourceModel\Usage\UsageDailyResourceInterface"
+                type="MageOS\AiBase\Model\ResourceModel\Usage\UsageDaily"/>
+    <preference for="MageOS\AiBase\Api\UsageDailyRepositoryInterface" type="MageOS\AiBase\Model\Usage\UsageDailyRepository"/>
+
+    <!-- The raw usage log's repository (task 005) depends on the narrow
+         UsageLogResourceInterface rather than the concrete resource model, so its unit tests can
+         hand it a small in-memory fake instead of a real database connection. This is what
+         resolves that interface to the one class that implements it. -->
+    <preference for="MageOS\AiBase\Model\ResourceModel\Usage\UsageLogResourceInterface"
+                type="MageOS\AiBase\Model\ResourceModel\Usage\UsageLog"/>
+    <preference for="MageOS\AiBase\Api\UsageRecordRepositoryInterface" type="MageOS\AiBase\Model\Usage\UsageRecordRepository"/>
+
+    <!-- Same reasoning one level up: UsageMaintenance commits each day's aggregate and the delete
+         behind it together, and depends on the narrow UsageTransactionInterface so its unit tests
+         can run that unit in memory rather than against a real connection. -->
+    <preference for="MageOS\AiBase\Model\Usage\UsageTransactionInterface"
+                type="MageOS\AiBase\Model\Usage\UsageTransaction"/>
+
+    <!-- The read API (task 013) that merges the raw and daily tables into one answer, plus the
+         value objects its own methods return: same reasoning as the chat value objects above,
+         a consumer type-hinting Api\Data\UsageTotalsInterface or UsageBreakdownInterface needs
+         somewhere for the generated *InterfaceFactory classes to resolve to. -->
+    <preference for="MageOS\AiBase\Api\UsageStatsInterface" type="MageOS\AiBase\Model\Usage\UsageStats"/>
+    <preference for="MageOS\AiBase\Api\Data\UsageTotalsInterface" type="MageOS\AiBase\Model\Usage\UsageTotals"/>
+    <preference for="MageOS\AiBase\Api\Data\UsageBreakdownInterface" type="MageOS\AiBase\Model\Usage\UsageBreakdown"/>
+
     <!-- The services config holds provider credentials, so keep it out of app/etc/config.php,
          which is commonly committed. Values are encrypted at rest, so what would leak is
          ciphertext, but an install that dumped config before credentials were encrypted has the
@@ -201,6 +237,46 @@
                         <item name="stop" xsi:type="string">stop</item>
                     </item>
                 </item>
+            </argument>
+        </arguments>
+    </type>
+
+    <!-- Wires the raw usage listing's data source (task 015): the ui_component declares the
+         generic Magento\Framework\View\Element\UiComponent\DataProvider\DataProvider directly
+         instead of a bespoke PHP data provider class, which needs
+         Magento\Framework\View\Element\UiComponent\DataProvider\Reporting to resolve the
+         listing's dataProvider name to a collection through this factory's `collections` array.
+         That collection has to implement Api\Search\SearchResultInterface, which the raw
+         Collection class (task 005) does not and must not: it stays a plain
+         Magento\Framework\Model\ResourceModel\Db\Collection\AbstractCollection for
+         UsageRecordRepository, the only other caller. Magento_UrlRewrite's own
+         url_rewrite_listing_data_source wiring is the model this follows: point the factory at a
+         virtualType of the framework's own SearchResult (also an AbstractCollection, but one
+         that implements SearchResultInterface), configured with this table rather than reusing
+         either PHP model class. -->
+    <type name="Magento\Framework\View\Element\UiComponent\DataProvider\CollectionFactory">
+        <arguments>
+            <argument name="collections" xsi:type="array">
+                <item name="mageos_ai_usage_listing_data_source" xsi:type="string">MageOS\AiBase\Model\ResourceModel\Usage\UsageLog\SearchResult</item>
+            </argument>
+        </arguments>
+    </type>
+    <virtualType name="MageOS\AiBase\Model\ResourceModel\Usage\UsageLog\SearchResult"
+                 type="Magento\Framework\View\Element\UiComponent\DataProvider\SearchResult">
+        <arguments>
+            <argument name="mainTable" xsi:type="string">mageos_ai_usage_log</argument>
+            <argument name="resourceModel" xsi:type="string">MageOS\AiBase\Model\ResourceModel\Usage\UsageLog</argument>
+            <argument name="identifierName" xsi:type="string">entity_id</argument>
+        </arguments>
+    </virtualType>
+
+    <!-- The module's first console command (task 018): `bin/magento mageos:ai:usage` prints the
+         same totals and per-consumer breakdown the admin usage dashboard shows, through
+         UsageStatsInterface, for merchants and support who work from the shell. -->
+    <type name="Magento\Framework\Console\CommandListInterface">
+        <arguments>
+            <argument name="commands" xsi:type="array">
+                <item name="mageos_ai_usage_report" xsi:type="object">MageOS\AiBase\Console\Command\UsageReport</item>
             </argument>
         </arguments>
     </type>

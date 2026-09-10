@@ -4,13 +4,21 @@ declare(strict_types=1);
 
 namespace MageOS\AiBase\Test\Unit\Model\Client;
 
+use Magento\Framework\App\Config\ScopeConfigInterface;
 use Magento\Framework\Exception\LocalizedException;
 use MageOS\AiBase\Api\AiServiceSelectorInterface;
+use MageOS\AiBase\Api\PlatformAwareInterface;
 use MageOS\AiBase\Model\AiService;
 use MageOS\AiBase\Model\Client\BridgeRegistry;
 use MageOS\AiBase\Model\Client\ClientFactory;
+use MageOS\AiBase\Model\Client\OptionNormalizer;
+use MageOS\AiBase\Model\Client\RecordingAiClient;
+use MageOS\AiBase\Model\Client\RecordingAiClientFactory;
+use MageOS\AiBase\Model\Client\RecordingPlatformAwareAiClient;
+use MageOS\AiBase\Model\Client\RecordingPlatformAwareAiClientFactory;
 use MageOS\AiBase\Model\Client\SymfonyAiClient;
 use MageOS\AiBase\Model\Client\SymfonyAiClientFactory;
+use MageOS\AiBase\Model\Usage\UsageConfig;
 use PHPUnit\Framework\Attributes\TestWith;
 use PHPUnit\Framework\MockObject\MockObject;
 use PHPUnit\Framework\TestCase;
@@ -19,15 +27,43 @@ final class ClientFactoryTest extends TestCase
 {
     private AiServiceSelectorInterface&MockObject $serviceSelector;
     private SymfonyAiClientFactory&MockObject $clientFactory;
+    private RecordingAiClientFactory&MockObject $recordingClientFactory;
+    private RecordingPlatformAwareAiClientFactory&MockObject $recordingPlatformAwareClientFactory;
+    private bool $usageTrackingEnabled;
 
     protected function setUp(): void
     {
         $this->serviceSelector = $this->createMock(AiServiceSelectorInterface::class);
         $this->clientFactory = $this->createMock(SymfonyAiClientFactory::class);
+        $this->recordingClientFactory = $this->createMock(RecordingAiClientFactory::class);
+        $this->recordingPlatformAwareClientFactory = $this->createMock(RecordingPlatformAwareAiClientFactory::class);
+        $this->usageTrackingEnabled = false;
 
         RecordingAnthropicFactory::$apiKey = null;
         RecordingAnthropicFactory::$modelCatalog = null;
         RecordingLocalRuntimeFactory::$baseUrl = null;
+    }
+
+    /**
+     * Builds the subject under test with the usage-tracking dependencies every requirement below
+     * needs wired, so a test that only cares about service or model resolution (the bulk of this
+     * file, predating task 009) does not have to repeat them. {@see $usageTrackingEnabled} defaults
+     * to off, which keeps every one of those existing cases exercising the same bare-client path
+     * they always have.
+     *
+     * @param BridgeRegistry $bridgeRegistry
+     * @return ClientFactory
+     */
+    private function newSubject(BridgeRegistry $bridgeRegistry): ClientFactory
+    {
+        return new ClientFactory(
+            $this->serviceSelector,
+            $this->clientFactory,
+            $bridgeRegistry,
+            new UsageConfig(new FakeScopeConfig($this->usageTrackingEnabled)),
+            $this->recordingClientFactory,
+            $this->recordingPlatformAwareClientFactory,
+        );
     }
 
     /**
@@ -49,7 +85,7 @@ final class ClientFactoryTest extends TestCase
             }
         );
 
-        $subject = new ClientFactory($this->serviceSelector, $this->clientFactory, new BridgeRegistry([
+        $subject = $this->newSubject(new BridgeRegistry([
             'ollama' => ['factory' => 'Absent\\Ollama\\Factory', 'package' => 'symfony/ai-ollama-platform'],
             'openai' => ['factory' => FakePlatformFactory::class, 'package' => 'symfony/ai-open-ai-platform'],
         ]));
@@ -71,7 +107,7 @@ final class ClientFactoryTest extends TestCase
             }
         );
 
-        $subject = new ClientFactory($this->serviceSelector, $this->clientFactory, new BridgeRegistry([
+        $subject = $this->newSubject(new BridgeRegistry([
             'openai' => ['factory' => FakePlatformFactory::class, 'package' => 'symfony/ai-open-ai-platform'],
             'anthropic' => ['factory' => FakePlatformFactory::class, 'package' => 'symfony/ai-anthropic-platform'],
         ]));
@@ -85,7 +121,7 @@ final class ClientFactoryTest extends TestCase
             new AiService('row_ollama', 'ollama', ['model' => 'llama3']),
         ]);
 
-        $subject = new ClientFactory($this->serviceSelector, $this->clientFactory, new BridgeRegistry([
+        $subject = $this->newSubject(new BridgeRegistry([
             'ollama' => ['factory' => 'Absent\\Ollama\\Factory', 'package' => 'symfony/ai-ollama-platform'],
         ]));
 
@@ -106,7 +142,7 @@ final class ClientFactoryTest extends TestCase
         ]);
         $this->clientFactory->expects(self::never())->method('create');
 
-        $subject = new ClientFactory($this->serviceSelector, $this->clientFactory, new BridgeRegistry([
+        $subject = $this->newSubject(new BridgeRegistry([
             'ollama' => ['factory' => 'Absent\\Ollama\\Factory', 'package' => 'symfony/ai-ollama-platform'],
             'openai' => ['factory' => FakePlatformFactory::class, 'package' => 'symfony/ai-open-ai-platform'],
         ]));
@@ -120,7 +156,7 @@ final class ClientFactoryTest extends TestCase
     public function test_create_throws_when_no_service_is_configured(): void
     {
         $this->serviceSelector->method('getAll')->willReturn([]);
-        $subject = new ClientFactory($this->serviceSelector, $this->clientFactory, new BridgeRegistry([]));
+        $subject = $this->newSubject(new BridgeRegistry([]));
 
         $this->expectException(LocalizedException::class);
         $this->expectExceptionMessage('No AI service configured');
@@ -132,7 +168,7 @@ final class ClientFactoryTest extends TestCase
     {
         $this->serviceSelector->method('getByCode')->with('openai')
             ->willReturn([new AiService('row_openai', 'openai', ['api_key' => 'k'])]);
-        $subject = new ClientFactory($this->serviceSelector, $this->clientFactory, new BridgeRegistry([]));
+        $subject = $this->newSubject(new BridgeRegistry([]));
 
         $this->expectException(LocalizedException::class);
         $this->expectExceptionMessage('No Symfony AI bridge has been released');
@@ -147,9 +183,7 @@ final class ClientFactoryTest extends TestCase
         // exactly the shape the method_exists guard must reject.
         $this->serviceSelector->method('getByCode')->with('openai')
             ->willReturn([new AiService('row_openai', 'openai', ['api_key' => 'k'])]);
-        $subject = new ClientFactory(
-            $this->serviceSelector,
-            $this->clientFactory,
+        $subject = $this->newSubject(
             new BridgeRegistry(['openai' => [
                 'factory' => 'MageOS\AiBase\Test\Unit\Model\Client\AbsentBridgeFactory',
                 'package' => 'symfony/ai-open-ai-platform',
@@ -173,9 +207,7 @@ final class ClientFactoryTest extends TestCase
             ->willReturn([new AiService('row_openai', 'openai', ['api_key' => 'k'])]);
         $this->clientFactory->expects(self::never())->method('create');
 
-        $subject = new ClientFactory(
-            $this->serviceSelector,
-            $this->clientFactory,
+        $subject = $this->newSubject(
             new BridgeRegistry(['openai' => [
                 'factory' => FakePlatformFactory::class,
                 'package' => 'symfony/ai-open-ai-platform',
@@ -197,9 +229,7 @@ final class ClientFactoryTest extends TestCase
             ->willReturn([new AiService('row_openai', 'openai', ['api_key' => 'k', 'model' => 'gpt-4o'])]);
         $this->clientFactory->expects(self::never())->method('create');
 
-        $subject = new ClientFactory(
-            $this->serviceSelector,
-            $this->clientFactory,
+        $subject = $this->newSubject(
             new BridgeRegistry(['openai' => [
                 'factory' => FakePlatformlessFactory::class,
                 'package' => 'symfony/ai-open-ai-platform',
@@ -227,9 +257,7 @@ final class ClientFactoryTest extends TestCase
             ))
             ->willReturn($client);
 
-        $subject = new ClientFactory(
-            $this->serviceSelector,
-            $this->clientFactory,
+        $subject = $this->newSubject(
             new BridgeRegistry(['openai' => [
                 'factory' => FakePlatformFactory::class,
                 'package' => 'symfony/ai-open-ai-platform',
@@ -237,6 +265,35 @@ final class ClientFactoryTest extends TestCase
         );
 
         self::assertSame($client, $subject->create('openai'));
+    }
+
+    /**
+     * The whole point of naming a consumer at create() time: the client the caller ends up with
+     * has to report it back, or a module logging usage through it has nothing to attribute to.
+     */
+    public function test_returns_the_consumer_the_factory_was_given(): void
+    {
+        $this->serviceSelector->method('getByCode')->with('openai')
+            ->willReturn([new AiService('row_openai', 'openai', ['api_key' => 'k', 'model' => 'gpt-4o'])]);
+        $this->clientFactory->method('create')->willReturnCallback(
+            fn (array $data): SymfonyAiClient => new SymfonyAiClient(
+                $data['platform'],
+                $data['model'],
+                $data['serviceCode'],
+                $data['serviceId'],
+                new OptionNormalizer(new BridgeRegistry([])),
+                $data['consumer'],
+            )
+        );
+
+        $subject = $this->newSubject(
+            new BridgeRegistry(['openai' => [
+                'factory' => FakePlatformFactory::class,
+                'package' => 'symfony/ai-open-ai-platform',
+            ]]),
+        );
+
+        self::assertSame('catalog-import', $subject->create('openai', 'catalog-import')->getConsumer());
     }
 
     /**
@@ -255,11 +312,38 @@ final class ClientFactoryTest extends TestCase
             ))
             ->willReturn($this->createMock(SymfonyAiClient::class));
 
-        $subject = new ClientFactory($this->serviceSelector, $this->clientFactory, new BridgeRegistry([
+        $subject = $this->newSubject(new BridgeRegistry([
             'openai' => ['factory' => FakePlatformFactory::class, 'package' => 'symfony/ai-open-ai-platform'],
         ]));
 
         $subject->createById('_row_b');
+    }
+
+    /**
+     * createById() is the counterpart of create() for a row that is not the first of its code, and
+     * it takes the same client-level consumer for the same reason: a stored row id alone carries
+     * no attribution.
+     */
+    public function test_creates_a_client_by_id_with_the_consumer_the_caller_named(): void
+    {
+        $this->serviceSelector->method('getById')->with('_row_b')
+            ->willReturn(new AiService('_row_b', 'openai', ['api_key' => 'k2', 'model' => 'o1-mini']));
+        $this->clientFactory->method('create')->willReturnCallback(
+            fn (array $data): SymfonyAiClient => new SymfonyAiClient(
+                $data['platform'],
+                $data['model'],
+                $data['serviceCode'],
+                $data['serviceId'],
+                new OptionNormalizer(new BridgeRegistry([])),
+                $data['consumer'],
+            )
+        );
+
+        $subject = $this->newSubject(new BridgeRegistry([
+            'openai' => ['factory' => FakePlatformFactory::class, 'package' => 'symfony/ai-open-ai-platform'],
+        ]));
+
+        self::assertSame('orders-sync', $subject->createById('_row_b', 'orders-sync')->getConsumer());
     }
 
     /**
@@ -271,7 +355,7 @@ final class ClientFactoryTest extends TestCase
         $this->serviceSelector->method('getById')->with('_deleted_row')->willReturn(null);
         $this->clientFactory->expects(self::never())->method('create');
 
-        $subject = new ClientFactory($this->serviceSelector, $this->clientFactory, new BridgeRegistry([]));
+        $subject = $this->newSubject(new BridgeRegistry([]));
 
         $this->expectException(LocalizedException::class);
         $this->expectExceptionMessage('_deleted_row');
@@ -290,7 +374,7 @@ final class ClientFactoryTest extends TestCase
         ]);
         $this->clientFactory->method('create')->willReturn($this->createMock(SymfonyAiClient::class));
 
-        $subject = new ClientFactory($this->serviceSelector, $this->clientFactory, new BridgeRegistry([
+        $subject = $this->newSubject(new BridgeRegistry([
             'anthropic' => [
                 'factory' => RecordingAnthropicFactory::class,
                 'package' => 'symfony/ai-anthropic-platform',
@@ -324,7 +408,7 @@ final class ClientFactoryTest extends TestCase
         ]);
         $this->clientFactory->method('create')->willReturn($this->createMock(SymfonyAiClient::class));
 
-        $subject = new ClientFactory($this->serviceSelector, $this->clientFactory, new BridgeRegistry([
+        $subject = $this->newSubject(new BridgeRegistry([
             'anthropic' => [
                 'factory' => RecordingAnthropicFactory::class,
                 'package' => 'symfony/ai-anthropic-platform',
@@ -351,7 +435,7 @@ final class ClientFactoryTest extends TestCase
         ]);
         $this->clientFactory->method('create')->willReturn($this->createMock(SymfonyAiClient::class));
 
-        $subject = new ClientFactory($this->serviceSelector, $this->clientFactory, new BridgeRegistry([
+        $subject = $this->newSubject(new BridgeRegistry([
             'anthropic' => [
                 'factory' => FakePlatformFactory::class,
                 'package' => 'symfony/ai-anthropic-platform',
@@ -374,7 +458,7 @@ final class ClientFactoryTest extends TestCase
         ]);
         $this->clientFactory->method('create')->willReturn($this->createMock(SymfonyAiClient::class));
 
-        $subject = new ClientFactory($this->serviceSelector, $this->clientFactory, new BridgeRegistry([
+        $subject = $this->newSubject(new BridgeRegistry([
             'anthropic' => [
                 'factory' => RecordingAnthropicFactory::class,
                 'package' => 'symfony/ai-anthropic-platform',
@@ -403,7 +487,7 @@ final class ClientFactoryTest extends TestCase
         ]);
         $this->clientFactory->method('create')->willReturn($this->createMock(SymfonyAiClient::class));
 
-        $subject = new ClientFactory($this->serviceSelector, $this->clientFactory, new BridgeRegistry([
+        $subject = $this->newSubject(new BridgeRegistry([
             $code => ['factory' => RecordingLocalRuntimeFactory::class, 'package' => 'symfony/ai-' . $code],
         ]));
 
@@ -417,7 +501,7 @@ final class ClientFactoryTest extends TestCase
         $this->serviceSelector->method('getById')->with('_row_a')
             ->willReturn(new AiService('_row_a', 'ollama', ['model' => 'llama3']));
 
-        $subject = new ClientFactory($this->serviceSelector, $this->clientFactory, new BridgeRegistry([
+        $subject = $this->newSubject(new BridgeRegistry([
             'ollama' => ['factory' => 'Absent\\Ollama\\Factory', 'package' => 'symfony/ai-ollama-platform'],
         ]));
 
@@ -425,6 +509,188 @@ final class ClientFactoryTest extends TestCase
         $this->expectExceptionMessage('composer require symfony/ai-ollama-platform');
 
         $subject->createById('_row_a');
+    }
+
+    public function test_it_returns_a_recording_client_when_usage_tracking_is_enabled(): void
+    {
+        $this->usageTrackingEnabled = true;
+        $this->serviceSelector->method('getByCode')->with('openai')
+            ->willReturn([new AiService('row_openai', 'openai', ['api_key' => 'k', 'model' => 'gpt-4o'])]);
+        $this->clientFactory->method('create')->willReturn(new FakeAiClient());
+        $this->recordingClientFactory->method('create')->willReturnCallback(
+            fn (array $data): RecordingAiClient => new RecordingAiClient(
+                $data['delegate'],
+                new FakeUsageRecordRepository(),
+                new FakeStoreManager(1),
+                new FakeLogger(),
+            )
+        );
+
+        $subject = $this->newSubject(new BridgeRegistry([
+            'openai' => ['factory' => FakePlatformFactory::class, 'package' => 'symfony/ai-open-ai-platform'],
+        ]));
+
+        self::assertInstanceOf(RecordingAiClient::class, $subject->create('openai'));
+    }
+
+    public function test_it_returns_the_bare_client_when_usage_tracking_is_disabled(): void
+    {
+        $this->serviceSelector->method('getByCode')->with('openai')
+            ->willReturn([new AiService('row_openai', 'openai', ['api_key' => 'k', 'model' => 'gpt-4o'])]);
+        $client = new FakeAiClient();
+        $this->clientFactory->method('create')->willReturn($client);
+        $this->recordingClientFactory->expects(self::never())->method('create');
+        $this->recordingPlatformAwareClientFactory->expects(self::never())->method('create');
+
+        $subject = $this->newSubject(new BridgeRegistry([
+            'openai' => ['factory' => FakePlatformFactory::class, 'package' => 'symfony/ai-open-ai-platform'],
+        ]));
+
+        self::assertSame($client, $subject->create('openai'));
+    }
+
+    /**
+     * The whole point of naming a consumer, carried through the wrapping this task adds: a caller
+     * that names one has to be able to still read it back off whatever create() actually returns.
+     */
+    public function test_it_passes_the_consumer_through_to_the_decorator_it_created(): void
+    {
+        $this->usageTrackingEnabled = true;
+        $this->serviceSelector->method('getByCode')->with('openai')
+            ->willReturn([new AiService('row_openai', 'openai', ['api_key' => 'k', 'model' => 'gpt-4o'])]);
+        $this->clientFactory->method('create')->willReturnCallback(
+            fn (array $data): SymfonyAiClient => new SymfonyAiClient(
+                $data['platform'],
+                $data['model'],
+                $data['serviceCode'],
+                $data['serviceId'],
+                new OptionNormalizer(new BridgeRegistry([])),
+                $data['consumer'],
+            )
+        );
+        $this->recordingPlatformAwareClientFactory->method('create')->willReturnCallback(
+            fn (array $data): RecordingPlatformAwareAiClient => new RecordingPlatformAwareAiClient(
+                $data['platformAwareDelegate'],
+                new FakeUsageRecordRepository(),
+                new FakeStoreManager(1),
+                new FakeLogger(),
+            )
+        );
+
+        $subject = $this->newSubject(new BridgeRegistry([
+            'openai' => ['factory' => FakePlatformFactory::class, 'package' => 'symfony/ai-open-ai-platform'],
+        ]));
+
+        self::assertSame('catalog-import', $subject->create('openai', 'catalog-import')->getConsumer());
+    }
+
+    public function test_it_wraps_a_platform_aware_client_in_a_platform_aware_decorator(): void
+    {
+        $this->usageTrackingEnabled = true;
+        $this->serviceSelector->method('getByCode')->with('openai')
+            ->willReturn([new AiService('row_openai', 'openai', ['api_key' => 'k', 'model' => 'gpt-4o'])]);
+        $this->clientFactory->method('create')->willReturn(new FakePlatformAwareAiClient(new \stdClass()));
+        $this->recordingPlatformAwareClientFactory->method('create')->willReturnCallback(
+            fn (array $data): RecordingPlatformAwareAiClient => new RecordingPlatformAwareAiClient(
+                $data['platformAwareDelegate'],
+                new FakeUsageRecordRepository(),
+                new FakeStoreManager(1),
+                new FakeLogger(),
+            )
+        );
+        $this->recordingClientFactory->expects(self::never())->method('create');
+
+        $subject = $this->newSubject(new BridgeRegistry([
+            'openai' => ['factory' => FakePlatformFactory::class, 'package' => 'symfony/ai-open-ai-platform'],
+        ]));
+
+        self::assertInstanceOf(RecordingPlatformAwareAiClient::class, $subject->create('openai'));
+    }
+
+    public function test_it_wraps_a_client_that_is_not_platform_aware_without_claiming_it_is(): void
+    {
+        $this->usageTrackingEnabled = true;
+        $this->serviceSelector->method('getByCode')->with('openai')
+            ->willReturn([new AiService('row_openai', 'openai', ['api_key' => 'k', 'model' => 'gpt-4o'])]);
+        $this->clientFactory->method('create')->willReturn(new FakeAiClient());
+        $this->recordingClientFactory->method('create')->willReturnCallback(
+            fn (array $data): RecordingAiClient => new RecordingAiClient(
+                $data['delegate'],
+                new FakeUsageRecordRepository(),
+                new FakeStoreManager(1),
+                new FakeLogger(),
+            )
+        );
+        $this->recordingPlatformAwareClientFactory->expects(self::never())->method('create');
+
+        $subject = $this->newSubject(new BridgeRegistry([
+            'openai' => ['factory' => FakePlatformFactory::class, 'package' => 'symfony/ai-open-ai-platform'],
+        ]));
+
+        self::assertNotInstanceOf(PlatformAwareInterface::class, $subject->create('openai'));
+    }
+
+    public function test_it_wraps_the_client_created_for_an_explicitly_requested_service_code(): void
+    {
+        $this->usageTrackingEnabled = true;
+        $this->serviceSelector->method('getByCode')->with('anthropic')
+            ->willReturn([new AiService('row_anthropic', 'anthropic', ['api_key' => 'k', 'model' => 'claude'])]);
+        $this->clientFactory->method('create')->willReturnCallback(
+            fn (array $data): SymfonyAiClient => new SymfonyAiClient(
+                $data['platform'],
+                $data['model'],
+                $data['serviceCode'],
+                $data['serviceId'],
+                new OptionNormalizer(new BridgeRegistry([])),
+                $data['consumer'],
+            )
+        );
+        $this->recordingPlatformAwareClientFactory->method('create')->willReturnCallback(
+            fn (array $data): RecordingPlatformAwareAiClient => new RecordingPlatformAwareAiClient(
+                $data['platformAwareDelegate'],
+                new FakeUsageRecordRepository(),
+                new FakeStoreManager(1),
+                new FakeLogger(),
+            )
+        );
+
+        $subject = $this->newSubject(new BridgeRegistry([
+            'anthropic' => ['factory' => FakePlatformFactory::class, 'package' => 'symfony/ai-anthropic-platform'],
+        ]));
+
+        self::assertSame('anthropic', $subject->create('anthropic')->getServiceCode());
+    }
+
+    public function test_it_wraps_the_client_created_for_the_resolved_default_service(): void
+    {
+        $this->usageTrackingEnabled = true;
+        $this->serviceSelector->method('getAll')->willReturn([
+            new AiService('row_openai', 'openai', ['api_key' => 'k', 'model' => 'gpt-4o']),
+        ]);
+        $this->clientFactory->method('create')->willReturnCallback(
+            fn (array $data): SymfonyAiClient => new SymfonyAiClient(
+                $data['platform'],
+                $data['model'],
+                $data['serviceCode'],
+                $data['serviceId'],
+                new OptionNormalizer(new BridgeRegistry([])),
+                $data['consumer'],
+            )
+        );
+        $this->recordingPlatformAwareClientFactory->method('create')->willReturnCallback(
+            fn (array $data): RecordingPlatformAwareAiClient => new RecordingPlatformAwareAiClient(
+                $data['platformAwareDelegate'],
+                new FakeUsageRecordRepository(),
+                new FakeStoreManager(1),
+                new FakeLogger(),
+            )
+        );
+
+        $subject = $this->newSubject(new BridgeRegistry([
+            'openai' => ['factory' => FakePlatformFactory::class, 'package' => 'symfony/ai-open-ai-platform'],
+        ]));
+
+        self::assertSame('openai', $subject->create()->getServiceCode());
     }
 }
 
@@ -531,5 +797,27 @@ final class FakePlatformlessFactory
     public static function createPlatform(string $apiKey): mixed
     {
         return null;
+    }
+}
+
+/**
+ * In-memory stand-in for {@see ScopeConfigInterface}, kept next to the test that uses it. Reports
+ * a single fixed value for {@see UsageConfig::isEnabled()}'s `isSetFlag` call; getValue() is never
+ * reached through that path.
+ */
+final class FakeScopeConfig implements ScopeConfigInterface
+{
+    public function __construct(private readonly bool $isEnabled)
+    {
+    }
+
+    public function getValue($path, $scopeType = ScopeConfigInterface::SCOPE_TYPE_DEFAULT, $scopeCode = null)
+    {
+        throw new \BadMethodCallException('Not used by ClientFactoryTest.');
+    }
+
+    public function isSetFlag($path, $scopeType = ScopeConfigInterface::SCOPE_TYPE_DEFAULT, $scopeCode = null)
+    {
+        return $this->isEnabled;
     }
 }

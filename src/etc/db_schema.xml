@@ -1,0 +1,83 @@
+<?xml version="1.0"?>
+<schema xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:noNamespaceSchemaLocation="urn:magento:framework:Setup/Declaration/Schema/etc/schema.xsd">
+    <table name="mageos_ai_usage_log" resource="default" engine="innodb"
+           comment="Per-call AI token usage: counts and metadata only, never prompt or response content">
+        <column xsi:type="int" name="entity_id" unsigned="true" nullable="false" identity="true"
+                comment="Primary key"/>
+        <column xsi:type="varchar" name="service_id" length="64" nullable="false"
+                comment="AiServiceInterface::getId() row key; an opaque JSON object key, never treat as an integer"/>
+        <column xsi:type="varchar" name="service_code" length="32" nullable="false"
+                comment="AiServiceConfigurationInterface::getCode() of the backend that served the call"/>
+        <column xsi:type="varchar" name="model" length="128" nullable="false" comment="Model name reported by the provider"/>
+        <column xsi:type="varchar" name="consumer" length="128" nullable="false"
+                comment="Identifier of the module or skill that made the call"/>
+        <column xsi:type="smallint" name="store_id" unsigned="true" nullable="false" default="0"
+                comment="Store the call ran under; not null, defaults to the admin store (0). No FK to store: deleting a store must not silently erase historical accounting"/>
+        <column xsi:type="int" name="input_tokens" unsigned="true" nullable="false" default="0" comment="Prompt tokens"/>
+        <column xsi:type="int" name="output_tokens" unsigned="true" nullable="false" default="0" comment="Completion tokens"/>
+        <column xsi:type="int" name="total_tokens" unsigned="true" nullable="false" default="0"
+                comment="Total tokens; provider-reported total, or prompt plus completion when the provider reported none"/>
+        <column xsi:type="int" name="cached_tokens" unsigned="true" nullable="true"
+                comment="Cached portion of the prompt tokens, when the provider reports prompt caching separately"/>
+        <column xsi:type="int" name="reasoning_tokens" unsigned="true" nullable="true"
+                comment="Reasoning portion of the completion tokens, when the provider reports thinking tokens separately"/>
+        <column xsi:type="boolean" name="streamed" nullable="false" default="false"
+                comment="Whether the call was served over a streaming response"/>
+        <column xsi:type="timestamp" name="created_at" on_update="false" nullable="false" default="CURRENT_TIMESTAMP"
+                comment="Timestamp written by the database. Day boundaries are computed in PHP from TimezoneInterface and applied as half-open created_at &gt;= start AND created_at &lt; end ranges; never DATE(created_at) or CONVERT_TZ(), the MySQL timezone tables are not guaranteed to be loaded on a customer install"/>
+        <constraint xsi:type="primary" referenceId="PRIMARY">
+            <column name="entity_id"/>
+        </constraint>
+        <index referenceId="MAGEOS_AI_USAGE_LOG_CREATED_AT" indexType="btree">
+            <column name="created_at"/>
+        </index>
+        <index referenceId="MAGEOS_AI_USAGE_LOG_CONSUMER" indexType="btree">
+            <column name="consumer"/>
+        </index>
+        <index referenceId="MAGEOS_AI_USAGE_LOG_SERVICE_ID" indexType="btree">
+            <column name="service_id"/>
+        </index>
+    </table>
+    <table name="mageos_ai_usage_daily" resource="default" engine="innodb"
+           comment="Daily roll-up of AI token usage the cron writes before pruning mageos_ai_usage_log; counts and metadata only, never prompt or response content">
+        <column xsi:type="int" name="entity_id" unsigned="true" nullable="false" identity="true"
+                comment="Primary key"/>
+        <column xsi:type="date" name="usage_date" nullable="false"
+                comment="Store-timezone date the roll-up computed for this row, from TimezoneInterface; not DATE(created_at) and not a UTC date"/>
+        <column xsi:type="varchar" name="service_id" length="64" nullable="false"
+                comment="AiServiceInterface::getId() row key; an opaque JSON object key, never treat as an integer"/>
+        <column xsi:type="varchar" name="service_code" length="32" nullable="false"
+                comment="AiServiceConfigurationInterface::getCode() of the backend that served the calls; derivable from service_id, kept out of the unique key"/>
+        <column xsi:type="varchar" name="model" length="128" nullable="false" comment="Model name reported by the provider"/>
+        <column xsi:type="varchar" name="consumer" length="128" nullable="false"
+                comment="Identifier of the module or skill that made the calls"/>
+        <column xsi:type="smallint" name="store_id" unsigned="true" nullable="false" default="0"
+                comment="Store the calls ran under; not null, defaults to the admin store (0). No FK to store: deleting a store must not silently erase historical accounting"/>
+        <column xsi:type="int" name="calls" unsigned="true" nullable="false" default="0" comment="Number of calls rolled up into this row"/>
+        <column xsi:type="int" name="input_tokens" unsigned="true" nullable="false" default="0" comment="Prompt tokens"/>
+        <column xsi:type="int" name="output_tokens" unsigned="true" nullable="false" default="0" comment="Completion tokens"/>
+        <column xsi:type="int" name="total_tokens" unsigned="true" nullable="false" default="0"
+                comment="Total tokens; provider-reported total, or prompt plus completion when the provider reported none"/>
+        <column xsi:type="int" name="cached_tokens" unsigned="true" nullable="true"
+                comment="Cached portion of the prompt tokens, when the provider reports prompt caching separately"/>
+        <column xsi:type="int" name="reasoning_tokens" unsigned="true" nullable="true"
+                comment="Reasoning portion of the completion tokens, when the provider reports thinking tokens separately"/>
+        <constraint xsi:type="primary" referenceId="PRIMARY">
+            <column name="entity_id"/>
+        </constraint>
+        <constraint xsi:type="unique" referenceId="MAGEOS_AI_USAGE_DAILY_UNIQUE_GROUPING_KEY">
+            <column name="usage_date"/>
+            <column name="service_id"/>
+            <column name="model"/>
+            <column name="consumer"/>
+            <column name="store_id"/>
+        </constraint>
+        <index referenceId="MAGEOS_AI_USAGE_DAILY_CONSUMER" indexType="btree">
+            <column name="consumer"/>
+        </index>
+        <index referenceId="MAGEOS_AI_USAGE_DAILY_SERVICE_ID" indexType="btree">
+            <column name="service_id"/>
+        </index>
+    </table>
+</schema>

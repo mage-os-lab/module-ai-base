@@ -23,12 +23,18 @@ interface AiClientFactoryInterface
      * service regardless of usability would let one unusable provider at the top of the list
      * disable this entry point entirely.
      *
+     * $consumer names the feature or module this client's calls should be attributed to, once,
+     * for every call this client ever makes; a single call that wants a different attribution
+     * passes AiClientInterface::OPTION_CONSUMER instead of building a second client. Optional and
+     * trailing so that every call site written before it existed still compiles unchanged.
+     *
      * @param string|null $serviceCode
+     * @param string|null $consumer
      * @return AiClientInterface
      * @throws LocalizedException When no matching service is configured or the
      *         underlying client library is not installed
      */
-    public function create(?string $serviceCode = null): AiClientInterface;
+    public function create(?string $serviceCode = null, ?string $consumer = null): AiClientInterface;
 
     /**
      * Create a client for one specific configured row, addressed by AiServiceInterface::getId().
@@ -38,10 +44,13 @@ interface AiClientFactoryInterface
      * reaches rows that are not the first of their service code, which is the whole reason an
      * administrator was offered a choice.
      *
+     * $consumer is the same client-level attribution create() takes; see its docblock.
+     *
      * @param string $serviceId
+     * @param string|null $consumer
      * @return AiClientInterface
      * @throws LocalizedException When no row carries that id, or the underlying client library
      *         is not installed
      */
-    public function createById(string $serviceId): AiClientInterface;
+    public function createById(string $serviceId, ?string $consumer = null): AiClientInterface;
 }

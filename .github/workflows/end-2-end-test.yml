@@ -50,6 +50,12 @@ jobs:
       # The suite clears the configured services on every spec. The container is built for this
       # job and thrown away with it, which is the only kind of target that is safe.
       E2E_DISPOSABLE_ENVIRONMENT: '1'
+      # The store runs in a container this job drives from outside, so the specs that seed usage
+      # rows cannot reach Magento with a plain `php`. These two tell the fixture how to get inside
+      # and where the install lives in there; unset, it falls back to running PHP locally, which is
+      # what a developer running the suite through DDEV gets.
+      E2E_MAGENTO_EXEC: docker exec store
+      E2E_MAGENTO_ROOT: /data
     steps:
       - uses: actions/checkout@v4
 
@@ -83,11 +89,37 @@ jobs:
           docker exec store ./install-composer-package \
             symfony/ai-anthropic-platform symfony/ai-open-ai-platform
 
+      # Magento Open Source ships PayPal_Braintree, whose admin script runs on every configuration
+      # section and, on 2.4.9, intermittently throws "locations.each is not a function"
+      # (PayPal_Braintree/js/system.js:239) while RequireJS is still loading the page. A module
+      # factory that throws makes RequireJS abandon the rest of its queue, so on that page load the
+      # Save button never gets its widget and the form never submits; the same test saved fine on
+      # the loads before it. Nothing here tests Braintree, and Mage-OS does not bundle it, so it
+      # goes. Done before di:compile and static deploy so neither has to be redone.
+      - name: Disable Braintree, whose admin JavaScript breaks the configuration page at random
+        run: |
+          docker exec store /bin/bash -c '
+            modules=$(bin/magento module:status --enabled | grep -E "^PayPal_Braintree" || true)
+            if [ -n "$modules" ]; then
+              bin/magento module:disable $modules
+            else
+              echo "No Braintree modules enabled; nothing to disable."
+            fi
+          '
+
       - name: Prepare Magento
         run: |
           docker exec store /bin/bash ./change-base-url http://localhost/
           docker exec store ./retry "bin/magento config:set admin/security/session_lifetime 14400"
           docker exec store ./retry "bin/magento config:set admin/security/admin_account_sharing 1"
+          # Magento Open Source loads Adobe's admin analytics and Gainsight PX on every admin page
+          # (admin/usage/enabled defaults to on); Mage-OS has no such module. It is the only
+          # third-party script on the pages under test, it polls every five seconds and it edits
+          # the admin DOM, and the one job that intermittently lost Save clicks was a Magento one.
+          # Switching it off takes that variable out of the run. This is not what suppresses the
+          # first-login consent modal (a logged answer does that, which UsagePage gives), so both
+          # are needed.
+          docker exec store ./retry "bin/magento config:set admin/usage/enabled 0"
           docker exec store ./retry "bin/magento admin:user:create \
             --admin-user=${{ env.ADMIN_USER }} \
             --admin-password=${{ env.ADMIN_PASSWORD }} \

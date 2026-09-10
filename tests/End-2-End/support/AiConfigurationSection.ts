@@ -144,8 +144,37 @@ export class AiConfigurationSection {
      * used to send this loop round again for the rest of the test timeout, clicking Save at a
      * store that was already saving.
      */
+    /**
+     * Save Config is inert until Magento's JavaScript has wired it: the button is a `ui.button`
+     * widget (Magento's `mage/backend/button`) that raises `save` on `#config-edit-form`, and the
+     * form is a `mage.form` widget that answers it. Both are attached asynchronously after the page has loaded, and a click that
+     * lands before that does nothing at all: no request, no error, no message. Clicking the same
+     * dead button again for thirty seconds only produced a request timeout with no clue in it,
+     * which is how one CI job read for a whole afternoon. Waiting for the two widget instances
+     * closes the race, and when they never arrive the failure now says so.
+     */
+    private async waitForSaveToBeWired(): Promise<void> {
+        try {
+            await this.page.waitForFunction(() => {
+                type WidgetHost = (selector: string) => { data: (key: string) => unknown };
+                const jq = (window as unknown as { jQuery?: WidgetHost }).jQuery;
+
+                return jq !== undefined
+                    && jq('#config-edit-form').data('mageForm') !== undefined
+                    && jq('#save').data('uiButton') !== undefined;
+            }, undefined, { timeout: 30_000 });
+        } catch {
+            throw new Error(
+                'Save Config never got its JavaScript: the mage.form widget on #config-edit-form '
+                + 'and the ui.button widget on #save were still missing after 30 seconds, so a '
+                + 'click would submit nothing. The page did not finish initialising.',
+            );
+        }
+    }
+
     async save(): Promise<void> {
         await this.assertEditable();
+        await this.waitForSaveToBeWired();
         await expect(async () => {
             const submitted = this.page.waitForRequest(
                 (request) => request.url().includes('/system_config/save/'),

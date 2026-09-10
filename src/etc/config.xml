@@ -1,0 +1,27 @@
+<?xml version="1.0"?>
+<config xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:noNamespaceSchemaLocation="urn:magento:module:Magento_Store:etc/config.xsd">
+    <default>
+        <mageos_ai>
+            <!--
+                Tracking defaults to on: an administrator who never opens the usage group still
+                gets spend visibility, which is the point of this feature. The two retention
+                periods bound how long `core_config_data`-adjacent usage tables grow before the
+                cleanup job (see the `usage/cron_expr` field and crontab.xml) trims them; the daily
+                aggregate outlives the raw rows by design, since it is what a long-running spend
+                trend needs after the per-call detail behind it is gone.
+
+                `cron_expr` has to default here rather than be left for an administrator to fill
+                in: crontab.xml points its schedule at this config path through <config_path>, and
+                a path with nothing in `core_config_data` and no default here means the cleanup job
+                never runs at all rather than running on a sane schedule.
+            -->
+            <usage>
+                <enabled>1</enabled>
+                <retention_days>30</retention_days>
+                <daily_retention_days>730</daily_retention_days>
+                <cron_expr>0 3 * * *</cron_expr>
+            </usage>
+        </mageos_ai>
+    </default>
+</config>

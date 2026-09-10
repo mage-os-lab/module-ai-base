@@ -11,6 +11,8 @@ use MageOS\AiBase\Api\AiClientFactoryInterface;
 use MageOS\AiBase\Api\AiClientInterface;
 use MageOS\AiBase\Api\AiServiceSelectorInterface;
 use MageOS\AiBase\Api\Data\AiServiceInterface;
+use MageOS\AiBase\Api\PlatformAwareInterface;
+use MageOS\AiBase\Model\Usage\UsageConfig;
 
 /**
  * Builds AiClientInterface instances backed by symfony/ai-platform provider bridges.
@@ -25,30 +27,39 @@ class ClientFactory implements AiClientFactoryInterface
      * @param AiServiceSelectorInterface $serviceSelector
      * @param SymfonyAiClientFactory $clientFactory
      * @param BridgeRegistry $bridgeRegistry Service code => bridge factory and composer package
+     * @param UsageConfig $usageConfig Read once per built client, so a disabled install never
+     *        resolves the recording decorator's own dependencies
+     * @param RecordingAiClientFactory $recordingClientFactory Wraps a client that is not
+     *        {@see PlatformAwareInterface}
+     * @param RecordingPlatformAwareAiClientFactory $recordingPlatformAwareClientFactory Wraps a
+     *        client that is {@see PlatformAwareInterface}, so the decorator keeps that contract
      */
     public function __construct(
         private readonly AiServiceSelectorInterface $serviceSelector,
         private readonly SymfonyAiClientFactory $clientFactory,
         private readonly BridgeRegistry $bridgeRegistry,
+        private readonly UsageConfig $usageConfig,
+        private readonly RecordingAiClientFactory $recordingClientFactory,
+        private readonly RecordingPlatformAwareAiClientFactory $recordingPlatformAwareClientFactory,
     ) {
     }
 
     /**
      * @inheritdoc
      */
-    public function create(?string $serviceCode = null): AiClientInterface
+    public function create(?string $serviceCode = null, ?string $consumer = null): AiClientInterface
     {
         $service = $serviceCode === null
             ? $this->resolveDefaultService()
             : $this->resolveRequestedService($serviceCode);
 
-        return $this->buildClient($service);
+        return $this->buildClient($service, $consumer);
     }
 
     /**
      * @inheritdoc
      */
-    public function createById(string $serviceId): AiClientInterface
+    public function createById(string $serviceId, ?string $consumer = null): AiClientInterface
     {
         $service = $this->serviceSelector->getById($serviceId);
         if (!$service instanceof AiServiceInterface) {
@@ -62,24 +73,49 @@ class ClientFactory implements AiClientFactoryInterface
             );
         }
 
-        return $this->buildClient($service);
+        return $this->buildClient($service, $consumer);
     }
 
     /**
      * Build the client for an already resolved service row.
      *
      * @param AiServiceInterface $service
+     * @param string|null $consumer Feature or module the built client's calls are attributed to
      * @return AiClientInterface
      * @throws LocalizedException
      */
-    private function buildClient(AiServiceInterface $service): AiClientInterface
+    private function buildClient(AiServiceInterface $service, ?string $consumer): AiClientInterface
     {
-        return $this->clientFactory->create([
+        $client = $this->clientFactory->create([
             'platform' => $this->createPlatform($service),
             'model' => $this->resolveModel($service),
             'serviceCode' => $service->getCode(),
             'serviceId' => $service->getId(),
+            'consumer' => $consumer,
         ]);
+
+        return $this->usageConfig->isEnabled() ? $this->wrapForUsageTracking($client) : $client;
+    }
+
+    /**
+     * Wrap a freshly built client with the usage-recording decorator that matches its shape.
+     *
+     * The variant is picked by instanceof rather than always reaching for the platform-aware one:
+     * a delegate that deliberately does not implement PlatformAwareInterface (a third-party
+     * AiClientInterface with no platform to reach) would otherwise start claiming it does, which
+     * breaks the documented `instanceof PlatformAwareInterface` escape hatch for any consumer that
+     * checks it.
+     *
+     * @param AiClientInterface $client The bare client, before this method ever runs
+     * @return AiClientInterface
+     */
+    private function wrapForUsageTracking(AiClientInterface $client): AiClientInterface
+    {
+        if ($client instanceof PlatformAwareInterface) {
+            return $this->recordingPlatformAwareClientFactory->create(['platformAwareDelegate' => $client]);
+        }
+
+        return $this->recordingClientFactory->create(['delegate' => $client]);
     }
 
     /**

@@ -1,0 +1,190 @@
+//
+//  Copyright 2026 Mage-OS
+//  All Rights Reserved.
+//
+
+//  Mage-OS brand tokens, mirrored from the admin theme's own
+//  `web/css/source/variables/_colors.less` so this module states which token it is using rather
+//  than a raw hex nobody can trace. The chart marks themselves carry their colours as SVG
+//  attributes (see Model\Usage\Graph\SvgRenderer) because the finished SVG is emitted with
+//  @noEscape and cannot pick styles up from a class the Escaper would have stripped.
+//  Mirrors @color-mageos-dark
+@mageos-ai-usage-ink: #1a202c;
+//  Mirrors @color-mageos-gray
+@mageos-ai-usage-ink-secondary: #4a5568;
+//  Mirrors @color-mageos-stroke
+@mageos-ai-usage-stroke: #dde0e5;
+//  Mirrors @color-mageos-offwhite
+@mageos-ai-usage-plane: #f7fafc;
+//  The card surface every chart is measured against, and the surface the bar colour was
+//  contrast-checked on.
+@mageos-ai-usage-surface: #fff;
+//  Widest a chart is ever drawn. See the note on the svg rule below for why there is a cap.
+@mageos-ai-usage-chart__max-width: 1800px;
+
+//  Delta text is not a brand fill. Mage-OS rose measures 3.6 against the card surface and the
+//  brand oranges lower still, under the 4.5 contrast ratio small text has to clear, so the up
+//  and down cues take accessible steps of the same hues rather than the brand tokens they echo.
+@mageos-ai-usage-change-up__color: #006400;
+@mageos-ai-usage-change-down__color: #c5341c;
+
+.mageos-ai-usage-dashboard {
+    margin-bottom: 20px;
+}
+
+.mageos-ai-usage-dashboard-period-selector {
+    display: flex;
+    gap: 10px;
+    list-style: none;
+    margin: 0 0 15px;
+    padding: 0;
+}
+
+.mageos-ai-usage-dashboard-period-selector li.current a {
+    font-weight: 600;
+}
+
+//  Only rendered on a multi-store install, so it sits under the period rather than beside it: on
+//  the single-store installs that are most of them there is nothing here at all.
+.mageos-ai-usage-store-selector {
+    margin-bottom: 15px;
+}
+
+.mageos-ai-usage-dashboard-totals {
+    align-items: baseline;
+    display: flex;
+    gap: 10px;
+    margin-bottom: 20px;
+}
+
+//  The hero figure: one per view, in the same sans as everything else, and deliberately not
+//  tabular — equal-width digits make a number like 121 look loose at display sizes.
+.mageos-ai-usage-dashboard-total-value {
+    color: @mageos-ai-usage-ink;
+    font-size: 3.2rem;
+    font-variant-numeric: proportional-nums;
+    font-weight: 600;
+    line-height: 1.1;
+}
+
+.mageos-ai-usage-dashboard-total-label {
+    color: @mageos-ai-usage-ink-secondary;
+}
+
+.mageos-ai-usage-dashboard-change-up {
+    color: @mageos-ai-usage-change-up__color;
+}
+
+.mageos-ai-usage-dashboard-change-down {
+    color: @mageos-ai-usage-change-down__color;
+}
+
+.mageos-ai-usage-dashboard-breakdowns {
+    align-items: flex-start;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 20px;
+}
+
+.mageos-ai-usage-dashboard-breakdown {
+    background: @mageos-ai-usage-surface;
+    border: 1px solid @mageos-ai-usage-stroke;
+    border-radius: 6px;
+    flex: 1 1 320px;
+    padding: 15px 20px 20px;
+}
+
+.mageos-ai-usage-dashboard-breakdown h3 {
+    color: @mageos-ai-usage-ink-secondary;
+    font-size: 1.3rem;
+    font-weight: 600;
+    letter-spacing: .04em;
+    margin: 0 0 12px;
+    text-transform: uppercase;
+}
+
+//  The trend spans the full width above the two breakdown cards rather than sitting beside them:
+//  a line needs horizontal room to have a readable shape, which a half-width column denies it.
+.mageos-ai-usage-dashboard-trend {
+    margin-bottom: 20px;
+}
+
+//  The heading and the trend toggle share a row: the toggle switches what the heading describes,
+//  so putting it anywhere else makes the reader hunt for the control that changed the chart.
+.mageos-ai-usage-trend-header {
+    align-items: baseline;
+    display: flex;
+    gap: 20px;
+    justify-content: space-between;
+}
+
+.mageos-ai-usage-trend-selector {
+    display: flex;
+    gap: 0;
+    list-style: none;
+    margin: 0 0 12px;
+    padding: 0;
+}
+
+.mageos-ai-usage-trend-selector li a {
+    border: 1px solid @mageos-ai-usage-stroke;
+    color: @mageos-ai-usage-ink-secondary;
+    display: block;
+    margin-left: -1px;
+    padding: 4px 12px;
+    text-decoration: none;
+}
+
+.mageos-ai-usage-trend-selector li:first-child a {
+    border-radius: 3px 0 0 3px;
+    margin-left: 0;
+}
+
+.mageos-ai-usage-trend-selector li:last-child a {
+    border-radius: 0 3px 3px 0;
+}
+
+.mageos-ai-usage-trend-selector li.current a {
+    background: @mageos-ai-usage-plane;
+    color: @mageos-ai-usage-ink;
+    font-weight: 600;
+    position: relative;
+    z-index: 1;
+}
+
+//  Charts fill the card they sit in rather than stopping at their intrinsic width and leaving a
+//  dead strip on a wide screen. An SVG with a viewBox scales uniformly, so the labels grow with the
+//  plot instead of staying pinned at a size the layout was not measured for — which is the failure
+//  the intrinsic size was added to prevent in the first place, when the text had no size of its own
+//  and rendered at the user agent default size inside a 34-unit row.
+//
+//  The cap is what keeps that honest: past it the chart stops growing, so a very wide monitor gets
+//  whitespace rather than oversized type. Below the intrinsic width it scales down, as before.
+.mageos-ai-usage-dashboard-breakdown svg {
+    display: block;
+    height: auto;
+    max-width: @mageos-ai-usage-chart__max-width;
+    width: 100%;
+}
+
+//  A trend's tooltip is revealed by its own band's hover rather than by script, so the chart
+//  stays script-free under a strict CSP. `pointer-events: none` keeps the panel from swallowing
+//  the hover that summoned it, which would make it flicker as the pointer crossed it.
+.mageos-ai-usage-graph-tip {
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity .12s ease-out;
+}
+
+.mageos-ai-usage-graph-hover:hover .mageos-ai-usage-graph-tip {
+    opacity: 1;
+}
+
+//  The whole row is the hover target, not just the 14px bar; the cursor says so.
+.mageos-ai-usage-graph-row {
+    cursor: default;
+}
+
+.mageos-ai-usage-graph-row:hover .mageos-ai-usage-graph-hit {
+    fill: @mageos-ai-usage-plane;
+}

@@ -35,6 +35,59 @@
                     <frontend_model>MageOS\AiBase\Block\Adminhtml\Configuration\Services</frontend_model>
                 </field>
             </group>
+
+            <!--
+                Every field here is showInDefault only: retention and the cron schedule are read
+                by the cleanup job and the CLI, neither of which has a website or store in play
+                (see UsageConfig), so a store-level override would be a field that silently does
+                nothing. The toggle is default-scope for the same reason: the recording decorator
+                that reads it runs from the chat controller with whatever store is ambient, but a
+                per-store opt-out is not a feature this task adds.
+            -->
+            <group id="usage" translate="label" type="text" sortOrder="20" showInDefault="1">
+                <label>Usage Tracking</label>
+                <field id="report_link" translate="label" type="button" sortOrder="5" showInDefault="1">
+                    <label>Report</label>
+                    <!--
+                        Not a setting: a link to Reports > AI Token Usage, rendered by a block
+                        because an admin URL needs the session's secret key. Hidden from a role
+                        the report's own ACL would refuse.
+                    -->
+                    <frontend_model>MageOS\AiBase\Block\Adminhtml\Configuration\UsageReportLink</frontend_model>
+                </field>
+                <field id="enabled" translate="label" type="select" sortOrder="10" showInDefault="1">
+                    <label>Enable Usage Tracking</label>
+                    <source_model>Magento\Config\Model\Config\Source\Yesno</source_model>
+                </field>
+                <field id="retention_days" translate="label" type="text" sortOrder="20" showInDefault="1">
+                    <label>Raw Usage Retention (Days)</label>
+                    <validate>validate-number validate-greater-than-zero</validate>
+                    <depends>
+                        <field id="enabled">1</field>
+                    </depends>
+                </field>
+                <field id="daily_retention_days" translate="label" type="text" sortOrder="30" showInDefault="1">
+                    <label>Daily Usage Retention (Days)</label>
+                    <validate>validate-number validate-greater-than-zero</validate>
+                    <depends>
+                        <field id="enabled">1</field>
+                    </depends>
+                </field>
+                <field id="cron_expr" translate="label comment" type="text" sortOrder="40" showInDefault="1"
+                       canRestore="1">
+                    <label>Cleanup Cron Schedule</label>
+                    <backend_model>MageOS\AiBase\Model\Config\Backend\CronExpression</backend_model>
+                    <comment><![CDATA[Five cron fields, for example <code>0 3 * * *</code> for daily at 03:00. Leave empty to never schedule the cleanup.]]></comment>
+                    <!--
+                        Read by Magento's own cron scheduler through the config_path in
+                        crontab.xml, not by UsageConfig: see that class for why the retention
+                        fields are read here and this one is not.
+                    -->
+                    <depends>
+                        <field id="enabled">1</field>
+                    </depends>
+                </field>
+            </group>
         </section>
     </system>
 </config>

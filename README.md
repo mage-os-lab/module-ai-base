@@ -253,10 +253,25 @@ yet, the curated default model list built into each service remains the fallback
 providers can opt in by implementing `MageOS\AiBase\Api\ModelListProviderInterface` alongside
 their service configuration class.
 
+### Usage tracking
+
+Every call made through the bundled client is recorded — token counts and metadata only, never
+prompt or response content — and shown on **Reports > AI Token Usage**: a dashboard with totals,
+period-over-period change, a trend chart with a line per consumer or per service row, and
+breakdowns by consumer and service, plus a grid of individual calls.
+
+![The AI Token Usage dashboard: totals for the month, a trend with one line per consumer and a By consumer / By service selector, and bar charts breaking the period down by consumer and by service](docs/images/admin-usage-dashboard.png)
+
+A `bin/magento mageos:ai:usage` CLI report and a scheduled cleanup job (configurable retention)
+round it out. See [docs/USAGE-TRACKING.md](docs/USAGE-TRACKING.md) for what is and is not
+recorded, and [docs/CONSUMING.md](docs/CONSUMING.md#naming-your-module-as-a-consumer) for naming
+your own module's calls.
+
 ## Documentation
 
 - [Provider Integration & Customization Guide](docs/PROVIDERS.md) — add a provider, wire a client bridge, opt into model refresh, customization recipes
 - [Consumer Guide](docs/CONSUMING.md) — make AI calls from your module, handle failure modes, test your integration
+- [Usage Tracking](docs/USAGE-TRACKING.md) — what is recorded, what is not, where to see it, configuration, retention
 - [Architecture](docs/ARCHITECTURE.md) — component map, data flows, storage formats, security model, design decisions
 
 ## Contributing

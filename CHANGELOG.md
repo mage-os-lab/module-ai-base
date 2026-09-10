@@ -8,6 +8,92 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **AI usage tracking**: every call made through `AiClientInterface` is now recorded — token
+  counts and metadata only, **never prompt or response content** — and surfaced at
+  **Reports > AI Token Usage** as a dashboard (totals, period-over-period change against the same
+  elapsed span, a trend chart with a line per consumer or per service row, and breakdowns by
+  consumer and by service), an admin grid of individual calls, and a
+  `bin/magento mageos:ai:usage` CLI report. See `docs/USAGE-TRACKING.md` for the merchant-facing
+  guide and `docs/ARCHITECTURE.md`'s "Recording path"/"Roll-up path" sections and its usage-scope
+  decision record for why content, cost estimation and the `getPlatform()` escape hatch are
+  deliberately out of scope.
+- `AiClientInterface::OPTION_CONSUMER` and `getConsumer()`: a **consumer** identifies which module
+  or feature a call is attributed to, so usage recorded through one shared client can still be told
+  apart per feature. `AiClientFactoryInterface::create()` and `createById()` both gained an
+  optional trailing `?string $consumer = null` to set it once for every call a built client makes;
+  the option overrides it for a single call. Both default to
+  `Api\Data\UsageRecordInterface::CONSUMER_UNKNOWN` when neither is set. See
+  `docs/CONSUMING.md`'s "Naming your module as a consumer".
+- `Model\Client\RecordingAiClient` and `Model\Client\RecordingPlatformAwareAiClient`: decorators
+  `ClientFactory` wraps every built client in (unless usage tracking is switched off), writing one
+  usage row per completed call through the new repositories below. The `PlatformAwareInterface`
+  variant exists so the decorator never falsely claims a wrapped client that deliberately does not
+  implement that interface now does. `complete()` is reimplemented rather than delegated on both,
+  since a delegate's own `complete()` calls its own internal `chat()`, not the decorator's, and
+  delegating would record nothing for it. A save failure is logged and swallowed, never thrown: it
+  runs after the wrapped call already succeeded, and a storage problem must not fail a call that
+  otherwise worked.
+- Two new database tables (`etc/db_schema.xml`): `mageos_ai_usage_log`, one row per completed call
+  (service id/code, model, consumer, store id, five token counts, whether it streamed,
+  `created_at`), and `mageos_ai_usage_daily`, one row per (day, service id, model, consumer, store
+  id) grouping key, built by a scheduled roll-up before the raw rows behind it are pruned. Both
+  table comments state outright that they hold counts and metadata only, never call content.
+  `Api\UsageRecordRepositoryInterface` and `Api\UsageDailyRepositoryInterface` are the persistence
+  contracts; every SQL statement lives in the two resource models behind them
+  (`Model\ResourceModel\Usage\UsageLog`/`UsageDaily`), which is what keeps the repositories
+  unit-testable against a small fake instead of Magento's full DB adapter.
+- `Model\Usage\UsageMaintenance`, run by the new `Cron\RollUpUsage` job
+  (`etc/crontab.xml`, schedule at `mageos_ai/usage/cron_expr`): rolls up every whole local day of
+  the raw log older than the configured retention into the daily table, deletes exactly the raw
+  rows it rolled up, then prunes daily rows past their own (longer) retention — in that order,
+  non-negotiably, since reversing it would mean silent data loss. Day boundaries are computed in
+  PHP from the store's configured timezone with plain `\DateTimeImmutable`/`\DateTimeZone`
+  arithmetic, never SQL's `DATE()` or `CONVERT_TZ()`, so a customer install with no MySQL timezone
+  tables loaded still gets a correct boundary and a daylight-saving transition still produces
+  exactly one bucket.
+- Four new config fields under **Stores > Configuration > Mage-OS > AI Configuration > Usage
+  Tracking** (`mageos_ai/usage/*`): `enabled` (default on), `retention_days` (default 30, how long
+  individual calls are kept before roll-up), `daily_retention_days` (default 730, how long the
+  daily aggregates outlive them), and `cron_expr` (default `0 3 * * *`), which `crontab.xml` reads
+  directly through a `<config_path>` rather than through this module's own config reader, so the
+  cleanup job always has a schedule even before an administrator ever opens the group.
+- `Api\UsageStatsInterface` (impl. `Model\Usage\UsageStats`): the one read contract the dashboard,
+  its graphs, the CLI report and any other module go through to answer "how much AI usage
+  happened, by whom, through which service, over time". A requested `Api\Data\Period` can straddle
+  the boundary between the raw log and the daily roll-up; the implementation queries whichever
+  table or tables the window touches and merges the result without ever double-counting a day
+  present in both. `Api\Data\Period` is an immutable `[start, end)` UTC window with named
+  constructors (`today()`, `thisMonth()`, `thisYear()`) that resolve local calendar boundaries in
+  the store timezone before converting once to UTC; `Api\Data\Granularity` (`Day`/`Month`) drives
+  `getTimeSeries()`, which always returns one bucket per calendar unit in the period, including
+  a bucket with no recorded usage, so a caller feeding it straight into a graph never fills a gap
+  itself.
+- `bin/magento mageos:ai:usage`: prints usage totals and a per-consumer breakdown for `--period`
+  (`today`/`month`/`year`, default `month`), optionally narrowed with `--consumer`, in a `--format`
+  of `table` (default, for a human) or `json` (stable keys, for a script). Reads through
+  `UsageStatsInterface`, the same contract the dashboard uses, so the CLI and the dashboard can
+  never disagree about a period's totals.
+- A new admin page at **Reports > AI Token Usage**, under a **Mage-OS AI** heading in the Reports
+  menu (`Controller\Adminhtml\Usage\Index`, ACL resources `MageOS_AiBase::reports` for the group
+  and `MageOS_AiBase::usage` for the page, both under `Magento_Reports::report`):
+  `Block\Adminhtml\Usage\Dashboard` renders the totals, the trend and the breakdowns as inline SVG
+  through `Model\Usage\Graph\SvgRenderer` — no JS charting dependency, and no script at all: the
+  trend's crosshair and value panel are revealed by CSS on the hovered column, so the page works
+  under a strict CSP. A read-only `Magento_Ui` grid below it lists individual raw-log rows,
+  filterable by date, consumer, service and the token counts, with a notice naming the *configured*
+  retention windows and explaining that older usage lives on as daily aggregates.
+- The trend chart draws up to five series with the remainder folded into **Other**, switched
+  between consumers and service rows by a selector that, like the period selector, carries its
+  state in the URL. Series colours are the Mage-OS admin hues in fixed slot order, validated as a
+  set against the chart surface for colour-vision separation and contrast; a legend is always
+  present, so identity is never carried by colour alone.
+- `UsageStatsInterface::getTimeSeriesByConsumer()` and `getTimeSeriesByService()`, returning one
+  dense ordered series per group over the same raw/daily union the totals use, and
+  `seriesRangeGrouped()` on both repositories behind them. Query counts are unchanged on either
+  side: the daily table adds a second `GROUP BY` to its single statement, and the raw table groups
+  inside the per-bucket statement it already issued.
+
+
 - **Services can be turned off without being deleted.** Each configured row has an enable toggle; a disabled row keeps its id and its credentials, stays editable in the admin form, and disappears from `AiServiceSelectorInterface` entirely, so nothing calls it: the option source stops offering it, `AiClientFactoryInterface::create()` skips it, `createById()` refuses it, and a module reading credentials to call a provider itself never sees it. Filtering happens in `Model\AiServiceSelector` rather than at each call site, which is what makes "disabled" mean the same thing everywhere. Rows saved before this setting existed carry no value for it and count as enabled, so upgrading cannot silently stop a working integration. Read it through the new `Api\Data\AiServiceInterface::isEnabled()`.
 - **A configured row can be named for what it is for.** The same backend is often configured more than once on different keys ("Chat AI" and "Summaries" on two Anthropic accounts), and the purpose is what an administrator recognises when another module asks them to pick a service. The name is optional, hidden behind a pencil in the row heading until asked for, and read through the new `Api\Data\AiServiceInterface::getLabel()`. `Model\Config\Source\ConfiguredService` lists a named row under its name with the provider behind it (`Chat AI (OpenAI, gpt-4o)`), because a row called Chat AI still has to say which backend it bills.
 - **A Mage-OS configuration tab**, carrying the icon the Mage-OS admin theme already ships. Mage-OS declares no tab of its own, and the modules around this one had each landed somewhere different: the catalog tab, an existing section, or a tab a single module invented. This is the base AI module, so it declares the shared one and moves **AI Configuration** into it, out of Services.
@@ -41,6 +127,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Unit tests for the `EncryptedServices` placeholder round-trip and `SensitiveDataProcessor` masking/restore.
 
 ### Changed
+- **BREAKING:** `Api\AiClientInterface` gained `getConsumer()`, and `Api\Data\TokenUsageInterface` gained `getCachedTokens()` and `getReasoningTokens()`. Custom implementations of either must add them. The bundled `Model\Client\SymfonyAiClient` and `Model\Chat\TokenUsage` already do.
+- **BREAKING:** `Api\AiClientFactoryInterface::create()` and `createById()` each gained a trailing `?string $consumer = null` parameter. The argument is optional for *callers*, so no call site has to change, but an implementation of the interface must widen its own signature to match or PHP will refuse to load it.
 - **symfony/ai bumped to `^0.13`** for `symfony/ai-platform` and the two required bridges, and the suggested bridges follow the same line. The one BC break in the release — `Result\Stream\ListenerInterface` gained `onError()` — lands on a surface this module never implements, and `DeferredResult`'s typed readers moved to a trait without changing their signatures, so the adapter needed no change. Bridge `createPlatform()` signatures are unchanged and now verified against v0.13.0. Streaming bridges emit a new `ToolCallStart` delta, which `SymfonyAiClient` ignores the way it ignores every delta carrying no payload of its own; completed calls still arrive as one `ToolCallComplete`.
 - **BREAKING:** `Api\Data\AiServiceInterface` gained `isEnabled()` and `getLabel()`. Custom implementations must add them; `Model\AiService` reads both from the stored row, so nothing else has to.
 - **The admin form's provider list depends on the application mode.** In production only providers that can actually be used are offered, with one sentence pointing at a developer for the rest; developer mode keeps every provider and the instructions for installing a bridge, because that is where someone can act on them. Only the buttons are filtered: the field schema still carries every registered provider, so a row saved for one of them keeps rendering with its fields and its credentials.

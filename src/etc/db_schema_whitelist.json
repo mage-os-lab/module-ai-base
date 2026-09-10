@@ -1,0 +1,52 @@
+{
+    "mageos_ai_usage_log": {
+        "column": {
+            "entity_id": true,
+            "service_id": true,
+            "service_code": true,
+            "model": true,
+            "consumer": true,
+            "store_id": true,
+            "input_tokens": true,
+            "output_tokens": true,
+            "total_tokens": true,
+            "cached_tokens": true,
+            "reasoning_tokens": true,
+            "streamed": true,
+            "created_at": true
+        },
+        "index": {
+            "MAGEOS_AI_USAGE_LOG_CREATED_AT": true,
+            "MAGEOS_AI_USAGE_LOG_CONSUMER": true,
+            "MAGEOS_AI_USAGE_LOG_SERVICE_ID": true
+        },
+        "constraint": {
+            "PRIMARY": true
+        }
+    },
+    "mageos_ai_usage_daily": {
+        "column": {
+            "entity_id": true,
+            "usage_date": true,
+            "service_id": true,
+            "service_code": true,
+            "model": true,
+            "consumer": true,
+            "store_id": true,
+            "calls": true,
+            "input_tokens": true,
+            "output_tokens": true,
+            "total_tokens": true,
+            "cached_tokens": true,
+            "reasoning_tokens": true
+        },
+        "index": {
+            "MAGEOS_AI_USAGE_DAILY_CONSUMER": true,
+            "MAGEOS_AI_USAGE_DAILY_SERVICE_ID": true
+        },
+        "constraint": {
+            "PRIMARY": true,
+            "UNQ_3468BFCF43DA3F7B71DC195D8378F11B": true
+        }
+    }
+}

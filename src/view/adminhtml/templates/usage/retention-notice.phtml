@@ -1,0 +1,21 @@
+<?php
+/**
+ * Copyright 2026 Mage-OS
+ * All Rights Reserved.
+ */
+
+declare(strict_types=1);
+
+/** @var \Magento\Framework\Escaper $escaper */
+/** @var \MageOS\AiBase\Block\Adminhtml\Usage\RetentionNotice $block */
+?>
+<div class="message message-notice mageos-ai-usage-retention-notice">
+    <span>
+        <?= $escaper->escapeHtml(__(
+            'The listing below shows individual calls from the last %1. Older usage is kept as '
+            . 'daily totals for %2 and is what the figures above are drawn from.',
+            $block->getRawRetentionLabel(),
+            $block->getDailyRetentionLabel()
+        )) ?>
+    </span>
+</div>

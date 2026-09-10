@@ -8,6 +8,7 @@ use Magento\Framework\Exception\LocalizedException;
 use MageOS\AiBase\Api\Data\FinishReason as AiBaseFinishReason;
 use MageOS\AiBase\Api\Data\MessageRole;
 use MageOS\AiBase\Api\Data\StreamChunkType;
+use MageOS\AiBase\Api\Data\UsageRecordInterface;
 use MageOS\AiBase\Api\PlatformAwareInterface;
 use MageOS\AiBase\Model\Chat\ChatMessage;
 use MageOS\AiBase\Model\Chat\ChatRequest;
@@ -126,6 +127,79 @@ final class SymfonyAiClientChatTest extends TestCase
         $platform = new FakePlatform(new FakeResult(new TextResult('Hi')));
 
         self::assertNull($this->client($platform)->chat($this->helloRequest())->getUsage());
+    }
+
+    public function test_reads_cached_tokens_from_the_platform_usage_object_when_the_bridge_reports_them(): void
+    {
+        $metadata = new Metadata();
+        $metadata->add('token_usage', new TokenUsage(promptTokens: 120, completionTokens: 45, cachedTokens: 30));
+        $platform = new FakePlatform(new FakeResult(new TextResult('Hi'), $metadata));
+
+        $usage = $this->client($platform)->chat($this->helloRequest())->getUsage();
+
+        self::assertSame(30, $usage?->getCachedTokens());
+    }
+
+    public function test_reads_reasoning_tokens_from_the_platform_usage_object_when_the_bridge_reports_them(): void
+    {
+        $metadata = new Metadata();
+        $metadata->add('token_usage', new TokenUsage(promptTokens: 120, completionTokens: 45, thinkingTokens: 12));
+        $platform = new FakePlatform(new FakeResult(new TextResult('Hi'), $metadata));
+
+        $usage = $this->client($platform)->chat($this->helloRequest())->getUsage();
+
+        self::assertSame(12, $usage?->getReasoningTokens());
+    }
+
+    public function test_records_null_cached_tokens_when_the_bridge_does_not_expose_them(): void
+    {
+        $metadata = new Metadata();
+        $metadata->add('token_usage', new TokenUsage(promptTokens: 120, completionTokens: 45));
+        $platform = new FakePlatform(new FakeResult(new TextResult('Hi'), $metadata));
+
+        $usage = $this->client($platform)->chat($this->helloRequest())->getUsage();
+
+        self::assertNull($usage?->getCachedTokens());
+    }
+
+    public function test_records_null_reasoning_tokens_when_the_bridge_does_not_expose_them(): void
+    {
+        $metadata = new Metadata();
+        $metadata->add('token_usage', new TokenUsage(promptTokens: 120, completionTokens: 45));
+        $platform = new FakePlatform(new FakeResult(new TextResult('Hi'), $metadata));
+
+        $usage = $this->client($platform)->chat($this->helloRequest())->getUsage();
+
+        self::assertNull($usage?->getReasoningTokens());
+    }
+
+    public function test_still_reports_prompt_and_completion_tokens_when_the_extra_counts_are_absent(): void
+    {
+        $metadata = new Metadata();
+        $metadata->add('token_usage', new TokenUsage(promptTokens: 120, completionTokens: 45));
+        $platform = new FakePlatform(new FakeResult(new TextResult('Hi'), $metadata));
+
+        $usage = $this->client($platform)->chat($this->helloRequest())->getUsage();
+
+        self::assertSame(120, $usage?->getPromptTokens());
+        self::assertSame(45, $usage?->getCompletionTokens());
+    }
+
+    public function test_carries_the_extra_counts_through_the_usage_chunk_of_a_streamed_response(): void
+    {
+        $platform = new FakePlatform(new FakeResult(null, null, [
+            new TextDelta('Hi'),
+            new TokenUsage(promptTokens: 120, completionTokens: 45, thinkingTokens: 12, cachedTokens: 30),
+        ]));
+
+        $chunks = iterator_to_array($this->client($platform)->streamChat($this->helloRequest()), false);
+
+        $usageChunk = array_values(array_filter(
+            $chunks,
+            static fn ($c) => $c->getType() === StreamChunkType::Usage,
+        ))[0];
+        self::assertSame(30, $usageChunk->getUsage()?->getCachedTokens());
+        self::assertSame(12, $usageChunk->getUsage()?->getReasoningTokens());
     }
 
     public function test_passes_tool_definitions_to_the_provider(): void
@@ -286,6 +360,41 @@ final class SymfonyAiClientChatTest extends TestCase
         self::assertSame('openai', $client->getServiceCode());
         self::assertSame('_row_1', $client->getServiceId());
         self::assertSame('gpt-4o', $client->getModel());
+    }
+
+    /**
+     * No consumer was ever set on this client, so it reports the same unknown value the usage
+     * grid, the stats layer and the recording decorator all read off UsageRecordInterface.
+     */
+    public function test_returns_the_unknown_consumer_when_the_factory_was_given_none(): void
+    {
+        $client = new SymfonyAiClient(
+            new FakePlatform(new FakeResult(new TextResult('Hi'))),
+            'gpt-4o',
+            'openai',
+            '_row_1',
+            $this->optionNormalizer(),
+        );
+
+        self::assertSame(UsageRecordInterface::CONSUMER_UNKNOWN, $client->getConsumer());
+    }
+
+    /**
+     * A row saved before the consumer name existed, or one that stored an empty value, must not
+     * report a blank string: the consumer column is not-null, so it needs a real value to store.
+     */
+    public function test_returns_the_unknown_consumer_when_the_factory_was_given_a_blank_string(): void
+    {
+        $client = new SymfonyAiClient(
+            new FakePlatform(new FakeResult(new TextResult('Hi'))),
+            'gpt-4o',
+            'openai',
+            '_row_1',
+            $this->optionNormalizer(),
+            '   ',
+        );
+
+        self::assertSame(UsageRecordInterface::CONSUMER_UNKNOWN, $client->getConsumer());
     }
 
     /**
@@ -686,6 +795,54 @@ final class SymfonyAiClientChatTest extends TestCase
         $this->expectExceptionMessage('must be a model name');
 
         $this->client($platform)->chat($this->helloRequest(), ['model' => '   ']);
+    }
+
+    /**
+     * Streaming shares invoke() with the buffered path, so the option has to be gone before that
+     * shared code hands the options to normalizeOptions() there too, not only on the chat() path.
+     */
+    public function test_removes_the_consumer_option_before_normalising_provider_options(): void
+    {
+        $platform = new FakePlatform(new FakeResult(null, new Metadata(), [
+            new TextDelta('Hi'),
+        ]));
+
+        $stream = $this->client($platform)->streamChat(
+            $this->helloRequest(),
+            ['consumer' => 'catalog-import']
+        );
+        iterator_to_array($stream);
+
+        self::assertArrayNotHasKey('consumer', $platform->options);
+    }
+
+    /**
+     * Consumer attribution is not a provider setting. Left in, it would reach the request body
+     * where an OpenAI-compatible endpoint rejects an unknown field with a 400 rather than a
+     * LocalizedException, so the only thing worth asserting is that the platform never sees it.
+     */
+    public function test_does_not_send_the_consumer_option_to_the_platform(): void
+    {
+        $platform = new FakePlatform(new FakeResult(new TextResult('Hi')));
+
+        $this->client($platform)->chat($this->helloRequest(), ['consumer' => 'catalog-import']);
+
+        self::assertArrayNotHasKey('consumer', $platform->options);
+    }
+
+    /**
+     * Stripping the consumer option must not take the other options with it.
+     */
+    public function test_still_sends_the_provider_options_the_caller_asked_for_alongside_a_consumer(): void
+    {
+        $platform = new FakePlatform(new FakeResult(new TextResult('Hi')));
+
+        $this->client($platform)->chat(
+            $this->helloRequest(),
+            ['consumer' => 'catalog-import', 'max_tokens' => 400]
+        );
+
+        self::assertSame(400, $platform->options['max_output_tokens'] ?? null);
     }
 }
 

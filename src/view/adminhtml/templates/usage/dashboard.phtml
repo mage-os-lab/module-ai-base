@@ -1,0 +1,107 @@
+<?php
+/**
+ * Copyright 2026 Mage-OS
+ * All Rights Reserved.
+ */
+
+declare(strict_types=1);
+
+/** @var \Magento\Framework\Escaper $escaper */
+/** @var \MageOS\AiBase\Block\Adminhtml\Usage\Dashboard $block */
+
+$changePercent = $block->getPeriodOverPeriodChangePercent();
+$selectedPeriodCode = $block->getSelectedPeriodCode();
+$selectedTrendCode = $block->getSelectedTrendCode();
+$selectedStoreCode = $block->getSelectedStoreCode();
+$storeOptions = $block->getStoreOptions();
+$changeCssClass = $changePercent !== null && $changePercent >= 0.0
+    ? 'mageos-ai-usage-dashboard-change-up'
+    : 'mageos-ai-usage-dashboard-change-down';
+?>
+<div class="mageos-ai-usage-dashboard">
+    <?php if ($block->isTrackingDisabled()): ?>
+        <div class="message message-notice">
+            <span><?= $escaper->escapeHtml(__(
+                'AI usage tracking is currently disabled, so nothing below is being recorded. '
+                . 'Turn it on under Stores > Configuration > Mage-OS > AI Configuration.'
+            )) ?></span>
+        </div>
+    <?php endif; ?>
+
+    <ul class="mageos-ai-usage-dashboard-period-selector">
+        <?php foreach ($block->getPeriodOptions() as $periodCode => $periodLabel): ?>
+            <li class="<?= $periodCode === $selectedPeriodCode ? 'current' : '' ?>">
+                <a href="<?= $escaper->escapeHtml($block->getPeriodUrl((string) $periodCode)) ?>">
+                    <?= $escaper->escapeHtml($periodLabel) ?>
+                </a>
+            </li>
+        <?php endforeach; ?>
+    </ul>
+
+    <?php if ($block->hasStoreChoice()): ?>
+        <ul class="mageos-ai-usage-dashboard-period-selector mageos-ai-usage-store-selector">
+            <?php foreach ($storeOptions as $storeCode => $storeLabel): ?>
+                <li class="<?= (string) $storeCode === $selectedStoreCode ? 'current' : '' ?>">
+                    <a href="<?= $escaper->escapeHtml($block->getStoreUrl((string) $storeCode)) ?>">
+                        <?= $escaper->escapeHtml($storeLabel) ?>
+                    </a>
+                </li>
+            <?php endforeach; ?>
+        </ul>
+    <?php endif; ?>
+
+    <?php if ($block->hasNoUsageData()): ?>
+        <div class="message message-notice mageos-ai-usage-dashboard-empty">
+            <span><?= $escaper->escapeHtml(__(
+                'No usage recorded yet for this period.'
+            )) ?></span>
+        </div>
+    <?php else: ?>
+        <div class="mageos-ai-usage-dashboard-totals">
+            <span class="mageos-ai-usage-dashboard-total-value">
+                <?= $escaper->escapeHtml($block->getFormattedTotalTokens()) ?>
+            </span>
+            <span class="mageos-ai-usage-dashboard-total-label">
+                <?= $escaper->escapeHtml(__('total tokens')) ?>
+            </span>
+            <?php if ($changePercent !== null): ?>
+                <span class="mageos-ai-usage-dashboard-change <?= $escaper->escapeHtml($changeCssClass) ?>">
+                    <?= $escaper->escapeHtml(($changePercent >= 0.0 ? '+' : '') . $changePercent . '%') ?>
+                </span>
+            <?php endif; ?>
+        </div>
+
+        <?php if ($block->hasTrend()): ?>
+            <section class="mageos-ai-usage-dashboard-breakdown mageos-ai-usage-dashboard-trend">
+                <div class="mageos-ai-usage-trend-header">
+                    <h3><?= $escaper->escapeHtml($block->getTrendLabel()) ?></h3>
+                    <ul class="mageos-ai-usage-trend-selector">
+                        <?php foreach ($block->getTrendOptions() as $trendCode => $trendLabel): ?>
+                            <li class="<?= $trendCode === $selectedTrendCode ? 'current' : '' ?>">
+                                <a href="<?= $escaper->escapeHtml($block->getTrendUrl((string) $trendCode)) ?>">
+                                    <?= $escaper->escapeHtml($trendLabel) ?>
+                                </a>
+                            </li>
+                        <?php endforeach; ?>
+                    </ul>
+                </div>
+                <?= /* @noEscape SvgRenderer escapes every label and number it draws. */
+                    $block->getTrendGraph() ?>
+            </section>
+        <?php endif; ?>
+
+        <div class="mageos-ai-usage-dashboard-breakdowns">
+            <section class="mageos-ai-usage-dashboard-breakdown">
+                <h3><?= $escaper->escapeHtml(__('By consumer')) ?></h3>
+                <?= /* @noEscape SvgRenderer escapes every label and number it draws. */
+                    $block->getConsumerGraph() ?>
+            </section>
+
+            <section class="mageos-ai-usage-dashboard-breakdown">
+                <h3><?= $escaper->escapeHtml(__('By service')) ?></h3>
+                <?= /* @noEscape SvgRenderer escapes every label and number it draws. */
+                    $block->getServiceGraph() ?>
+            </section>
+        </div>
+    <?php endif; ?>
+</div>
