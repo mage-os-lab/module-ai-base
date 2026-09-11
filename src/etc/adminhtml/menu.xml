@@ -1,0 +1,31 @@
+<?xml version="1.0"?>
+<config xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:noNamespaceSchemaLocation="urn:magento:module:Magento_Backend:etc/menu.xsd">
+    <menu>
+        <!--
+            The heading the reports sit under. A group rather than a loose item beside Magento's
+            own report groups: "AI Token Usage" on its own reads as an odd sibling of "Sales" and
+            "Customers", and the next AI report added has somewhere to go without another
+            top-level entry.
+
+            Titled "Mage-OS AI" rather than plain "AI" because menu.xsd enforces a three-character
+            minimum on a title, which two letters cannot meet. It also matches the vendor tab the
+            configuration section already uses.
+        -->
+        <add id="MageOS_AiBase::report_ai"
+             title="Mage-OS AI"
+             translate="title"
+             module="MageOS_AiBase"
+             sortOrder="90"
+             parent="Magento_Reports::report"
+             resource="MageOS_AiBase::reports"/>
+        <add id="MageOS_AiBase::usage"
+             title="AI Token Usage"
+             translate="title"
+             module="MageOS_AiBase"
+             sortOrder="10"
+             parent="MageOS_AiBase::report_ai"
+             action="mageos_ai/usage/index"
+             resource="MageOS_AiBase::usage"/>
+    </menu>
+</config>

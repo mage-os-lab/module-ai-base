@@ -15,6 +15,7 @@ use MageOS\AiBase\Api\Data\MessageRole;
 use MageOS\AiBase\Api\Data\StreamChunkInterface;
 use MageOS\AiBase\Api\Data\StreamChunkType;
 use MageOS\AiBase\Api\Data\ToolDefinitionInterface;
+use MageOS\AiBase\Api\Data\UsageRecordInterface;
 use MageOS\AiBase\Model\Chat\ChatMessage;
 use MageOS\AiBase\Model\Chat\ChatRequest;
 use MageOS\AiBase\Model\Chat\ChatResponse;
@@ -82,6 +83,8 @@ class SymfonyAiClient implements AiClientInterface, PlatformAwareInterface
      * @param string $serviceCode
      * @param string $serviceId Configured row this client was built from
      * @param OptionNormalizer $optionNormalizer
+     * @param string|null $consumer Feature or module the factory attributed this client to;
+     *        read back, normalized, through getConsumer()
      */
     public function __construct(
         private readonly object $platform,
@@ -89,6 +92,7 @@ class SymfonyAiClient implements AiClientInterface, PlatformAwareInterface
         private readonly string $serviceCode,
         private readonly string $serviceId,
         private readonly OptionNormalizer $optionNormalizer,
+        private readonly ?string $consumer = null,
     ) {
     }
 
@@ -189,6 +193,16 @@ class SymfonyAiClient implements AiClientInterface, PlatformAwareInterface
     /**
      * @inheritdoc
      */
+    public function getConsumer(): string
+    {
+        $consumer = $this->consumer !== null ? trim($this->consumer) : '';
+
+        return $consumer !== '' ? $consumer : UsageRecordInterface::CONSUMER_UNKNOWN;
+    }
+
+    /**
+     * @inheritdoc
+     */
     public function getPlatform(): object
     {
         return $this->platform;
@@ -213,7 +227,7 @@ class SymfonyAiClient implements AiClientInterface, PlatformAwareInterface
     private function invoke(ChatRequestInterface $request, array $options): object
     {
         $model = $this->modelFor($options);
-        unset($options[AiClientInterface::OPTION_MODEL]);
+        unset($options[AiClientInterface::OPTION_MODEL], $options[AiClientInterface::OPTION_CONSUMER]);
 
         $options = $this->normalizeOptions($options);
 
@@ -594,7 +608,44 @@ class SymfonyAiClient implements AiClientInterface, PlatformAwareInterface
             $usage->getPromptTokens(),
             $usage->getCompletionTokens(),
             $usage->getTotalTokens(),
+            $this->extractCachedTokens($usage),
+            $this->extractReasoningTokens($usage),
         );
+    }
+
+    /**
+     * Tokens served from the provider's prompt cache, when the bridge reports them.
+     *
+     * Guarded by method_exists rather than trusted from the interface directly: the component is
+     * experimental and carries no BC promise, so a future or older bridge's usage object is not
+     * assumed to keep this method just because it satisfies the interface checked in
+     * {@see extractUsage()} today.
+     *
+     * @param \Symfony\AI\Platform\TokenUsage\TokenUsageInterface $usage
+     * @return int|null
+     */
+    private function extractCachedTokens(object $usage): ?int
+    {
+        // PHPStan sees the method as always present because the pinned interface declares it
+        // today; the guard is for the BC-unpromised component changing that under a future pin.
+        // @phpstan-ignore function.alreadyNarrowedType
+        return method_exists($usage, 'getCachedTokens') ? $usage->getCachedTokens() : null;
+    }
+
+    /**
+     * Tokens the model spent reasoning before its completion, when the bridge reports them.
+     *
+     * The platform's own vocabulary calls this "thinking", not "reasoning"; this module's naming
+     * follows the OpenAI-style term the rest of its API already uses.
+     *
+     * @param \Symfony\AI\Platform\TokenUsage\TokenUsageInterface $usage
+     * @return int|null
+     */
+    private function extractReasoningTokens(object $usage): ?int
+    {
+        // See extractCachedTokens() for why this guard stays despite PHPStan's certainty today.
+        // @phpstan-ignore function.alreadyNarrowedType
+        return method_exists($usage, 'getThinkingTokens') ? $usage->getThinkingTokens() : null;
     }
 
     /**

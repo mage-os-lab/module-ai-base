@@ -1,0 +1,24 @@
+<?xml version="1.0"?>
+<!--
+/**
+ * Copyright 2026 Mage-OS
+ * All Rights Reserved.
+ */
+-->
+<page xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+      xsi:noNamespaceSchemaLocation="urn:magento:framework:View/Layout/etc/page_configuration.xsd">
+    <head>
+        <title>AI Token Usage</title>
+        <css src="MageOS_AiBase::css/usage.css"/>
+    </head>
+    <body>
+        <referenceContainer name="content">
+            <block class="MageOS\AiBase\Block\Adminhtml\Usage\Dashboard" name="mageos_ai_usage_dashboard"
+                   template="MageOS_AiBase::usage/dashboard.phtml"/>
+            <block class="MageOS\AiBase\Block\Adminhtml\Usage\RetentionNotice"
+                   name="mageos_ai_usage_retention_note"
+                   template="MageOS_AiBase::usage/retention-notice.phtml"/>
+            <uiComponent name="mageos_ai_usage_listing"/>
+        </referenceContainer>
+    </body>
+</page>

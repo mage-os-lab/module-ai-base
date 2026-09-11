@@ -12,11 +12,15 @@ class TokenUsage implements TokenUsageInterface
      * @param int|null $promptTokens
      * @param int|null $completionTokens
      * @param int|null $totalTokens Provider-reported total, if it reported one
+     * @param int|null $cachedTokens Subset of $promptTokens served from the provider's prompt cache
+     * @param int|null $reasoningTokens Subset of $completionTokens spent on internal reasoning
      */
     public function __construct(
         private readonly ?int $promptTokens = null,
         private readonly ?int $completionTokens = null,
         private readonly ?int $totalTokens = null,
+        private readonly ?int $cachedTokens = null,
+        private readonly ?int $reasoningTokens = null,
     ) {
     }
 
@@ -49,5 +53,21 @@ class TokenUsage implements TokenUsageInterface
         }
 
         return ($this->promptTokens ?? 0) + ($this->completionTokens ?? 0);
+    }
+
+    /**
+     * @inheritdoc
+     */
+    public function getCachedTokens(): ?int
+    {
+        return $this->cachedTokens;
+    }
+
+    /**
+     * @inheritdoc
+     */
+    public function getReasoningTokens(): ?int
+    {
+        return $this->reasoningTokens;
     }
 }

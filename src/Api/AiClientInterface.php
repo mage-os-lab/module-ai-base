@@ -31,6 +31,21 @@ interface AiClientInterface
     public const OPTION_MODEL = 'model';
 
     /**
+     * Request option naming which feature or module a single call should be attributed to.
+     *
+     * Every other option is a provider setting that reaches the request body; this one never does.
+     * SymfonyAiClient strips it before the options reach normalizeOptions(), alongside
+     * self::OPTION_MODEL, because it exists for the same reason the model does: it is a property of
+     * the work rather than of the account. A module that reports several features through one
+     * client, built once with one set of credentials, can still tell them apart in recorded usage
+     * without a client per feature.
+     *
+     * Leave it out to use the consumer the factory was given when this client was built, or
+     * `Api\Data\UsageRecordInterface::CONSUMER_UNKNOWN` when neither was ever set.
+     */
+    public const OPTION_CONSUMER = 'consumer';
+
+    /**
      * Send a conversation and return what the model replied.
      *
      * The response carries text, any tools the model wants run, token counts and the provider's
@@ -117,4 +132,17 @@ interface AiClientInterface
      * @return string
      */
     public function getModel(): string;
+
+    /**
+     * Feature or module this client is attributed to, as the factory was given it.
+     *
+     * This is the client-level consumer named when the factory built this client, not any
+     * per-call override passed through self::OPTION_CONSUMER: usage recording (task 008) reads
+     * the option separately, because one client may report several features. Returns
+     * `Api\Data\UsageRecordInterface::CONSUMER_UNKNOWN` when the factory was given none, or a
+     * blank string, since usage recording needs a value to store either way.
+     *
+     * @return string
+     */
+    public function getConsumer(): string;
 }

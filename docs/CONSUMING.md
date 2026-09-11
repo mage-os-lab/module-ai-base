@@ -54,6 +54,41 @@ A client also says what it is, for logging and cost attribution: `getServiceCode
 `getServiceId()` (the configured row, which is what separates two accounts on the same backend)
 and `getModel()` (`gpt-4o`). Cost is per model, so a usage log wants all three.
 
+### Naming your module as a consumer
+
+Every call a client makes is recorded (see [docs/USAGE-TRACKING.md](USAGE-TRACKING.md)) under a
+**consumer**: an identifier for the module or feature that made it. Name yours instead of leaving
+every call attributed to `unknown`, since that is the only thing that lets a merchant tell "the
+product description generator" apart from "the support chat" in the usage dashboard.
+
+There are two ways to set it, and they answer two different questions:
+
+```php
+use MageOS\AiBase\Api\AiClientFactoryInterface;
+use MageOS\AiBase\Api\AiClientInterface;
+
+// Every call this client ever makes is attributed to "catalog_description_generator",
+// unless a single call overrides it (see below).
+$client = $this->aiClientFactory->create(consumer: 'catalog_description_generator');
+
+$client->complete('Write a product description for: ' . $productName);
+
+// One call, on a client built for something broader, attributed differently.
+$client->complete(
+    'Summarize these reviews: ' . $reviewText,
+    [AiClientInterface::OPTION_CONSUMER => 'review_summarizer'],
+);
+```
+
+`create()` and `createById()` both take `$consumer` as an optional, trailing argument, so every
+call site written before it existed still compiles unchanged. Use it when one client, built once,
+always serves the same feature. `AiClientInterface::OPTION_CONSUMER` is a per-call option instead,
+for a client that is shared across features and needs to tell them apart without building a second
+client for each one; it overrides the client-level consumer for that one call only and is never
+sent to the provider. `getConsumer()` on the client reads back whichever value the factory was
+given, or `Api\Data\UsageRecordInterface::CONSUMER_UNKNOWN` when neither this argument nor the
+per-call option was ever set.
+
 ## Options
 
 Four options are provider-neutral and get translated to whatever the configured backend calls

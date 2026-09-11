@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What this is
 
-`mage-os/module-ai-base` — a small Magento 2 module (`MageOS_AiBase`) that exposes an admin configuration UI for registering multiple AI backends (OpenAI, Anthropic, Azure, Google, Deepseek, HuggingFace, LM Studio, Ollama, OpenRouter) and a consumer API for other modules to read those configured credentials. It does **not** call any AI service itself — it only stores and serves configuration.
+`mage-os/module-ai-base` — a small Magento 2 module (`MageOS_AiBase`) that exposes an admin configuration UI for registering multiple AI backends (OpenAI, Anthropic, Azure, Google, Deepseek, HuggingFace, LM Studio, Ollama, OpenRouter), a provider-agnostic client (`AiClientInterface`) other modules use to actually make calls, and a consumer API for reading the stored configuration directly. Every call made through the bundled client is also recorded — token counts and metadata only, never prompt or response content — into two tables and surfaced on a **Reports > AI Token Usage** dashboard, an admin grid, and a `bin/magento mageos:ai:usage` CLI report; see `docs/USAGE-TRACKING.md`. It does **not** estimate cost, and it cannot record a call made through the `PlatformAwareInterface::getPlatform()` escape hatch, which bypasses the client entirely.
 
 The module is installed into a host Magento 2 app; this repo contains no runnable Magento instance and no build step.
 
@@ -45,6 +45,10 @@ E2E_DISPOSABLE_ENVIRONMENT=1 BASE_URL="https://your-store.test/" \
   ADMIN_USER=... ADMIN_PASSWORD=... npx playwright test
 ```
 
+Two specs seed usage rows, which needs a way to reach Magento: `E2E_MAGENTO_EXEC` is the command
+that gets to it (`docker exec store` in CI) and `E2E_MAGENTO_ROOT` the install's path in there.
+Unset, both fall back to running PHP against the local filesystem, which is what a DDEV run wants.
+
 **It deletes every configured AI service on the target install before each spec**, and stored
 credentials cannot be read back once gone, which is what `E2E_DISPOSABLE_ENVIRONMENT=1` is there to
 make you say out loud. Never point it at an install whose configuration matters. CI runs it in a
@@ -65,7 +69,8 @@ php bin/magento setup:upgrade
 php bin/magento setup:di:compile
 ```
 
-Admin UI lives at **Stores → Configuration → Mage-OS → AI Configuration**.
+Admin UI lives at **Stores → Configuration → Mage-OS → AI Configuration**; usage tracking lives at
+**Reports → AI Token Usage**.
 
 ## Architecture
 
@@ -93,6 +98,13 @@ Stored data flow:
 3. Magento serializes the posted rows as JSON via `Magento\Config\Model\Config\Backend\Serialized\ArraySerialized` into `core_config_data` at path **`mageos_ai/services/configuration`**.
 4. `AiServiceSelector::getParsedConfig()` reads that path, json_decodes it, and wraps each row with `AiServiceInterfaceFactory`. Each row's structure is `{ _rowId: { <service_code>: { ...fields } } }`, which is why the selector does `array_first(array_keys($item))` to extract the code.
 
+**Usage tracking** adds two real database tables (not `core_config_data`), declared in `etc/db_schema.xml`:
+
+- `mageos_ai_usage_log` — one row per completed call (service id/code, model, consumer, store id, the five token counts, whether it streamed, `created_at`). `Model\Client\RecordingAiClient` / `RecordingPlatformAwareAiClient` write to it; `ClientFactory` decides whether to wrap a built client with either, based on `Model\Usage\UsageConfig::isEnabled()` and whether the client is `PlatformAwareInterface`.
+- `mageos_ai_usage_daily` — one row per (`usage_date`, service id, model, consumer, store id) grouping key per day, written by `Cron\RollUpUsage` / `Model\Usage\UsageMaintenance` before it prunes the raw table. Both tables' pruning windows are the `retention_days` / `daily_retention_days` fields under `mageos_ai/usage/*`.
+
+`Api\UsageStatsInterface` (impl. `Model\Usage\UsageStats`) is the one read contract behind the **Reports → AI Token Usage** dashboard, its grid, and `bin/magento mageos:ai:usage`; it merges both tables per `Api\Data\Period`, never double-counting a day present in both. See `docs/ARCHITECTURE.md` for the full recording/roll-up data flows and the decision record on what is deliberately out of scope (no content, no cost estimate, no tracking past `getPlatform()`).
+
 ## Adding a new AI backend
 
 1. Create `src/AiServices/<Name>.php` implementing `AiServiceConfigurationInterface`. The configuration template's input `name` attributes must follow `<%- _fieldName %>[<service_code>][<field>]` — that nesting is what the selector expects when reading back.
@@ -106,4 +118,4 @@ Stored data flow:
 - `declare(strict_types=1)` in every file under `src/`; keep it that way.
 - Docblocks on every class, method and constant, including private ones, and they explain *why* rather than restating the signature. This is heavier than most Magento modules; match it.
 - `composer.json` requires `php: ^8.2` and `magento/framework: ^103.0.7 || ^104.0` (Magento 2.4.7+, the oldest line whose Symfony components resolve next to symfony/ai-platform). symfony/ai-platform and the OpenAI and Anthropic bridges are hard requirements pinned to `^0.13`; every other bridge stays a `suggest` — see the decision record in `docs/ARCHITECTURE.md`.
-- ACL resource: `MageOS_AiBase::configuration` (defined in `etc/acl.xml`), nested under `Magento_Backend::stores_attributes`.
+- ACL resources: `MageOS_AiBase::configuration` and `MageOS_AiBase::usage` (both in `etc/acl.xml`), nested under `Magento_Backend::stores_attributes`.

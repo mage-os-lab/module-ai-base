@@ -32,4 +32,25 @@ interface TokenUsageInterface
      * @return int|null
      */
     public function getTotalTokens(): ?int;
+
+    /**
+     * Tokens served from the provider's prompt cache rather than freshly processed.
+     *
+     * This is a subset of {@see getPromptTokens()}, not an addition to it: providers that report
+     * a cache hit still include the cached portion in the prompt count, and callers that also add
+     * this value into a total would double-count those tokens.
+     *
+     * @return int|null
+     */
+    public function getCachedTokens(): ?int;
+
+    /**
+     * Tokens the model spent on internal reasoning before producing the completion text.
+     *
+     * This is a subset of {@see getCompletionTokens()}, not an addition to it, for every provider
+     * that reports it: the reasoning tokens are already counted in the completion total.
+     *
+     * @return int|null
+     */
+    public function getReasoningTokens(): ?int;
 }

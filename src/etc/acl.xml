@@ -12,6 +12,32 @@
                                   sortOrder="30"/>
                     </resource>
                 </resource>
+                <!--
+                    The AI reports live under Reports rather than beside the configuration
+                    resource: they are what the store spent, not how the providers are set up, and
+                    a role tree reads best when a permission lives where its menu item does.
+
+                    Nested inside Magento_Backend::admin, which is where Magento_Reports itself
+                    declares Magento_Reports::report. An acl.xml naming an existing resource at a
+                    different point in the tree does not move it — every file's resources are merged
+                    into one document under a unique-id constraint, so the second position is a
+                    duplicate and the whole merged ACL fails to build, taking the admin with it.
+
+                    The group resource exists so the menu heading has something to be guarded by,
+                    and so a role can be given or refused every AI report at once as more are
+                    added, rather than one checkbox per report.
+                -->
+                <resource id="Magento_Reports::report">
+                    <resource id="MageOS_AiBase::reports"
+                              title="Mage-OS AI"
+                              translate="title"
+                              sortOrder="90">
+                        <resource id="MageOS_AiBase::usage"
+                                  title="Mage-OS AI Usage"
+                                  translate="title"
+                                  sortOrder="10"/>
+                    </resource>
+                </resource>
             </resource>
         </resources>
     </acl>
