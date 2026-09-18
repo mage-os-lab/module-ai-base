@@ -42,7 +42,17 @@ interface TokenUsageInterface
      *
      * @return int|null
      */
-    public function getCachedTokens(): ?int;
+    public function getCacheReadTokens(): ?int;
+
+    /**
+     * Tokens written into the provider's prompt cache for reuse by a later request.
+     *
+     * This is also a subset of {@see getPromptTokens()}, not an addition to it. Reads and writes
+     * bill at different rates, so the two are kept apart rather than folded into one cached count.
+     *
+     * @return int|null
+     */
+    public function getCacheWriteTokens(): ?int;
 
     /**
      * Tokens the model spent on internal reasoning before producing the completion text.

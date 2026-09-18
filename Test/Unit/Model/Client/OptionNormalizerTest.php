@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace MageOS\AiBase\Test\Unit\Model\Client;
 
 use Magento\Framework\Exception\LocalizedException;
+use MageOS\AiBase\Model\Client\AiRequestNotSentException;
 use MageOS\AiBase\Model\Client\BridgeRegistry;
 use MageOS\AiBase\Model\Client\OptionNormalizer;
 use PHPUnit\Framework\TestCase;
@@ -129,6 +130,17 @@ final class OptionNormalizerTest extends TestCase
     {
         $this->expectException(LocalizedException::class);
         $this->expectExceptionMessage('"stop" option is not supported by AI service "openai"');
+
+        $this->subject()->normalize('openai', ['stop' => 'END']);
+    }
+
+    /**
+     * Nobody paid for this call: it never left this class, so the recording decorator (task 007)
+     * needs to tell it apart from a call the provider actually rejected.
+     */
+    public function test_it_throws_request_not_sent_for_an_unsupported_option(): void
+    {
+        $this->expectException(AiRequestNotSentException::class);
 
         $this->subject()->normalize('openai', ['stop' => 'END']);
     }

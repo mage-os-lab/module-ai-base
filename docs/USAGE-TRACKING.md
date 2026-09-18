@@ -15,9 +15,90 @@ one row:
 - which model it actually ran against (see [Model attribution](#model-attribution) below)
 - which module or feature it is attributed to (the **consumer**)
 - which store it ran under
-- prompt, completion, total, cached and reasoning token counts
+- prompt, completion, total, cache read, cache write and reasoning token counts (see
+  [Token counts](#token-counts) below)
 - whether the response was streamed
+- whether the call failed, and whether it reported any usage before failing (see
+  [Failed calls and null-token rows](#failed-calls-and-null-token-rows) below)
 - when it happened
+
+## Token counts
+
+Six counts, each independently nullable. A provider that never mentions a count leaves it `null`
+on the row, not `0`: `0` means the provider stated the count was zero, `null` means the provider
+never reported it at all. The same distinction is drawn everywhere this module sums or averages
+these counts, see [Failed calls and null-token rows](#failed-calls-and-null-token-rows).
+
+- **Prompt**: tokens the call's input cost, **already including whatever the provider served from
+  its cache.** This is normalized, not just observed: some providers report cache tokens as part of
+  the prompt count to begin with, but at least one bundled provider's own API (Anthropic's) defines
+  its prompt count as excluding both a cache read and a cache write, and this module folds them back
+  in before a row is ever written. A prompt count therefore always means "what this call's input
+  actually cost", the same way on every provider, rather than a figure whose meaning shifts with
+  which backend answered. See [Which providers report what](#which-providers-report-what) below for
+  which providers needed that correction.
+- **Completion**: tokens the response produced, including any reasoning tokens spent getting there.
+- **Total**: the provider's own total when it reports one, or prompt plus completion when it does
+  not.
+- **Cache read**: the part of the prompt served from the provider's cache instead of freshly
+  processed. A subset of the prompt count above, never an addition to it.
+- **Cache write**: the part of the prompt newly written into the provider's cache, for a later call
+  to read back. Also a subset of the prompt count, kept apart from cache read rather than folded into
+  one combined "cached" figure, because the two are typically billed at different rates. A cache
+  write commonly costs a premium over a fresh prompt token, and a cache read commonly costs a
+  fraction of one. This module states counts, never a computed cost (see
+  [What is never recorded](#what-is-never-recorded) below): check the provider's own pricing page
+  for the rates that actually apply to an account.
+- **Reasoning**: the part of the completion the model spent on internal reasoning before writing its
+  visible answer, for the providers and models that report it separately. A subset of the completion
+  count, not an addition to it.
+
+### Which providers report what
+
+Not every provider reports every count, and this module states only what it has actually verified
+against an installed bridge. The **Anthropic** and **OpenAI** bridges are hard requirements of this
+module and are exercised by its own test suite; every other bridge is optional, and most are not
+installed in this repository's own development environment, so their row below says so plainly
+rather than guessing.
+
+| Provider | Reports usage | Cache read | Cache write | Reasoning tokens |
+|---|---|---|---|---|
+| Anthropic | Yes | Yes, reported outside the prompt count by the provider's own API, folded back into the normalized prompt count by this module (see [Token counts](#token-counts) above) | Yes, same treatment as cache read | Not reported by the bridge this module uses |
+| OpenAI | Yes | Yes, already counted inside the prompt as the provider reports it | Not reported by the bridge this module uses | Yes, when the model itself reports reasoning tokens (its extended-thinking-style models) |
+| Azure (OpenAI) | Not verified | Not verified | Not verified | Not verified. Azure's bridge speaks the same request shape as OpenAI's, so the same behavior is expected, but the bridge package is not installed here to confirm it |
+| DeepSeek, LM Studio, OpenRouter (OpenAI-compatible bridges) | Not verified | Not verified | Not verified | Not verified. Each depends on what that specific endpoint's own Chat Completions response reports |
+| HuggingFace | Not verified | Not verified | Not verified | Not verified. An earlier review of this feature raised that this bridge reports no usage at all on any call; that claim has not been independently confirmed against the bridge itself and should not be read as settled fact |
+| Google (Gemini) | Not verified | Not verified | Not verified | Not verified. An earlier review of this feature raised that this bridge reports no usage specifically on a streamed call; that claim has not been independently confirmed against the bridge itself and should not be read as settled fact |
+| Ollama | Not verified | Not verified | Not verified | Not verified |
+
+Whatever a provider does not report, this module never invents. A call through a provider that
+reports nothing at all still writes a row, with every token count `null` on it, the same as any
+other call that happened to report no usage; see the next section.
+
+## Failed calls and null-token rows
+
+A row is written for every call the client actually sends, whether it succeeds, fails after
+reaching the provider, or succeeds while reporting no usage at all:
+
+- A call that reached the provider and then threw, a dropped connection, a provider-side error,
+  is recorded with the failed flag set. Its token columns still hold whatever the provider had
+  already reported before the failure, when it reported anything; a failed call is not the same
+  as a call with no usage, since a provider can bill (and report) partial usage on a call that
+  still ends in an error. This is why "failed" is its own flag rather than something inferred from
+  null token counts.
+- A call that is rejected **before** it ever reaches the provider, an unsupported option, an
+  invalid model override, a malformed request built by the calling code, is not recorded at all.
+  Nothing was sent, so nothing was billed, so there is no call for a usage table to describe. See
+  [docs/CONSUMING.md](CONSUMING.md#failure-modes-to-handle) for `AiRequestNotSentException`, which
+  marks exactly this case.
+- A streamed call that a caller abandons partway through, breaking out of the loop before the
+  provider finished, is recorded as not failed, with whatever the last usage chunk it saw
+  reported: the client itself never threw, the caller simply stopped listening.
+
+`null` versus `0` carries through every total and average this module computes, not only the raw
+row: a provider that never reports cache tokens does not drag a mixed-provider average toward
+zero, and a period where nothing reported reasoning tokens shows "not reported" rather than a
+reassuring-looking zero.
 
 ## What is never recorded
 

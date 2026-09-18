@@ -35,9 +35,64 @@ final class DbSchemaTest extends TestCase
     {
         $table = $this->getTable(self::RAW_TABLE);
 
-        foreach (['input_tokens', 'output_tokens', 'total_tokens', 'cached_tokens', 'reasoning_tokens'] as $columnName) {
+        foreach (['input_tokens', 'output_tokens', 'total_tokens', 'reasoning_tokens'] as $columnName) {
             self::assertNotNull($table->xpath('column[@name="' . $columnName . '"]')[0] ?? null, $columnName);
         }
+    }
+
+    public function test_it_declares_nullable_token_counts_on_the_log(): void
+    {
+        $table = $this->getTable(self::RAW_TABLE);
+
+        foreach (['input_tokens', 'output_tokens', 'total_tokens'] as $columnName) {
+            $column = $table->xpath('column[@name="' . $columnName . '"]')[0] ?? null;
+            self::assertNotNull($column, $columnName);
+            self::assertSame('true', (string) $column['nullable'], $columnName);
+            self::assertSame('', (string) $column['default'], $columnName);
+        }
+    }
+
+    public function test_it_declares_cache_read_and_write_columns_on_both_tables(): void
+    {
+        foreach ([self::RAW_TABLE, self::DAILY_TABLE] as $tableName) {
+            $table = $this->getTable($tableName);
+
+            foreach (['cache_read_tokens', 'cache_write_tokens'] as $columnName) {
+                self::assertNotNull($table->xpath('column[@name="' . $columnName . '"]')[0] ?? null, $tableName . '.' . $columnName);
+            }
+        }
+    }
+
+    public function test_it_no_longer_declares_a_cached_tokens_column(): void
+    {
+        foreach ([self::RAW_TABLE, self::DAILY_TABLE] as $tableName) {
+            $table = $this->getTable($tableName);
+
+            self::assertNull($table->xpath('column[@name="cached_tokens"]')[0] ?? null, $tableName);
+        }
+    }
+
+    public function test_it_declares_a_failed_flag_on_the_log(): void
+    {
+        $table = $this->getTable(self::RAW_TABLE);
+
+        $failed = $table->xpath('column[@name="failed"]')[0] ?? null;
+        self::assertNotNull($failed);
+        self::assertSame('boolean', (string) $table->xpath('column[@name="failed"]/@xsi:type')[0]);
+        self::assertSame('false', (string) $failed['nullable']);
+        self::assertSame('false', (string) $failed['default']);
+    }
+
+    public function test_it_declares_a_failed_calls_count_on_the_daily_table(): void
+    {
+        $table = $this->getTable(self::DAILY_TABLE);
+
+        $failedCalls = $table->xpath('column[@name="failed_calls"]')[0] ?? null;
+        self::assertNotNull($failedCalls);
+        self::assertSame('int', (string) $table->xpath('column[@name="failed_calls"]/@xsi:type')[0]);
+        self::assertSame('true', (string) $failedCalls['unsigned']);
+        self::assertSame('false', (string) $failedCalls['nullable']);
+        self::assertSame('0', (string) $failedCalls['default']);
     }
 
     public function test_it_declares_no_column_capable_of_holding_prompt_or_response_content(): void
@@ -93,6 +148,24 @@ final class DbSchemaTest extends TestCase
 
         self::assertArrayHasKey(self::RAW_TABLE, $whitelist);
         self::assertArrayHasKey(self::DAILY_TABLE, $whitelist);
+    }
+
+    public function test_it_lists_every_declared_column_in_the_whitelist(): void
+    {
+        $path = dirname(__DIR__, 3) . '/src/etc/db_schema_whitelist.json';
+        $whitelist = json_decode((string) file_get_contents($path), true);
+
+        foreach ([self::RAW_TABLE, self::DAILY_TABLE] as $tableName) {
+            $declaredColumns = array_map(
+                static fn (SimpleXMLElement $column): string => (string) $column['name'],
+                $this->getTable($tableName)->xpath('column'),
+            );
+
+            foreach ($declaredColumns as $columnName) {
+                self::assertArrayHasKey($columnName, $whitelist[$tableName]['column'], $tableName . '.' . $columnName);
+                self::assertTrue($whitelist[$tableName]['column'][$columnName], $tableName . '.' . $columnName);
+            }
+        }
     }
 
     private function getTable(string $name): SimpleXMLElement

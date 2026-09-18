@@ -203,6 +203,85 @@ test.describe('AI Token Usage page', () => {
         }
     });
 
+    test('seeds rows with cache read, cache write, failed and null token counts', async () => {
+        // Proves the fixture itself before any other spec below relies on it being right: no
+        // browser involved, just the same object-manager path every other fixture method uses.
+        const usageLog = new UsageLogFixture();
+        const label = '_seed_check';
+        await usageLog.seedDetailedCalls(0, label);
+        try {
+            const rows = await usageLog.readDetailedCalls(label);
+
+            const cachedRow = rows.find((row) => row.consumer === `e2e_cache_reader${label}`);
+            const failedRow = rows.find((row) => row.consumer === `e2e_failed_call${label}`);
+
+            expect(cachedRow).toMatchObject({ cacheReadTokens: 300, cacheWriteTokens: 150, failed: false });
+            expect(failedRow).toMatchObject({
+                failed: true,
+                inputTokens: null,
+                cacheReadTokens: null,
+                cacheWriteTokens: null,
+            });
+        } finally {
+            await usageLog.remove();
+        }
+    });
+
+    test('shows the failed calls count in the dashboard totals', async ({ page }) => {
+        const usagePage = new UsagePage(page);
+        await usagePage.openFromMenu();
+        // Scoped to a store the rest of this suite never writes to, so a figure this test reads
+        // exactly is not at the mercy of another spec's rows landing in the same period.
+        await usagePage.openWithQuery('?store=3');
+        const hadNoUsageBefore = (await usagePage.emptyStateMessage().count()) > 0;
+        const failedCallsBefore = hadNoUsageBefore
+            ? 0
+            : parseInt(await usagePage.failedCallsStat().innerText(), 10);
+
+        const usageLog = new UsageLogFixture();
+        await usageLog.seedDetailedCalls(3, '_dashboard_failed');
+        try {
+            await usagePage.openWithQuery('?store=3');
+
+            await expect(usagePage.failedCallsStat()).toHaveText(String(failedCallsBefore + 1));
+        } finally {
+            await usageLog.remove();
+        }
+    });
+
+    test('shows cache read and cache write columns in the grid', async ({ page }) => {
+        const usageLog = new UsageLogFixture();
+        const label = '_grid_cache';
+        await usageLog.seedDetailedCalls(0, label);
+        try {
+            const usagePage = new UsagePage(page);
+            await usagePage.openFromMenu();
+
+            const row = usagePage.gridRow(`e2e_cache_reader${label}`);
+            await expect(row).toBeVisible();
+            await expect(await usagePage.cacheReadTokensCell(row)).toHaveText('300');
+            await expect(await usagePage.cacheWriteTokensCell(row)).toHaveText('150');
+        } finally {
+            await usageLog.remove();
+        }
+    });
+
+    test('shows an empty cell for a row without reported tokens', async ({ page }) => {
+        const usageLog = new UsageLogFixture();
+        const label = '_grid_empty';
+        await usageLog.seedDetailedCalls(0, label);
+        try {
+            const usagePage = new UsagePage(page);
+            await usagePage.openFromMenu();
+
+            const row = usagePage.gridRow(`e2e_failed_call${label}`);
+            await expect(row).toBeVisible();
+            await expect(await usagePage.cacheReadTokensCell(row)).toHaveText('');
+        } finally {
+            await usageLog.remove();
+        }
+    });
+
     test('it reveals a value panel when a trend bucket is hovered', async ({ page }) => {
         const usageLog = new UsageLogFixture();
         await usageLog.seedSeries();

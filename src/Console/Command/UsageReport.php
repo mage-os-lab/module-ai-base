@@ -219,8 +219,10 @@ class UsageReport extends Command
      *     input_tokens: int,
      *     output_tokens: int,
      *     total_tokens: int,
-     *     cached_tokens: int|null,
-     *     reasoning_tokens: int|null
+     *     cache_read_tokens: int|null,
+     *     cache_write_tokens: int|null,
+     *     reasoning_tokens: int|null,
+     *     failed_calls: int
      * }
      */
     private function totalsToArray(UsageTotalsInterface $totals): array
@@ -230,8 +232,10 @@ class UsageReport extends Command
             'input_tokens' => $totals->getInputTokens(),
             'output_tokens' => $totals->getOutputTokens(),
             'total_tokens' => $totals->getTotalTokens(),
-            'cached_tokens' => $totals->getCachedTokens(),
+            'cache_read_tokens' => $totals->getCacheReadTokens(),
+            'cache_write_tokens' => $totals->getCacheWriteTokens(),
             'reasoning_tokens' => $totals->getReasoningTokens(),
+            'failed_calls' => $totals->getFailedCalls(),
         ];
     }
 
@@ -260,16 +264,25 @@ class UsageReport extends Command
             : sprintf('Totals%s:', $this->storeSuffix($storeId)));
 
         $totalsTable = new Table($output);
-        $totalsTable->setHeaders(
-            ['Calls', 'Input tokens', 'Output tokens', 'Total tokens', 'Cached tokens', 'Reasoning tokens']
-        );
+        $totalsTable->setHeaders([
+            'Calls',
+            'Input tokens',
+            'Output tokens',
+            'Total tokens',
+            'Cache read tokens',
+            'Cache write tokens',
+            'Reasoning tokens',
+            'Failed',
+        ]);
         $totalsTable->addRow([
             $totals->getCalls(),
             $totals->getInputTokens(),
             $totals->getOutputTokens(),
             $totals->getTotalTokens(),
-            $totals->getCachedTokens() ?? '-',
+            $totals->getCacheReadTokens() ?? '-',
+            $totals->getCacheWriteTokens() ?? '-',
             $totals->getReasoningTokens() ?? '-',
+            $totals->getFailedCalls(),
         ]);
         $totalsTable->render();
 

@@ -76,6 +76,11 @@ trait UsageQuerySupport
      * every totals method promises, defaulting an empty row (no matching data at all) to zeroed
      * counts rather than to null.
      *
+     * Every key this returns is a `mageos_ai_usage_daily` column name verbatim: {@see UsageLog::
+     * aggregateRange()} feeds its rows straight into {@see UsageDaily::upsertAggregates()}, so this
+     * one shape has to serve both the raw log's own totals queries and the roll-up's insert rows
+     * without any reshaping in between.
+     *
      * @param array<array-key,mixed> $row
      * @return array<string,int|null>
      */
@@ -83,10 +88,12 @@ trait UsageQuerySupport
     {
         return [
             'calls' => $this->toInt($row['calls'] ?? 0),
+            'failed_calls' => $this->toInt($row['failed_calls'] ?? 0),
             'input_tokens' => $this->toInt($row['input_tokens'] ?? 0),
             'output_tokens' => $this->toInt($row['output_tokens'] ?? 0),
             'total_tokens' => $this->toInt($row['total_tokens'] ?? 0),
-            'cached_tokens' => $this->toNullableInt($row['cached_tokens'] ?? null),
+            'cache_read_tokens' => $this->toNullableInt($row['cache_read_tokens'] ?? null),
+            'cache_write_tokens' => $this->toNullableInt($row['cache_write_tokens'] ?? null),
             'reasoning_tokens' => $this->toNullableInt($row['reasoning_tokens'] ?? null),
         ];
     }

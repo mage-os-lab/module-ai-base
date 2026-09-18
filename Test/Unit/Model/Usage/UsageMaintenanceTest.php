@@ -224,12 +224,12 @@ final class UsageMaintenanceTest extends TestCase
     {
         $this->usageRecordRepository->addRow($this->row([
             'created_at' => $this->daysAgo(60),
-            'cached_tokens' => null,
+            'cache_read_tokens' => null,
             'reasoning_tokens' => null,
         ]));
         $this->usageRecordRepository->addRow($this->row([
             'created_at' => $this->daysAgo(60),
-            'cached_tokens' => null,
+            'cache_read_tokens' => null,
             'reasoning_tokens' => null,
         ]));
 
@@ -237,7 +237,7 @@ final class UsageMaintenanceTest extends TestCase
 
         $stored = $this->usageDailyRepository->getStoredRows();
         self::assertCount(1, $stored);
-        self::assertNull($stored[0]['cached_tokens']);
+        self::assertNull($stored[0]['cache_read_tokens']);
         self::assertNull($stored[0]['reasoning_tokens']);
     }
 
@@ -319,7 +319,7 @@ final class UsageMaintenanceTest extends TestCase
                 'input_tokens' => 10,
                 'output_tokens' => 5,
                 'total_tokens' => 15,
-                'cached_tokens' => null,
+                'cache_read_tokens' => null,
                 'reasoning_tokens' => null,
             ],
             $overrides
@@ -350,7 +350,7 @@ final class UsageMaintenanceTest extends TestCase
                 'input_tokens' => 10,
                 'output_tokens' => 5,
                 'total_tokens' => 15,
-                'cached_tokens' => null,
+                'cache_read_tokens' => null,
                 'reasoning_tokens' => null,
             ],
             $overrides
@@ -529,7 +529,7 @@ final class FakeUsageRecordRepository implements UsageRecordRepositoryInterface
             'input_tokens' => 0,
             'output_tokens' => 0,
             'total_tokens' => 0,
-            'cached_tokens' => null,
+            'cache_read_tokens' => null,
             'reasoning_tokens' => null,
         ];
 
@@ -538,8 +538,8 @@ final class FakeUsageRecordRepository implements UsageRecordRepositoryInterface
             $totals['input_tokens'] += (int) $row['input_tokens'];
             $totals['output_tokens'] += (int) $row['output_tokens'];
             $totals['total_tokens'] += (int) $row['total_tokens'];
-            if ($row['cached_tokens'] !== null) {
-                $totals['cached_tokens'] = ($totals['cached_tokens'] ?? 0) + (int) $row['cached_tokens'];
+            if ($row['cache_read_tokens'] !== null) {
+                $totals['cache_read_tokens'] = ($totals['cache_read_tokens'] ?? 0) + (int) $row['cache_read_tokens'];
             }
             if ($row['reasoning_tokens'] !== null) {
                 $totals['reasoning_tokens'] = ($totals['reasoning_tokens'] ?? 0) + (int) $row['reasoning_tokens'];

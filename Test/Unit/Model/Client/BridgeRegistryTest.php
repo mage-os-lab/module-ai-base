@@ -75,4 +75,44 @@ final class BridgeRegistryTest extends TestCase
         self::assertNull($registry->getPackage('openai'));
         self::assertFalse($registry->isAvailable('openai'));
     }
+
+    /**
+     * Anthropic reports cache reads and writes outside its prompt count, unlike every other
+     * bridge, so the client needs a per-bridge signal to normalize on.
+     */
+    public function test_it_reports_cache_outside_prompt_for_a_bridge_that_declares_it(): void
+    {
+        $registry = new BridgeRegistry(['anthropic' => ['cache_outside_prompt' => true]]);
+
+        self::assertTrue($registry->isCacheOutsidePrompt('anthropic'));
+    }
+
+    /**
+     * A bridge that omits the flag is assumed to include cache tokens in its reported prompt
+     * count, which is true for every bridge except Anthropic today.
+     */
+    public function test_it_reports_cache_inside_prompt_when_the_flag_is_missing(): void
+    {
+        $registry = new BridgeRegistry(['openai' => ['factory' => 'SomeFactory']]);
+
+        self::assertFalse($registry->isCacheOutsidePrompt('openai'));
+    }
+
+    public function test_it_reports_cache_inside_prompt_for_an_unknown_service_code(): void
+    {
+        $registry = new BridgeRegistry([]);
+
+        self::assertFalse($registry->isCacheOutsidePrompt('acmeai'));
+    }
+
+    /**
+     * di.xml only has a boolean xsi:type interpreter built in; a third-party bridge registered
+     * from its own di.xml with xsi:type="string" still needs to be read correctly.
+     */
+    public function test_it_reads_the_flag_from_a_string_boolean_as_di_xml_provides_it(): void
+    {
+        $registry = new BridgeRegistry(['acmeai' => ['cache_outside_prompt' => 'true']]);
+
+        self::assertTrue($registry->isCacheOutsidePrompt('acmeai'));
+    }
 }

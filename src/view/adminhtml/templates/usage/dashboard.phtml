@@ -71,6 +71,21 @@ $changeCssClass = $changePercent !== null && $changePercent >= 0.0
             <?php endif; ?>
         </div>
 
+        <dl class="mageos-ai-usage-dashboard-stats">
+            <div class="mageos-ai-usage-dashboard-stat">
+                <dt><?= $escaper->escapeHtml(__('Failed calls')) ?></dt>
+                <dd><?= $escaper->escapeHtml((string) $block->getFailedCalls()) ?></dd>
+            </div>
+            <div class="mageos-ai-usage-dashboard-stat">
+                <dt><?= $escaper->escapeHtml(__('Cache read tokens')) ?></dt>
+                <dd><?= $escaper->escapeHtml($block->getFormattedCacheReadTokens()) ?></dd>
+            </div>
+            <div class="mageos-ai-usage-dashboard-stat">
+                <dt><?= $escaper->escapeHtml(__('Cache write tokens')) ?></dt>
+                <dd><?= $escaper->escapeHtml($block->getFormattedCacheWriteTokens()) ?></dd>
+            </div>
+        </dl>
+
         <?php if ($block->hasTrend()): ?>
             <section class="mageos-ai-usage-dashboard-breakdown mageos-ai-usage-dashboard-trend">
                 <div class="mageos-ai-usage-trend-header">

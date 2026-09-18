@@ -18,6 +18,7 @@ use MageOS\AiBase\Model\Client\RecordingPlatformAwareAiClient;
 use MageOS\AiBase\Model\Client\RecordingPlatformAwareAiClientFactory;
 use MageOS\AiBase\Model\Client\SymfonyAiClient;
 use MageOS\AiBase\Model\Client\SymfonyAiClientFactory;
+use MageOS\AiBase\Model\Client\UsageNormalizer;
 use MageOS\AiBase\Model\Usage\UsageConfig;
 use PHPUnit\Framework\Attributes\TestWith;
 use PHPUnit\Framework\MockObject\MockObject;
@@ -282,6 +283,7 @@ final class ClientFactoryTest extends TestCase
                 $data['serviceCode'],
                 $data['serviceId'],
                 new OptionNormalizer(new BridgeRegistry([])),
+                new UsageNormalizer(new BridgeRegistry([])),
                 $data['consumer'],
             )
         );
@@ -335,6 +337,7 @@ final class ClientFactoryTest extends TestCase
                 $data['serviceCode'],
                 $data['serviceId'],
                 new OptionNormalizer(new BridgeRegistry([])),
+                new UsageNormalizer(new BridgeRegistry([])),
                 $data['consumer'],
             )
         );
@@ -565,6 +568,7 @@ final class ClientFactoryTest extends TestCase
                 $data['serviceCode'],
                 $data['serviceId'],
                 new OptionNormalizer(new BridgeRegistry([])),
+                new UsageNormalizer(new BridgeRegistry([])),
                 $data['consumer'],
             )
         );
@@ -642,6 +646,7 @@ final class ClientFactoryTest extends TestCase
                 $data['serviceCode'],
                 $data['serviceId'],
                 new OptionNormalizer(new BridgeRegistry([])),
+                new UsageNormalizer(new BridgeRegistry([])),
                 $data['consumer'],
             )
         );
@@ -674,6 +679,7 @@ final class ClientFactoryTest extends TestCase
                 $data['serviceCode'],
                 $data['serviceId'],
                 new OptionNormalizer(new BridgeRegistry([])),
+                new UsageNormalizer(new BridgeRegistry([])),
                 $data['consumer'],
             )
         );

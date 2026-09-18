@@ -4,8 +4,6 @@ declare(strict_types=1);
 
 namespace MageOS\AiBase\Model\Client;
 
-use Magento\Framework\Exception\LocalizedException;
-
 /**
  * Translates the handful of options every provider has into the name the target provider uses.
  *
@@ -79,7 +77,7 @@ class OptionNormalizer
      * @param string $serviceCode
      * @param RequestOptions $options
      * @return RequestOptions
-     * @throws LocalizedException When an option has no equivalent at the target provider
+     * @throws AiRequestNotSentException When an option has no equivalent at the target provider
      */
     public function normalize(string $serviceCode, array $options): array
     {
@@ -103,7 +101,7 @@ class OptionNormalizer
      * @param RequestOptions $options
      * @param string $canonical
      * @return RequestOptions
-     * @throws LocalizedException
+     * @throws AiRequestNotSentException
      */
     private function applyOption(string $serviceCode, array $dialect, array $options, string $canonical): array
     {
@@ -117,7 +115,7 @@ class OptionNormalizer
         unset($options[$canonical]);
 
         if ($target === null) {
-            throw new LocalizedException(__(
+            throw new AiRequestNotSentException(__(
                 'The "%1" option is not supported by AI service "%2". '
                 . 'Remove it, or send the provider\'s own option instead.',
                 $canonical,

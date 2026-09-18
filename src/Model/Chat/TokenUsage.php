@@ -12,15 +12,17 @@ class TokenUsage implements TokenUsageInterface
      * @param int|null $promptTokens
      * @param int|null $completionTokens
      * @param int|null $totalTokens Provider-reported total, if it reported one
-     * @param int|null $cachedTokens Subset of $promptTokens served from the provider's prompt cache
+     * @param int|null $cacheReadTokens Subset of $promptTokens served from the provider's prompt cache
      * @param int|null $reasoningTokens Subset of $completionTokens spent on internal reasoning
+     * @param int|null $cacheWriteTokens Subset of $promptTokens written into the provider's prompt cache
      */
     public function __construct(
         private readonly ?int $promptTokens = null,
         private readonly ?int $completionTokens = null,
         private readonly ?int $totalTokens = null,
-        private readonly ?int $cachedTokens = null,
+        private readonly ?int $cacheReadTokens = null,
         private readonly ?int $reasoningTokens = null,
+        private readonly ?int $cacheWriteTokens = null,
     ) {
     }
 
@@ -58,9 +60,17 @@ class TokenUsage implements TokenUsageInterface
     /**
      * @inheritdoc
      */
-    public function getCachedTokens(): ?int
+    public function getCacheReadTokens(): ?int
     {
-        return $this->cachedTokens;
+        return $this->cacheReadTokens;
+    }
+
+    /**
+     * @inheritdoc
+     */
+    public function getCacheWriteTokens(): ?int
+    {
+        return $this->cacheWriteTokens;
     }
 
     /**

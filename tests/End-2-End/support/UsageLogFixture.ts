@@ -2,6 +2,19 @@ import { execFileSync } from 'child_process';
 import path from 'path';
 
 /**
+ * One row {@see UsageLogFixture.readDetailedCalls} reads back: the columns the grid, dashboard and
+ * CLI report gained in task 010, typed the way the fixture's own PHP snippet already casts them
+ * before printing, so a spec never has to `parseInt` a stringly-typed count itself.
+ */
+export interface SeededDetailedCallRow {
+    consumer: string;
+    cacheReadTokens: number | null;
+    cacheWriteTokens: number | null;
+    failed: boolean;
+    inputTokens: number | null;
+}
+
+/**
  * Seeds and removes exactly one row in `mageos_ai_usage_log`, entirely independent of
  * `mageos_ai/services/configuration`: `service_id`/`service_code` below are synthetic values this
  * fixture invents, never read from or written to the configured-service list this suite is
@@ -117,6 +130,83 @@ export class UsageLogFixture {
         `);
 
         return parseInt(output.trim(), 10) > 0;
+    }
+
+    /**
+     * Seeds the two rows the new grid columns, dashboard totals and CLI report (task 010) exist to
+     * show: one call reporting cache reads and writes, and one that failed before the provider
+     * reported any usage at all, the pre-response-failure case decision 2 of `_plan.md` describes,
+     * which is why its token columns are null rather than zero.
+     *
+     * Both rows carry {@see SEEDED_MODEL_PREFIX}, so `remove()` cleans them up the same way as
+     * `seedSeries()`'s rows. `label` keeps this call's consumer and model names apart from any
+     * other row seeded during the same run, so a spec can find exactly its own rows by text.
+     */
+    async seedDetailedCalls(storeId = 0, label = ''): Promise<void> {
+        this.runPhp(`
+            $connection = $om->get(\\Magento\\Framework\\App\\ResourceConnection::class)->getConnection();
+            $table = $connection->getTableName('mageos_ai_usage_log');
+            $connection->insertMultiple($table, [
+                [
+                    'service_id' => 'e2e-cache-service${label}',
+                    'service_code' => 'e2e_cache',
+                    'model' => '${UsageLogFixture.SEEDED_MODEL_PREFIX}cache${label}',
+                    'consumer' => 'e2e_cache_reader${label}',
+                    'store_id' => ${storeId},
+                    'input_tokens' => 500,
+                    'output_tokens' => 200,
+                    'total_tokens' => 700,
+                    'cache_read_tokens' => 300,
+                    'cache_write_tokens' => 150,
+                    'streamed' => 0,
+                    'failed' => 0,
+                ],
+                [
+                    'service_id' => 'e2e-failed-service${label}',
+                    'service_code' => 'e2e_failed',
+                    'model' => '${UsageLogFixture.SEEDED_MODEL_PREFIX}failed${label}',
+                    'consumer' => 'e2e_failed_call${label}',
+                    'store_id' => ${storeId},
+                    'input_tokens' => null,
+                    'output_tokens' => null,
+                    'total_tokens' => null,
+                    'cache_read_tokens' => null,
+                    'cache_write_tokens' => null,
+                    'streamed' => 0,
+                    'failed' => 1,
+                ],
+            ]);
+        `);
+        this.seededSeries = true;
+    }
+
+    /**
+     * Reads back exactly the rows {@see seedDetailedCalls()} wrote for one `label`, the way the
+     * "seeds rows with cache read, cache write, failed and null token counts" spec proves the
+     * fixture itself before any other spec relies on it being right. Drives no browser, only the
+     * same object-manager path every other method here uses.
+     */
+    async readDetailedCalls(label = ''): Promise<SeededDetailedCallRow[]> {
+        const output = this.runPhp(`
+            $connection = $om->get(\\Magento\\Framework\\App\\ResourceConnection::class)->getConnection();
+            $table = $connection->getTableName('mageos_ai_usage_log');
+            $select = $connection->select()
+                ->from($table, ['consumer', 'cache_read_tokens', 'cache_write_tokens', 'failed', 'input_tokens'])
+                ->where('model LIKE ?', '${UsageLogFixture.SEEDED_MODEL_PREFIX}%${label}')
+                ->order('consumer ASC');
+            $rows = array_map(static function (array $row): array {
+                return [
+                    'consumer' => $row['consumer'],
+                    'cacheReadTokens' => $row['cache_read_tokens'] === null ? null : (int) $row['cache_read_tokens'],
+                    'cacheWriteTokens' => $row['cache_write_tokens'] === null ? null : (int) $row['cache_write_tokens'],
+                    'failed' => (bool) $row['failed'],
+                    'inputTokens' => $row['input_tokens'] === null ? null : (int) $row['input_tokens'],
+                ];
+            }, $connection->fetchAll($select));
+            echo json_encode($rows);
+        `);
+
+        return JSON.parse(output.trim()) as SeededDetailedCallRow[];
     }
 
     async remove(): Promise<void> {

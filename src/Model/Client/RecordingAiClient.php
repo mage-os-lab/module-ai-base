@@ -19,11 +19,15 @@ use MageOS\AiBase\Model\Usage\UsageRecord;
 use Psr\Log\LoggerInterface;
 
 /**
- * Decorates a wrapped {@see AiClientInterface}, writing one usage row per completed call.
+ * Decorates a wrapped {@see AiClientInterface}, writing one usage row for every call it makes:
+ * successful, failed, or successful but reporting no usage at all.
  *
- * Recording is a side effect the caller never sees: it never changes the response, and a failure
- * while saving a row is logged and swallowed rather than turned into an exception for a call that
- * already succeeded. Task 009 wraps every client the factory builds with this class, or
+ * Recording is a side effect the caller never sees: it never changes the response, and it never
+ * turns a call the wrapped client already succeeded (or already failed on its own terms) into
+ * something else. A failure while saving a row is logged and swallowed the same way, for the same
+ * reason. {@see AiRequestNotSentException} is the one exception this class rethrows without
+ * recording anything: it means the call never reached the provider, so there is nothing to bill and
+ * nothing worth a row. Task 009 wraps every client the factory builds with this class, or
  * {@see RecordingPlatformAwareAiClient} when the wrapped client also implements
  * {@see \MageOS\AiBase\Api\PlatformAwareInterface}, unless usage tracking is switched off; that is
  * what makes the wrapping itself invisible to every existing consumer of AiClientInterface.
@@ -60,9 +64,16 @@ class RecordingAiClient implements AiClientInterface
         $model = $this->resolveModel($options);
         $consumer = $this->resolveConsumer($options);
 
-        $response = $this->delegate->chat($request, $this->withoutConsumerOption($options));
+        try {
+            $response = $this->delegate->chat($request, $this->withoutConsumerOption($options));
+        } catch (AiRequestNotSentException $e) {
+            throw $e;
+        } catch (\Throwable $e) {
+            $this->record($model, $consumer, null, false, true);
+            throw $e;
+        }
 
-        $this->record($model, $consumer, $response->getUsage(), false);
+        $this->record($model, $consumer, $response->getUsage(), false, false);
 
         return $response;
     }
@@ -93,16 +104,21 @@ class RecordingAiClient implements AiClientInterface
             }
 
             return $stream->getReturn();
+        } catch (AiRequestNotSentException $e) {
+            $threw = true;
+            throw $e;
         } catch (\Throwable $e) {
             $threw = true;
+            $this->record($model, $consumer, $usage, true, true);
             throw $e;
         } finally {
             // A caller that breaks out of the stream early never resumes execution past the yield
-            // above, so this only runs once PHP destroys the abandoned generator; $usage still
-            // holds whatever the last usage chunk reported by then, which is the most this
+            // above, so this only runs once PHP destroys the abandoned generator, which is why this
+            // branch never double-records a call already handled by the catch blocks above; $usage
+            // still holds whatever the last usage chunk reported by then, which is the most this
             // decorator can honestly record for a call nobody let finish.
             if (!$threw) {
-                $this->record($model, $consumer, $usage, true);
+                $this->record($model, $consumer, $usage, true, false);
             }
         }
     }
@@ -205,37 +221,44 @@ class RecordingAiClient implements AiClientInterface
     }
 
     /**
-     * Persist one usage row, unless the provider reported no usage at all.
+     * Persist one usage row for this call, whatever it reported.
      *
-     * Zero tokens is not a fact worth storing, so a null $usage writes nothing. A save failure is
-     * logged and swallowed: this always runs after the wrapped call already succeeded, and turning
-     * a storage problem into an exception here would fail a call that otherwise worked fine.
+     * A null $usage still writes a row, with every token count null: the provider genuinely gave
+     * back nothing to record, and dropping the row would make `calls` undercount it rather than
+     * honestly show a call the store cannot see the cost of. A save failure is logged and swallowed
+     * rather than thrown: this can run after the wrapped call already succeeded, or after it already
+     * failed for its own reason, and a storage problem must never override either outcome for the
+     * caller.
      *
      * @param string $model
      * @param string $consumer
      * @param TokenUsageInterface|null $usage
      * @param bool $streamed
+     * @param bool $failed
      * @return void
      */
-    private function record(string $model, string $consumer, ?TokenUsageInterface $usage, bool $streamed): void
-    {
-        if ($usage === null) {
-            return;
-        }
-
+    private function record(
+        string $model,
+        string $consumer,
+        ?TokenUsageInterface $usage,
+        bool $streamed,
+        bool $failed,
+    ): void {
         try {
             $this->repository->save(new UsageRecord(
-                $this->delegate->getServiceId(),
-                $this->delegate->getServiceCode(),
-                $model,
-                $this->resolveStoreId(),
-                $consumer,
-                $usage->getPromptTokens() ?? 0,
-                $usage->getCompletionTokens() ?? 0,
-                $usage->getTotalTokens() ?? 0,
-                $usage->getCachedTokens(),
-                $usage->getReasoningTokens(),
-                $streamed,
+                serviceId: $this->delegate->getServiceId(),
+                serviceCode: $this->delegate->getServiceCode(),
+                model: $model,
+                storeId: $this->resolveStoreId(),
+                consumer: $consumer,
+                inputTokens: $usage?->getPromptTokens(),
+                outputTokens: $usage?->getCompletionTokens(),
+                totalTokens: $usage?->getTotalTokens(),
+                cacheReadTokens: $usage?->getCacheReadTokens(),
+                reasoningTokens: $usage?->getReasoningTokens(),
+                streamed: $streamed,
+                cacheWriteTokens: $usage?->getCacheWriteTokens(),
+                failed: $failed,
             ));
         } catch (\Throwable $e) {
             $this->logger->error(

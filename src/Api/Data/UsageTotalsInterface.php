@@ -43,16 +43,26 @@ interface UsageTotalsInterface
     public function getTotalTokens(): int;
 
     /**
-     * Cached prompt tokens summed across every covered call that reported them.
+     * Cache-read prompt tokens summed across every covered call that reported them.
      *
-     * Null, not zero, when nothing in the window ever reported a cached count: the same
+     * Null, not zero, when nothing in the window ever reported a cache-read count: the same
      * "not reported" versus "reported as zero" distinction
-     * {@see \MageOS\AiBase\Api\Data\UsageRecordInterface::getCachedTokens()} draws at the row
+     * {@see \MageOS\AiBase\Api\Data\UsageRecordInterface::getCacheReadTokens()} draws at the row
      * level, carried through the aggregate rather than lost by it.
      *
      * @return int|null
      */
-    public function getCachedTokens(): ?int;
+    public function getCacheReadTokens(): ?int;
+
+    /**
+     * Cache-write prompt tokens summed across every covered call that reported them.
+     *
+     * Null, not zero, on the same "not reported" versus "reported as zero" terms as
+     * {@see getCacheReadTokens()}.
+     *
+     * @return int|null
+     */
+    public function getCacheWriteTokens(): ?int;
 
     /**
      * Reasoning tokens summed across every covered call that reported them.
@@ -60,4 +70,15 @@ interface UsageTotalsInterface
      * @return int|null
      */
     public function getReasoningTokens(): ?int;
+
+    /**
+     * Number of calls the totals cover that {@see \MageOS\AiBase\Api\Data\UsageRecordInterface::isFailed()}.
+     *
+     * Counted separately from, not subtracted out of, {@see getCalls()}: a failed call still used a
+     * connection and, when the provider reported any usage before failing, still spent tokens, so it
+     * belongs in the call count and needs its own visible count rather than being folded into it.
+     *
+     * @return int
+     */
+    public function getFailedCalls(): int;
 }

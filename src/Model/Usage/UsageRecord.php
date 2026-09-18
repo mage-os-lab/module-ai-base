@@ -21,14 +21,16 @@ class UsageRecord implements UsageRecordInterface
      * @param string $model {@see UsageRecordInterface::getModel()}
      * @param int $storeId {@see UsageRecordInterface::getStoreId()}
      * @param string $consumer {@see UsageRecordInterface::getConsumer()}
-     * @param int $inputTokens {@see UsageRecordInterface::getInputTokens()}
-     * @param int $outputTokens {@see UsageRecordInterface::getOutputTokens()}
-     * @param int $totalTokens {@see UsageRecordInterface::getTotalTokens()}
-     * @param int|null $cachedTokens {@see UsageRecordInterface::getCachedTokens()}
+     * @param int|null $inputTokens {@see UsageRecordInterface::getInputTokens()}
+     * @param int|null $outputTokens {@see UsageRecordInterface::getOutputTokens()}
+     * @param int|null $totalTokens {@see UsageRecordInterface::getTotalTokens()}
+     * @param int|null $cacheReadTokens {@see UsageRecordInterface::getCacheReadTokens()}
      * @param int|null $reasoningTokens {@see UsageRecordInterface::getReasoningTokens()}
      * @param bool $streamed {@see UsageRecordInterface::isStreamed()}
      * @param int|null $id {@see UsageRecordInterface::getId()}
      * @param string|null $createdAt {@see UsageRecordInterface::getCreatedAt()}
+     * @param int|null $cacheWriteTokens {@see UsageRecordInterface::getCacheWriteTokens()}
+     * @param bool $failed {@see UsageRecordInterface::isFailed()}
      */
     public function __construct(
         private readonly string $serviceId,
@@ -36,14 +38,16 @@ class UsageRecord implements UsageRecordInterface
         private readonly string $model,
         private readonly int $storeId,
         private readonly string $consumer = self::CONSUMER_UNKNOWN,
-        private readonly int $inputTokens = 0,
-        private readonly int $outputTokens = 0,
-        private readonly int $totalTokens = 0,
-        private readonly ?int $cachedTokens = null,
+        private readonly ?int $inputTokens = 0,
+        private readonly ?int $outputTokens = 0,
+        private readonly ?int $totalTokens = 0,
+        private readonly ?int $cacheReadTokens = null,
         private readonly ?int $reasoningTokens = null,
         private readonly bool $streamed = false,
         private readonly ?int $id = null,
         private readonly ?string $createdAt = null,
+        private readonly ?int $cacheWriteTokens = null,
+        private readonly bool $failed = false,
     ) {
     }
 
@@ -98,7 +102,7 @@ class UsageRecord implements UsageRecordInterface
     /**
      * @inheritdoc
      */
-    public function getInputTokens(): int
+    public function getInputTokens(): ?int
     {
         return $this->inputTokens;
     }
@@ -106,7 +110,7 @@ class UsageRecord implements UsageRecordInterface
     /**
      * @inheritdoc
      */
-    public function getOutputTokens(): int
+    public function getOutputTokens(): ?int
     {
         return $this->outputTokens;
     }
@@ -114,7 +118,7 @@ class UsageRecord implements UsageRecordInterface
     /**
      * @inheritdoc
      */
-    public function getTotalTokens(): int
+    public function getTotalTokens(): ?int
     {
         return $this->totalTokens;
     }
@@ -122,9 +126,17 @@ class UsageRecord implements UsageRecordInterface
     /**
      * @inheritdoc
      */
-    public function getCachedTokens(): ?int
+    public function getCacheReadTokens(): ?int
     {
-        return $this->cachedTokens;
+        return $this->cacheReadTokens;
+    }
+
+    /**
+     * @inheritdoc
+     */
+    public function getCacheWriteTokens(): ?int
+    {
+        return $this->cacheWriteTokens;
     }
 
     /**
@@ -141,6 +153,14 @@ class UsageRecord implements UsageRecordInterface
     public function isStreamed(): bool
     {
         return $this->streamed;
+    }
+
+    /**
+     * @inheritdoc
+     */
+    public function isFailed(): bool
+    {
+        return $this->failed;
     }
 
     /**

@@ -80,27 +80,24 @@ final class UsageRecordTest extends TestCase
         self::assertSame(165, $record->getTotalTokens());
     }
 
-    public function test_it_exposes_cached_and_reasoning_token_counts_as_nullable_integers(): void
+    public function test_it_exposes_the_reasoning_token_count_as_a_nullable_integer(): void
     {
-        $withCounts = new UsageRecord(
+        $withCount = new UsageRecord(
             serviceId: '_row_a',
             serviceCode: 'anthropic',
             model: 'claude-opus-4',
             storeId: 1,
-            cachedTokens: 30,
             reasoningTokens: 18,
         );
-        $withoutCounts = new UsageRecord(
+        $withoutCount = new UsageRecord(
             serviceId: '_row_a',
             serviceCode: 'anthropic',
             model: 'claude-opus-4',
             storeId: 1,
         );
 
-        self::assertSame(30, $withCounts->getCachedTokens());
-        self::assertSame(18, $withCounts->getReasoningTokens());
-        self::assertNull($withoutCounts->getCachedTokens());
-        self::assertNull($withoutCounts->getReasoningTokens());
+        self::assertSame(18, $withCount->getReasoningTokens());
+        self::assertNull($withoutCount->getReasoningTokens());
     }
 
     public function test_it_reports_whether_the_call_was_streamed(): void
@@ -145,5 +142,65 @@ final class UsageRecordTest extends TestCase
         );
 
         self::assertSame(0, $record->getStoreId());
+    }
+
+    public function test_it_keeps_null_token_counts_when_the_provider_reported_none(): void
+    {
+        $record = new UsageRecord(
+            serviceId: '_row_a',
+            serviceCode: 'anthropic',
+            model: 'claude-opus-4',
+            storeId: 1,
+            inputTokens: null,
+            outputTokens: null,
+            totalTokens: null,
+        );
+
+        self::assertNull($record->getInputTokens());
+        self::assertNull($record->getOutputTokens());
+        self::assertNull($record->getTotalTokens());
+    }
+
+    public function test_it_exposes_cache_read_and_write_tokens(): void
+    {
+        $withCounts = new UsageRecord(
+            serviceId: '_row_a',
+            serviceCode: 'anthropic',
+            model: 'claude-opus-4',
+            storeId: 1,
+            cacheReadTokens: 30,
+            cacheWriteTokens: 12,
+        );
+        $withoutCounts = new UsageRecord(
+            serviceId: '_row_a',
+            serviceCode: 'anthropic',
+            model: 'claude-opus-4',
+            storeId: 1,
+        );
+
+        self::assertSame(30, $withCounts->getCacheReadTokens());
+        self::assertSame(12, $withCounts->getCacheWriteTokens());
+        self::assertNull($withoutCounts->getCacheReadTokens());
+        self::assertNull($withoutCounts->getCacheWriteTokens());
+    }
+
+    public function test_it_reports_whether_the_call_failed(): void
+    {
+        $failed = new UsageRecord(
+            serviceId: '_row_a',
+            serviceCode: 'anthropic',
+            model: 'claude-opus-4',
+            storeId: 1,
+            failed: true,
+        );
+        $succeeded = new UsageRecord(
+            serviceId: '_row_a',
+            serviceCode: 'anthropic',
+            model: 'claude-opus-4',
+            storeId: 1,
+        );
+
+        self::assertTrue($failed->isFailed());
+        self::assertFalse($succeeded->isFailed());
     }
 }

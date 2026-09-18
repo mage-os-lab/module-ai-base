@@ -14,6 +14,7 @@ use MageOS\AiBase\Api\Data\FinishReason;
 use MageOS\AiBase\Api\Data\MessageRole;
 use MageOS\AiBase\Api\Data\StreamChunkInterface;
 use MageOS\AiBase\Api\Data\StreamChunkType;
+use MageOS\AiBase\Api\Data\TokenUsageInterface;
 use MageOS\AiBase\Api\Data\ToolDefinitionInterface;
 use MageOS\AiBase\Api\Data\UsageRecordInterface;
 use MageOS\AiBase\Model\Chat\ChatMessage;
@@ -83,6 +84,8 @@ class SymfonyAiClient implements AiClientInterface, PlatformAwareInterface
      * @param string $serviceCode
      * @param string $serviceId Configured row this client was built from
      * @param OptionNormalizer $optionNormalizer
+     * @param UsageNormalizer $usageNormalizer Folds cache reads and writes into the reported usage
+     *        per this service's bridge; see {@see toAiBaseUsage()}
      * @param string|null $consumer Feature or module the factory attributed this client to;
      *        read back, normalized, through getConsumer()
      */
@@ -92,6 +95,7 @@ class SymfonyAiClient implements AiClientInterface, PlatformAwareInterface
         private readonly string $serviceCode,
         private readonly string $serviceId,
         private readonly OptionNormalizer $optionNormalizer,
+        private readonly UsageNormalizer $usageNormalizer,
         private readonly ?string $consumer = null,
     ) {
     }
@@ -111,6 +115,14 @@ class SymfonyAiClient implements AiClientInterface, PlatformAwareInterface
     }
 
     /**
+     * A failing stream still yields the usage it billed before it broke.
+     *
+     * Symfony runs its token-usage listener on the error path too, so the counts are sitting in the
+     * result metadata at the moment the stream throws. Yielding one usage chunk from that metadata
+     * before rethrowing is what lets the recording decorator record what was actually billed
+     * instead of losing it to the exception. The original exception is rethrown unchanged, never
+     * wrapped.
+     *
      * @inheritdoc
      */
     public function streamChat(ChatRequestInterface $request, array $options = []): \Generator
@@ -127,24 +139,28 @@ class SymfonyAiClient implements AiClientInterface, PlatformAwareInterface
         $toolCalls = [];
         $usage = null;
 
-        foreach ($deltas as $delta) {
-            foreach ($this->toStreamChunks($delta) as $chunk) {
-                $text .= $chunk->getType() === StreamChunkType::Text ? $chunk->getText() : '';
-                $toolCall = $chunk->getToolCall();
-                if ($toolCall !== null) {
-                    $toolCalls[] = $toolCall;
+        try {
+            foreach ($deltas as $delta) {
+                foreach ($this->toStreamChunks($delta) as $chunk) {
+                    $text .= $chunk->getType() === StreamChunkType::Text ? $chunk->getText() : '';
+                    $toolCall = $chunk->getToolCall();
+                    if ($toolCall !== null) {
+                        $toolCalls[] = $toolCall;
+                    }
+                    $usage = $chunk->getUsage() ?? $usage;
+                    yield $chunk;
                 }
-                $usage = $chunk->getUsage() ?? $usage;
-                yield $chunk;
             }
+        } catch (\Throwable $e) {
+            yield from $this->yieldUsageMissedByTheDeltas($result, $usage);
+
+            throw $e;
         }
 
         // Token counts and the stop reason arrive at the very end of a stream, and the platform
         // lifts both out of the delta sequence into the result metadata rather than letting them
         // through as deltas. Reading them here is what makes a usage chunk reachable at all.
-        if ($usage === null && ($usage = $this->extractUsage($result)) !== null) {
-            yield new StreamChunk(StreamChunkType::Usage, '', null, $usage);
-        }
+        yield from $this->yieldUsageMissedByTheDeltas($result, $usage);
 
         return new ChatResponse(
             $text,
@@ -153,6 +169,30 @@ class SymfonyAiClient implements AiClientInterface, PlatformAwareInterface
             $this->extractFinishReason($result),
             $this->extractRawFinishReason($result),
         );
+    }
+
+    /**
+     * Yields the one usage chunk a stream's deltas never carried, buffered or on failure alike.
+     *
+     * Shared by both the success and the error path of {@see streamChat()} so a mid-stream failure
+     * cannot end up yielding a second usage chunk on top of one the deltas already reported: the
+     * `$usage === null` guard is exactly the one the buffered path already relies on.
+     *
+     * @param \Symfony\AI\Platform\Result\DeferredResult $result
+     * @param TokenUsageInterface|null $usage Usage already seen from a delta; passed by reference
+     *        so the caller's local keeps the extracted value once this yields it
+     * @return \Generator<int, StreamChunkInterface>
+     */
+    private function yieldUsageMissedByTheDeltas(object $result, ?TokenUsageInterface &$usage): \Generator
+    {
+        if ($usage !== null) {
+            return;
+        }
+
+        $usage = $this->extractUsage($result);
+        if ($usage !== null) {
+            yield new StreamChunk(StreamChunkType::Usage, '', null, $usage);
+        }
     }
 
     /**
@@ -222,7 +262,8 @@ class SymfonyAiClient implements AiClientInterface, PlatformAwareInterface
      * @param ChatRequestInterface $request
      * @param array<string,mixed> $options
      * @return \Symfony\AI\Platform\Result\DeferredResult
-     * @throws LocalizedException
+     * @throws AiRequestNotSentException When the request is malformed and never reaches the platform
+     * @throws LocalizedException When the platform rejects or fails to send an otherwise valid request
      */
     private function invoke(ChatRequestInterface $request, array $options): object
     {
@@ -236,8 +277,14 @@ class SymfonyAiClient implements AiClientInterface, PlatformAwareInterface
             $options['tools'] = $tools;
         }
 
+        // Built outside the try below on purpose: a malformed request (e.g. a tool result missing
+        // its call id) is a mistake in the calling code, made before anything reached the platform,
+        // and must surface as AiRequestNotSentException rather than be caught and reworded by wrap()
+        // as if the provider had rejected it.
+        $messageBag = $this->toMessageBag($request);
+
         try {
-            return $this->platform->invoke($model, $this->toMessageBag($request), $options);
+            return $this->platform->invoke($model, $messageBag, $options);
         } catch (\Throwable $e) {
             throw $this->wrap($e);
         }
@@ -253,7 +300,7 @@ class SymfonyAiClient implements AiClientInterface, PlatformAwareInterface
      *
      * @param array<string,mixed> $options
      * @return non-empty-string
-     * @throws LocalizedException When the caller names a model that is not a usable name
+     * @throws AiRequestNotSentException When the caller names a model that is not a usable name
      */
     private function modelFor(array $options): string
     {
@@ -264,7 +311,7 @@ class SymfonyAiClient implements AiClientInterface, PlatformAwareInterface
         $requested = $options[AiClientInterface::OPTION_MODEL];
         $model = is_string($requested) ? trim($requested) : '';
         if ($model === '') {
-            throw new LocalizedException(__(
+            throw new AiRequestNotSentException(__(
                 'The "%1" option for AI service "%2" must be a model name. '
                 . 'Leave it out to use the model the service is configured with.',
                 AiClientInterface::OPTION_MODEL,
@@ -338,12 +385,12 @@ class SymfonyAiClient implements AiClientInterface, PlatformAwareInterface
      *
      * @param \MageOS\AiBase\Api\Data\ToolCallInterface|null $toolCall
      * @return \Symfony\AI\Platform\Result\ToolCall
-     * @throws LocalizedException
+     * @throws AiRequestNotSentException
      */
     private function toPlatformToolCall(?object $toolCall): object
     {
         if ($toolCall === null) {
-            throw new LocalizedException(
+            throw new AiRequestNotSentException(
                 __('A tool result message must name the tool call it answers.')
             );
         }
@@ -597,55 +644,18 @@ class SymfonyAiClient implements AiClientInterface, PlatformAwareInterface
     }
 
     /**
-     * Translate platform token counts into this module's own.
+     * Translate platform token counts into this module's own, normalized per this service's bridge.
+     *
+     * Delegated to {@see UsageNormalizer} rather than done inline: the cache-token rules differ per
+     * bridge and are exercised on their own in that class's tests, which would otherwise have to go
+     * through a full platform result to reach.
      *
      * @param \Symfony\AI\Platform\TokenUsage\TokenUsageInterface $usage
      * @return TokenUsage
      */
     private function toAiBaseUsage(object $usage): TokenUsage
     {
-        return new TokenUsage(
-            $usage->getPromptTokens(),
-            $usage->getCompletionTokens(),
-            $usage->getTotalTokens(),
-            $this->extractCachedTokens($usage),
-            $this->extractReasoningTokens($usage),
-        );
-    }
-
-    /**
-     * Tokens served from the provider's prompt cache, when the bridge reports them.
-     *
-     * Guarded by method_exists rather than trusted from the interface directly: the component is
-     * experimental and carries no BC promise, so a future or older bridge's usage object is not
-     * assumed to keep this method just because it satisfies the interface checked in
-     * {@see extractUsage()} today.
-     *
-     * @param \Symfony\AI\Platform\TokenUsage\TokenUsageInterface $usage
-     * @return int|null
-     */
-    private function extractCachedTokens(object $usage): ?int
-    {
-        // PHPStan sees the method as always present because the pinned interface declares it
-        // today; the guard is for the BC-unpromised component changing that under a future pin.
-        // @phpstan-ignore function.alreadyNarrowedType
-        return method_exists($usage, 'getCachedTokens') ? $usage->getCachedTokens() : null;
-    }
-
-    /**
-     * Tokens the model spent reasoning before its completion, when the bridge reports them.
-     *
-     * The platform's own vocabulary calls this "thinking", not "reasoning"; this module's naming
-     * follows the OpenAI-style term the rest of its API already uses.
-     *
-     * @param \Symfony\AI\Platform\TokenUsage\TokenUsageInterface $usage
-     * @return int|null
-     */
-    private function extractReasoningTokens(object $usage): ?int
-    {
-        // See extractCachedTokens() for why this guard stays despite PHPStan's certainty today.
-        // @phpstan-ignore function.alreadyNarrowedType
-        return method_exists($usage, 'getThinkingTokens') ? $usage->getThinkingTokens() : null;
+        return $this->usageNormalizer->normalize($this->serviceCode, $usage);
     }
 
     /**

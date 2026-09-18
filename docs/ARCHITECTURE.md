@@ -145,6 +145,25 @@ provider speaks is the `dialect` on its `BridgeRegistry` entry; the dialects the
 di.xml data, so a third party registering a provider declares one alongside its bridge. Only the
 universal four are touched — everything else reaches the provider verbatim.
 
+Token usage is normalized the same way, once, per bridge: `SymfonyAiClient` hands every raw
+`TokenUsage` object it reads off a result (or a stream delta) to `Model\Client\UsageNormalizer`
+before wrapping it as this module's own `TokenUsage`. Bridges disagree on whether a cache read or
+write is already counted inside the prompt figure they report. Anthropic's Messages API excludes
+`cache_read_input_tokens` and `cache_creation_input_tokens` from `input_tokens`, while every other
+bundled bridge already counts what it reports as cached inside its own prompt count. Left alone, a
+provider counting cache outside its prompt would under-report both the prompt and the total by
+exactly what it billed for the cache. `UsageNormalizer` reads which behavior a bridge has off
+`BridgeRegistry::isCacheOutsidePrompt()` rather than hardcoding a provider name: a bridge entry
+that sets `cache_outside_prompt` (boolean, or a string `di.xml` can also parse as one) to `true`
+gets its cache read and write counts folded into the prompt and dropped from the reported total
+(so `TokenUsage::getTotalTokens()`'s own prompt-plus-completion fallback recomputes it correctly);
+one that leaves the flag out, or sets it `false`, is passed through unchanged. Registering a new
+bridge whose provider behaves like Anthropic means adding that one flag to its `BridgeRegistry`
+entry; every other bridge needs nothing here at all. See
+[docs/USAGE-TRACKING.md](USAGE-TRACKING.md#token-counts) for what this means for a recorded row,
+and its [provider table](USAGE-TRACKING.md#which-providers-report-what) for which bundled
+providers set the flag.
+
 Responses carry the stop reason both ways: `getFinishReason()` is a normalized `FinishReason`
 (the platform's per-bridge mappers do the provider translation), `getRawFinishReason()` keeps the
 provider's wording. `streamChat()` yields chunks and then *returns* the assembled
@@ -177,14 +196,23 @@ override, or the client's configured one) and the consumer to attribute (the cal
 `OPTION_CONSUMER` override, or the client's own `getConsumer()`), strips `OPTION_CONSUMER` before
 forwarding the call — a third-party delegate has never heard of it and would otherwise forward it
 straight into the provider's request body, which OpenAI-compatible endpoints reject with a 400 —
-then, after the delegate answers, writes one `UsageRecordRepositoryInterface::save()` call with the
-resolved model, resolved consumer, the response's `TokenUsageInterface`, and the current store id
-(`0` when no store is in scope, which is what cron, CLI and adminhtml already mean by that column
-elsewhere). A response carrying no usage at all writes nothing: zero tokens is not a fact worth a
-row. `streamChat()` does the same after the generator finishes, from whatever the last `Usage`
-chunk reported. A save failure is logged and swallowed, never thrown: recording is a side effect
-of a call that already succeeded, and turning a storage problem into an exception here would fail
-a call that otherwise worked fine.
+then writes one `UsageRecordRepositoryInterface::save()` call with the resolved model, resolved
+consumer, the current store id (`0` when no store is in scope, which is what cron, CLI and
+adminhtml already mean by that column elsewhere), and whatever the call produced. **A row is
+written whether the call succeeded, failed after reaching the provider, or succeeded while
+reporting no usage at all**: a successful response's `TokenUsageInterface` (`null` when the
+provider reported nothing), or `null` usage with the `failed` flag set when the delegate threw.
+`streamChat()` does the same after the generator finishes (or is abandoned by an early `break`,
+recorded as not failed), from whatever the last `Usage` chunk reported. The one call
+`RecordingAiClient` never writes a row for is one that threw `AiRequestNotSentException`: that
+exception means the request was rejected before it ever reached the provider (an unsupported
+option, an invalid model override, a malformed request the calling code built wrong), so nothing
+was billed and there is nothing a usage table can honestly describe; it is rethrown unchanged,
+unrecorded, before the delegate is even called. See
+[docs/USAGE-TRACKING.md](USAGE-TRACKING.md#failed-calls-and-null-token-rows) for what a merchant
+sees for each of these on the recorded side. A save failure is logged and swallowed, never thrown:
+recording is a side effect of a call that already succeeded or already failed on its own terms,
+and turning a storage problem into an exception here would override either outcome for the caller.
 
 **`complete()` is reimplemented rather than delegated.** The wrapped client's own `complete()`
 calls its own internal `chat()` — not this decorator's `chat()` — so delegating `complete()`
@@ -239,8 +267,8 @@ not retention of what was already recorded.
 |---|---|
 | `mageos_ai/services/configuration` | JSON `{rowId: {serviceCode: {field: value}}}`; flagged fields encrypted |
 | `mageos_ai/services/models/<code>` | JSON `{models: {value: label}, fetched_at: <ts>}` from the last manual refresh |
-| `mageos_ai_usage_log` table | One row per completed call: service id/code, model, consumer, store id, the five token counts, whether it streamed, `created_at`. Counts and metadata only — see the decision record below |
-| `mageos_ai_usage_daily` table | One row per (`usage_date`, service id, model, consumer, store id) grouping key per day, written by the roll-up cron; `usage_date` is a store-timezone calendar date, not `DATE(created_at)` |
+| `mageos_ai_usage_log` table | One row per call the client actually sent: succeeded, failed after reaching the provider, or succeeded reporting no usage. Never for a call `AiRequestNotSentException` rejected before it reached the provider. Columns: service id/code, model, consumer, store id, six independently-nullable token counts (prompt, completion, total, cache read, cache write, reasoning), whether it streamed, whether it failed, `created_at`. Counts and metadata only, see the decision record below |
+| `mageos_ai_usage_daily` table | One row per (`usage_date`, service id, model, consumer, store id) grouping key per day, written by the roll-up cron; `usage_date` is a store-timezone calendar date, not `DATE(created_at)`. Carries the same six token counts plus `calls` and `failed_calls` |
 
 Row IDs are opaque strings generated by the form (`_<time>_<ms>`) and preserved across
 saves so credential restore can match rows.

@@ -141,8 +141,10 @@ final class UsageStatsTest extends TestCase
         self::assertSame(0, $totals->getInputTokens());
         self::assertSame(0, $totals->getOutputTokens());
         self::assertSame(0, $totals->getTotalTokens());
-        self::assertNull($totals->getCachedTokens());
+        self::assertNull($totals->getCacheReadTokens());
+        self::assertNull($totals->getCacheWriteTokens());
         self::assertNull($totals->getReasoningTokens());
+        self::assertSame(0, $totals->getFailedCalls());
     }
 
     public function test_it_fills_gaps_in_a_time_series_with_zero_rather_than_skipping_the_day(): void
@@ -220,6 +222,69 @@ final class UsageStatsTest extends TestCase
         self::assertSame(0, $totalsByLabel['2026-01-10']);
     }
 
+    public function test_it_reports_failed_calls_in_the_totals(): void
+    {
+        $this->rawUsageRepository->addRow($this->rawRow(['created_at' => '2026-01-10 00:00:00', 'failed_calls' => 1]));
+        $this->rawUsageRepository->addRow($this->rawRow(['created_at' => '2026-01-11 00:00:00', 'failed_calls' => 0]));
+
+        $totals = $this->subject->getTotals($this->period('2026-01-01 00:00:00', '2026-02-01 00:00:00'));
+
+        self::assertSame(1, $totals->getFailedCalls());
+    }
+
+    public function test_it_merges_failed_calls_across_raw_and_daily_rows(): void
+    {
+        $this->rawUsageRepository->addRow($this->rawRow(['created_at' => '2026-02-15 08:00:00', 'failed_calls' => 1]));
+        $this->dailyUsageRepository->addRow($this->dailyRow(['usage_date' => '2026-01-10', 'failed_calls' => 2]));
+
+        $totals = $this->subject->getTotals($this->period('2026-01-01 00:00:00', '2026-03-01 00:00:00'));
+
+        self::assertSame(3, $totals->getFailedCalls());
+    }
+
+    public function test_it_reports_cache_read_and_write_in_the_totals(): void
+    {
+        $this->rawUsageRepository->addRow(
+            $this->rawRow(['created_at' => '2026-01-10 00:00:00', 'cache_read_tokens' => 40, 'cache_write_tokens' => 12])
+        );
+
+        $totals = $this->subject->getTotals($this->period('2026-01-01 00:00:00', '2026-02-01 00:00:00'));
+
+        self::assertSame(40, $totals->getCacheReadTokens());
+        self::assertSame(12, $totals->getCacheWriteTokens());
+    }
+
+    public function test_it_keeps_cache_totals_null_when_neither_table_reported_them(): void
+    {
+        $this->rawUsageRepository->addRow($this->rawRow(['created_at' => '2026-02-15 08:00:00']));
+        $this->dailyUsageRepository->addRow($this->dailyRow(['usage_date' => '2026-01-10']));
+
+        $totals = $this->subject->getTotals($this->period('2026-01-01 00:00:00', '2026-03-01 00:00:00'));
+
+        self::assertNull($totals->getCacheReadTokens());
+        self::assertNull($totals->getCacheWriteTokens());
+    }
+
+    public function test_it_reports_failed_calls_per_breakdown_row(): void
+    {
+        $this->rawUsageRepository->addRow(
+            $this->rawRow(['created_at' => '2026-01-10 00:00:00', 'consumer' => 'chat', 'failed_calls' => 1])
+        );
+        $this->rawUsageRepository->addRow(
+            $this->rawRow(['created_at' => '2026-01-11 00:00:00', 'consumer' => 'docs_search', 'failed_calls' => 0])
+        );
+
+        $breakdown = $this->subject->getByConsumer($this->period('2026-01-01 00:00:00', '2026-02-01 00:00:00'));
+
+        $failedCallsByConsumer = array_combine(
+            array_map($this->toGroupValue(...), $breakdown),
+            array_map(static fn (UsageBreakdownInterface $row): int => $row->getTotals()->getFailedCalls(), $breakdown)
+        );
+
+        self::assertSame(1, $failedCallsByConsumer['chat']);
+        self::assertSame(0, $failedCallsByConsumer['docs_search']);
+    }
+
     private function period(string $start, string $end): Period
     {
         return Period::between(
@@ -250,8 +315,10 @@ final class UsageStatsTest extends TestCase
                 'input_tokens' => 10,
                 'output_tokens' => 5,
                 'total_tokens' => 15,
-                'cached_tokens' => null,
+                'cache_read_tokens' => null,
+                'cache_write_tokens' => null,
                 'reasoning_tokens' => null,
+                'failed_calls' => 0,
             ],
             $overrides
         );
@@ -275,8 +342,10 @@ final class UsageStatsTest extends TestCase
                 'input_tokens' => 10,
                 'output_tokens' => 5,
                 'total_tokens' => 15,
-                'cached_tokens' => null,
+                'cache_read_tokens' => null,
+                'cache_write_tokens' => null,
                 'reasoning_tokens' => null,
+                'failed_calls' => 0,
             ],
             $overrides
         );
@@ -728,20 +797,26 @@ final class FakeRawUsageRepository implements UsageRecordRepositoryInterface
     {
         $totals = [
             'calls' => 0,
+            'failed_calls' => 0,
             'input_tokens' => 0,
             'output_tokens' => 0,
             'total_tokens' => 0,
-            'cached_tokens' => null,
+            'cache_read_tokens' => null,
+            'cache_write_tokens' => null,
             'reasoning_tokens' => null,
         ];
 
         foreach ($rows as $row) {
             $totals['calls']++;
+            $totals['failed_calls'] += (int) $row['failed_calls'];
             $totals['input_tokens'] += (int) $row['input_tokens'];
             $totals['output_tokens'] += (int) $row['output_tokens'];
             $totals['total_tokens'] += (int) $row['total_tokens'];
-            if ($row['cached_tokens'] !== null) {
-                $totals['cached_tokens'] = ($totals['cached_tokens'] ?? 0) + (int) $row['cached_tokens'];
+            if ($row['cache_read_tokens'] !== null) {
+                $totals['cache_read_tokens'] = ($totals['cache_read_tokens'] ?? 0) + (int) $row['cache_read_tokens'];
+            }
+            if ($row['cache_write_tokens'] !== null) {
+                $totals['cache_write_tokens'] = ($totals['cache_write_tokens'] ?? 0) + (int) $row['cache_write_tokens'];
             }
             if ($row['reasoning_tokens'] !== null) {
                 $totals['reasoning_tokens'] = ($totals['reasoning_tokens'] ?? 0) + (int) $row['reasoning_tokens'];
@@ -929,20 +1004,26 @@ final class FakeDailyUsageRepository implements UsageDailyRepositoryInterface
     {
         $totals = [
             'calls' => 0,
+            'failed_calls' => 0,
             'input_tokens' => 0,
             'output_tokens' => 0,
             'total_tokens' => 0,
-            'cached_tokens' => null,
+            'cache_read_tokens' => null,
+            'cache_write_tokens' => null,
             'reasoning_tokens' => null,
         ];
 
         foreach ($rows as $row) {
             $totals['calls'] += (int) $row['calls'];
+            $totals['failed_calls'] += (int) $row['failed_calls'];
             $totals['input_tokens'] += (int) $row['input_tokens'];
             $totals['output_tokens'] += (int) $row['output_tokens'];
             $totals['total_tokens'] += (int) $row['total_tokens'];
-            if ($row['cached_tokens'] !== null) {
-                $totals['cached_tokens'] = ($totals['cached_tokens'] ?? 0) + (int) $row['cached_tokens'];
+            if ($row['cache_read_tokens'] !== null) {
+                $totals['cache_read_tokens'] = ($totals['cache_read_tokens'] ?? 0) + (int) $row['cache_read_tokens'];
+            }
+            if ($row['cache_write_tokens'] !== null) {
+                $totals['cache_write_tokens'] = ($totals['cache_write_tokens'] ?? 0) + (int) $row['cache_write_tokens'];
             }
             if ($row['reasoning_tokens'] !== null) {
                 $totals['reasoning_tokens'] = ($totals['reasoning_tokens'] ?? 0) + (int) $row['reasoning_tokens'];

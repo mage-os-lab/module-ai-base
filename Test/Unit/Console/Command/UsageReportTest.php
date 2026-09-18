@@ -114,9 +114,9 @@ final class UsageReportTest extends TestCase
 
     public function test_it_prints_machine_readable_json_when_asked_for_json_format(): void
     {
-        $this->usageStats->setTotals(new UsageTotals(6, 600, 0, 600, 50, null));
+        $this->usageStats->setTotals(new UsageTotals(6, 600, 0, 600, 50, null, 10));
         $this->usageStats->setByConsumer([
-            new UsageBreakdown('widget-picker', new UsageTotals(6, 600, 0, 600, 50, null)),
+            new UsageBreakdown('widget-picker', new UsageTotals(6, 600, 0, 600, 50, null, 10)),
         ]);
 
         $tester = $this->commandTester();
@@ -125,10 +125,34 @@ final class UsageReportTest extends TestCase
 
         self::assertIsArray($payload);
         self::assertSame(600, $payload['totals']['total_tokens']);
-        self::assertSame(50, $payload['totals']['cached_tokens']);
+        self::assertSame(50, $payload['totals']['cache_read_tokens']);
+        self::assertSame(10, $payload['totals']['cache_write_tokens']);
         self::assertNull($payload['totals']['reasoning_tokens']);
         self::assertSame('widget-picker', $payload['by_consumer'][0]['consumer']);
         self::assertSame(600, $payload['by_consumer'][0]['total_tokens']);
+    }
+
+    public function test_it_prints_failed_calls_and_cache_split_in_the_cli_report(): void
+    {
+        $this->usageStats->setTotals(new UsageTotals(6, 600, 0, 600, 50, null, 10, 2));
+
+        $tester = $this->commandTester();
+        $tester->execute([]);
+        $tableDisplay = $tester->getDisplay();
+
+        self::assertStringContainsString('Cache read', $tableDisplay);
+        self::assertStringContainsString('Cache write', $tableDisplay);
+        self::assertStringContainsString('Failed', $tableDisplay);
+        self::assertStringContainsString('2', $tableDisplay);
+
+        $jsonTester = $this->commandTester();
+        $jsonTester->execute(['--format' => 'json']);
+        $payload = json_decode($jsonTester->getDisplay(), true);
+
+        self::assertIsArray($payload);
+        self::assertSame(50, $payload['totals']['cache_read_tokens']);
+        self::assertSame(10, $payload['totals']['cache_write_tokens']);
+        self::assertSame(2, $payload['totals']['failed_calls']);
     }
 
     public function test_it_reports_that_no_usage_was_recorded_and_exits_successfully(): void

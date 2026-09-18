@@ -20,16 +20,20 @@ class UsageTotals implements UsageTotalsInterface
      * @param int $inputTokens {@see UsageTotalsInterface::getInputTokens()}
      * @param int $outputTokens {@see UsageTotalsInterface::getOutputTokens()}
      * @param int $totalTokens {@see UsageTotalsInterface::getTotalTokens()}
-     * @param int|null $cachedTokens {@see UsageTotalsInterface::getCachedTokens()}
+     * @param int|null $cacheReadTokens {@see UsageTotalsInterface::getCacheReadTokens()}
      * @param int|null $reasoningTokens {@see UsageTotalsInterface::getReasoningTokens()}
+     * @param int|null $cacheWriteTokens {@see UsageTotalsInterface::getCacheWriteTokens()}
+     * @param int $failedCalls {@see UsageTotalsInterface::getFailedCalls()}
      */
     public function __construct(
         private readonly int $calls,
         private readonly int $inputTokens,
         private readonly int $outputTokens,
         private readonly int $totalTokens,
-        private readonly ?int $cachedTokens,
+        private readonly ?int $cacheReadTokens,
         private readonly ?int $reasoningTokens,
+        private readonly ?int $cacheWriteTokens = null,
+        private readonly int $failedCalls = 0,
     ) {
     }
 
@@ -68,9 +72,17 @@ class UsageTotals implements UsageTotalsInterface
     /**
      * @inheritdoc
      */
-    public function getCachedTokens(): ?int
+    public function getCacheReadTokens(): ?int
     {
-        return $this->cachedTokens;
+        return $this->cacheReadTokens;
+    }
+
+    /**
+     * @inheritdoc
+     */
+    public function getCacheWriteTokens(): ?int
+    {
+        return $this->cacheWriteTokens;
     }
 
     /**
@@ -79,5 +91,13 @@ class UsageTotals implements UsageTotalsInterface
     public function getReasoningTokens(): ?int
     {
         return $this->reasoningTokens;
+    }
+
+    /**
+     * @inheritdoc
+     */
+    public function getFailedCalls(): int
+    {
+        return $this->failedCalls;
     }
 }

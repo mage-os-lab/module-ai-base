@@ -56,8 +56,9 @@ interface UsageDailyRepositoryInterface
      *
      * Each row is an associative array carrying every non-identity column of
      * `mageos_ai_usage_daily`: `usage_date`, `service_id`, `service_code`, `model`, `consumer`,
-     * `store_id`, `calls`, `input_tokens`, `output_tokens`, `total_tokens`, `cached_tokens`,
-     * `reasoning_tokens`. Plain arrays rather than a value object because this is exactly the
+     * `store_id`, `calls`, `failed_calls`, `input_tokens`, `output_tokens`, `total_tokens`,
+     * `cache_read_tokens`, `cache_write_tokens`, `reasoning_tokens`. Plain arrays rather than a
+     * value object because this is exactly the
      * shape {@see \MageOS\AiBase\Api\UsageRecordRepositoryInterface::aggregateRange()} (task 005)
      * produces, and round-tripping it through a DTO here would buy nothing.
      *
@@ -98,11 +99,12 @@ interface UsageDailyRepositoryInterface
      * there is no timezone conversion left to do here and this method never calls `DATE()` or
      * `CONVERT_TZ()`.
      *
-     * Returns an associative array with keys `calls`, `input_tokens`, `output_tokens`,
-     * `total_tokens`, `cached_tokens`, `reasoning_tokens`. The first four are always an int, zero
-     * when nothing matched. `cached_tokens` and `reasoning_tokens` stay null when no matching row
-     * ever reported them, the same nullable convention the raw table uses, rather than becoming a
-     * misleading zero.
+     * Returns an associative array with keys `calls`, `failed_calls`, `input_tokens`,
+     * `output_tokens`, `total_tokens`, `cache_read_tokens`, `cache_write_tokens`,
+     * `reasoning_tokens`. `calls`, `failed_calls` and the three plain token counts are always an
+     * int, zero when nothing matched. `cache_read_tokens`, `cache_write_tokens` and
+     * `reasoning_tokens` stay null when no matching row ever reported them, the same nullable
+     * convention the raw table uses, rather than becoming a misleading zero.
      *
      * @param \DateTimeInterface $from
      * @param \DateTimeInterface $to

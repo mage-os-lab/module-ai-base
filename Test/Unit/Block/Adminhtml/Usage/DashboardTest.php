@@ -517,6 +517,54 @@ final class DashboardTest extends TestCase
         self::assertSame(42, $block->getTotals()->getTotalTokens());
     }
 
+    public function test_it_shows_failed_calls_in_the_dashboard_totals(): void
+    {
+        $block = $this->blockRequesting(Dashboard::PERIOD_THIS_MONTH, null);
+        $this->usageStats->withTotalsForPeriod(
+            $this->currentThisMonth(null),
+            new UsageTotals(10, 100, 50, 150, null, null, null, 3)
+        );
+
+        $html = $this->render($block);
+
+        self::assertSame(3, $block->getFailedCalls());
+        self::assertStringContainsString((string) __('Failed calls'), $html);
+        self::assertStringContainsString('3', $html);
+    }
+
+    public function test_it_shows_cache_read_and_write_in_the_dashboard_totals(): void
+    {
+        $block = $this->blockRequesting(Dashboard::PERIOD_THIS_MONTH, null);
+        $this->usageStats->withTotalsForPeriod(
+            $this->currentThisMonth(null),
+            new UsageTotals(10, 1000, 500, 1500, 200, null, 75, 0)
+        );
+
+        $html = $this->render($block);
+
+        self::assertSame('200', $block->getFormattedCacheReadTokens());
+        self::assertSame('75', $block->getFormattedCacheWriteTokens());
+        self::assertStringContainsString((string) __('Cache read tokens'), $html);
+        self::assertStringContainsString((string) __('Cache write tokens'), $html);
+        self::assertStringContainsString('200', $html);
+        self::assertStringContainsString('75', $html);
+    }
+
+    public function test_it_shows_not_reported_for_null_cache_totals(): void
+    {
+        $block = $this->blockRequesting(Dashboard::PERIOD_THIS_MONTH, null);
+        $this->usageStats->withTotalsForPeriod(
+            $this->currentThisMonth(null),
+            new UsageTotals(10, 1000, 500, 1500, null, null, null, 0)
+        );
+
+        $html = $this->render($block);
+
+        self::assertSame((string) __('Not reported'), $block->getFormattedCacheReadTokens());
+        self::assertSame((string) __('Not reported'), $block->getFormattedCacheWriteTokens());
+        self::assertSame(2, substr_count($html, (string) __('Not reported')));
+    }
+
     private function totals(int $totalTokens, int $calls): UsageTotals
     {
         return new UsageTotals($calls, $totalTokens, 0, $totalTokens, null, null);

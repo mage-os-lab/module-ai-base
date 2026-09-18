@@ -38,9 +38,35 @@ final class UsageListingTest extends TestCase
 
     public function test_it_declares_every_token_count_as_a_column_of_the_listing(): void
     {
-        foreach (['input_tokens', 'output_tokens', 'total_tokens', 'cached_tokens', 'reasoning_tokens'] as $columnName) {
+        $columnNames = [
+            'input_tokens',
+            'output_tokens',
+            'total_tokens',
+            'cache_read_tokens',
+            'cache_write_tokens',
+            'reasoning_tokens',
+        ];
+        foreach ($columnNames as $columnName) {
             self::assertNotNull($this->findColumn($columnName), $columnName);
         }
+    }
+
+    public function test_it_declares_cache_read_cache_write_and_failed_columns_on_the_grid(): void
+    {
+        self::assertNotNull($this->findColumn('cache_read_tokens'));
+        self::assertNotNull($this->findColumn('cache_write_tokens'));
+
+        $failedColumn = $this->findColumn('failed');
+        self::assertNotNull($failedColumn);
+        self::assertSame('Magento_Ui/js/grid/columns/select', (string) $failedColumn['component']);
+        $options = $failedColumn->xpath('.//options');
+        self::assertNotEmpty($options);
+        self::assertSame('Magento\Config\Model\Config\Source\Yesno', (string) $options[0]['class']);
+    }
+
+    public function test_it_no_longer_declares_a_cached_tokens_column(): void
+    {
+        self::assertNull($this->findColumn('cached_tokens'));
     }
 
     public function test_it_declares_no_column_carrying_prompt_or_response_content(): void

@@ -14,9 +14,11 @@ use MageOS\AiBase\Model\Chat\ChatMessage;
 use MageOS\AiBase\Model\Chat\ChatRequest;
 use MageOS\AiBase\Model\Chat\ToolCall as AiBaseToolCall;
 use MageOS\AiBase\Model\Chat\ToolDefinition;
+use MageOS\AiBase\Model\Client\AiRequestNotSentException;
 use MageOS\AiBase\Model\Client\BridgeRegistry;
 use MageOS\AiBase\Model\Client\OptionNormalizer;
 use MageOS\AiBase\Model\Client\SymfonyAiClient;
+use MageOS\AiBase\Model\Client\UsageNormalizer;
 use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
 use Symfony\AI\Platform\FinishReason\FinishReason;
@@ -137,7 +139,7 @@ final class SymfonyAiClientChatTest extends TestCase
 
         $usage = $this->client($platform)->chat($this->helloRequest())->getUsage();
 
-        self::assertSame(30, $usage?->getCachedTokens());
+        self::assertSame(30, $usage?->getCacheReadTokens());
     }
 
     public function test_reads_reasoning_tokens_from_the_platform_usage_object_when_the_bridge_reports_them(): void
@@ -159,7 +161,7 @@ final class SymfonyAiClientChatTest extends TestCase
 
         $usage = $this->client($platform)->chat($this->helloRequest())->getUsage();
 
-        self::assertNull($usage?->getCachedTokens());
+        self::assertNull($usage?->getCacheReadTokens());
     }
 
     public function test_records_null_reasoning_tokens_when_the_bridge_does_not_expose_them(): void
@@ -198,7 +200,7 @@ final class SymfonyAiClientChatTest extends TestCase
             $chunks,
             static fn ($c) => $c->getType() === StreamChunkType::Usage,
         ))[0];
-        self::assertSame(30, $usageChunk->getUsage()?->getCachedTokens());
+        self::assertSame(30, $usageChunk->getUsage()?->getCacheReadTokens());
         self::assertSame(12, $usageChunk->getUsage()?->getReasoningTokens());
     }
 
@@ -249,6 +251,20 @@ final class SymfonyAiClientChatTest extends TestCase
         self::assertSame('get_orders', $messages[2]->getToolCall()->getName());
     }
 
+    /**
+     * Nobody paid for this call: it never left this class, so the recording decorator (task 007)
+     * needs to tell it apart from a call the provider actually rejected.
+     */
+    public function test_it_throws_request_not_sent_for_a_tool_result_without_a_call_id(): void
+    {
+        $platform = new FakePlatform(new FakeResult(new TextResult('Hi')));
+        $request = new ChatRequest([new ChatMessage(MessageRole::Tool, '{"count":3}')]);
+
+        $this->expectException(AiRequestNotSentException::class);
+
+        $this->client($platform)->chat($request);
+    }
+
     public function test_wraps_a_provider_failure_in_a_localized_exception(): void
     {
         $platform = new FakePlatform(null, new \RuntimeException('402 Payment Required'));
@@ -257,6 +273,22 @@ final class SymfonyAiClientChatTest extends TestCase
         $this->expectExceptionMessage('402 Payment Required');
 
         $this->client($platform)->chat($this->helloRequest());
+    }
+
+    /**
+     * A provider failure went out and may have been billed, unlike the validation errors above, so
+     * it stays a plain LocalizedException rather than the type the recorder is told to skip.
+     */
+    public function test_it_still_wraps_provider_failures_as_a_plain_localized_exception(): void
+    {
+        $platform = new FakePlatform(null, new \RuntimeException('402 Payment Required'));
+
+        try {
+            $this->client($platform)->chat($this->helloRequest());
+            self::fail('Expected a LocalizedException.');
+        } catch (LocalizedException $e) {
+            self::assertNotInstanceOf(AiRequestNotSentException::class, $e);
+        }
     }
 
     public function test_complete_returns_plain_text_for_a_single_prompt(): void
@@ -374,6 +406,7 @@ final class SymfonyAiClientChatTest extends TestCase
             'openai',
             '_row_1',
             $this->optionNormalizer(),
+            $this->usageNormalizer(),
         );
 
         self::assertSame(UsageRecordInterface::CONSUMER_UNKNOWN, $client->getConsumer());
@@ -391,6 +424,7 @@ final class SymfonyAiClientChatTest extends TestCase
             'openai',
             '_row_1',
             $this->optionNormalizer(),
+            $this->usageNormalizer(),
             '   ',
         );
 
@@ -419,7 +453,14 @@ final class SymfonyAiClientChatTest extends TestCase
     public function test_the_platform_it_hands_out_satisfies_symfonys_own_contract(): void
     {
         $platform = new InMemoryPlatform('Hi there');
-        $client = new SymfonyAiClient($platform, 'gpt-4o', 'openai', '_row_1', $this->optionNormalizer());
+        $client = new SymfonyAiClient(
+            $platform,
+            'gpt-4o',
+            'openai',
+            '_row_1',
+            $this->optionNormalizer(),
+            $this->usageNormalizer(),
+        );
 
         self::assertInstanceOf(PlatformInterface::class, $client->getPlatform());
 
@@ -669,9 +710,96 @@ final class SymfonyAiClientChatTest extends TestCase
         self::assertCount(1, $usageChunks);
     }
 
+    /**
+     * A usage delta reaches {@see UsageNormalizer} through the exact same call the buffered path
+     * uses, so an Anthropic stream's cache counts fold into the prompt here too, not only when the
+     * caller reads the result after the loop.
+     */
+    public function test_it_applies_the_same_normalization_to_streamed_usage(): void
+    {
+        $platform = new FakePlatform(new FakeResult(null, new Metadata(), [
+            new TokenUsage(promptTokens: 100, completionTokens: 50, cacheCreationTokens: 10, cacheReadTokens: 20),
+        ]));
+
+        $chunks = iterator_to_array($this->client($platform, 'anthropic')->streamChat($this->helloRequest()), false);
+
+        $usageChunk = array_values(
+            array_filter($chunks, static fn ($c) => $c->getType() === StreamChunkType::Usage)
+        )[0];
+        self::assertSame(130, $usageChunk->getUsage()?->getPromptTokens());
+        self::assertSame(180, $usageChunk->getUsage()?->getTotalTokens());
+    }
+
+    /**
+     * Switching the exception type must not reword what the caller sees: these three messages
+     * already told the administrator exactly what to fix, and {@see AiRequestNotSentException}
+     * exists purely to be skipped by the recorder, not to change the wording.
+     */
+    #[DataProvider('validationErrorProvider')]
+    public function test_it_keeps_the_existing_message_for_each_validation_error(
+        callable $triggerValidationError,
+        string $expectedMessage,
+    ): void {
+        $platform = new FakePlatform(new FakeResult(new TextResult('Hi')));
+
+        try {
+            $triggerValidationError($this->client($platform));
+            self::fail('Expected an AiRequestNotSentException.');
+        } catch (AiRequestNotSentException $e) {
+            self::assertSame($expectedMessage, $e->getMessage());
+        }
+    }
+
+    /**
+     * @return array<string, array{0: callable(SymfonyAiClient): mixed, 1: string}>
+     */
+    public static function validationErrorProvider(): array
+    {
+        return [
+            'unsupported option' => [
+                static fn (SymfonyAiClient $client) => $client->chat(
+                    new ChatRequest([new ChatMessage(MessageRole::User, 'Hello')]),
+                    ['stop' => 'END'],
+                ),
+                'The "stop" option is not supported by AI service "openai". '
+                . 'Remove it, or send the provider\'s own option instead.',
+            ],
+            'invalid model' => [
+                static fn (SymfonyAiClient $client) => $client->chat(
+                    new ChatRequest([new ChatMessage(MessageRole::User, 'Hello')]),
+                    ['model' => '   '],
+                ),
+                'The "model" option for AI service "openai" must be a model name. '
+                . 'Leave it out to use the model the service is configured with.',
+            ],
+            'tool result without a call id' => [
+                static fn (SymfonyAiClient $client) => $client->chat(
+                    new ChatRequest([new ChatMessage(MessageRole::Tool, '{"count":3}')]),
+                ),
+                'A tool result message must name the tool call it answers.',
+            ],
+        ];
+    }
+
     private function client(FakePlatform $platform, string $serviceCode = 'openai'): SymfonyAiClient
     {
-        return new SymfonyAiClient($platform, 'gpt-4o', $serviceCode, '_row_1', $this->optionNormalizer());
+        return new SymfonyAiClient(
+            $platform,
+            'gpt-4o',
+            $serviceCode,
+            '_row_1',
+            $this->optionNormalizer(),
+            $this->usageNormalizer(),
+        );
+    }
+
+    /**
+     * A normalizer wired the way di.xml wires it, so cache-outside-prompt behavior matches
+     * production for any test that builds a client through {@see client()} directly.
+     */
+    private function usageNormalizer(): UsageNormalizer
+    {
+        return new UsageNormalizer(new BridgeRegistry(['anthropic' => ['cache_outside_prompt' => true]]));
     }
 
     /**
@@ -793,6 +921,19 @@ final class SymfonyAiClientChatTest extends TestCase
 
         $this->expectException(LocalizedException::class);
         $this->expectExceptionMessage('must be a model name');
+
+        $this->client($platform)->chat($this->helloRequest(), ['model' => '   ']);
+    }
+
+    /**
+     * Nobody paid for this call: it never left this class, so the recording decorator (task 007)
+     * needs to tell it apart from a call the provider actually rejected.
+     */
+    public function test_it_throws_request_not_sent_for_an_invalid_model_option(): void
+    {
+        $platform = new FakePlatform(new FakeResult(new TextResult('Hi')));
+
+        $this->expectException(AiRequestNotSentException::class);
 
         $this->client($platform)->chat($this->helloRequest(), ['model' => '   ']);
     }

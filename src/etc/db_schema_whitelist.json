@@ -13,7 +13,10 @@
             "cached_tokens": true,
             "reasoning_tokens": true,
             "streamed": true,
-            "created_at": true
+            "created_at": true,
+            "cache_read_tokens": true,
+            "cache_write_tokens": true,
+            "failed": true
         },
         "index": {
             "MAGEOS_AI_USAGE_LOG_CREATED_AT": true,
@@ -38,7 +41,10 @@
             "output_tokens": true,
             "total_tokens": true,
             "cached_tokens": true,
-            "reasoning_tokens": true
+            "reasoning_tokens": true,
+            "cache_read_tokens": true,
+            "cache_write_tokens": true,
+            "failed_calls": true
         },
         "index": {
             "MAGEOS_AI_USAGE_DAILY_CONSUMER": true,

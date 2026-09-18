@@ -155,4 +155,52 @@ export class UsagePage {
     graphs(): Locator {
         return this.dashboard().locator('svg[role="img"]');
     }
+
+    /**
+     * One of the small `<dt>`/`<dd>` figures beside the hero total (task 010): failed calls, cache
+     * read tokens, cache write tokens. Located by its label rather than by position, since the
+     * three sit in one `<dl>` with no other per-stat hook.
+     */
+    private dashboardStat(label: string): Locator {
+        return this.dashboard().locator('.mageos-ai-usage-dashboard-stat').filter({ hasText: label }).locator('dd');
+    }
+
+    failedCallsStat(): Locator {
+        return this.dashboardStat('Failed calls');
+    }
+
+    /**
+     * A data row in the usage grid identified by text unique to it — the grid renders no stable
+     * per-row id, so a fixture-seeded consumer or model name is the only handle a spec has.
+     */
+    gridRow(matchingText: string): Locator {
+        return this.grid().locator('tbody tr').filter({ hasText: matchingText });
+    }
+
+    /**
+     * The live position of a column, by its header label.
+     *
+     * The grid renders no `data-column` attribute per `<td>` (see
+     * `vendor/mage-os/module-ui/view/base/web/templates/grid/listing.html`), and an administrator
+     * can drag columns into any order, which the grid then remembers per user — so a cell's
+     * position is not something a spec can hard-code. Resolving it from the header text this way
+     * finds it wherever it currently sits.
+     */
+    private async gridColumnIndex(label: string): Promise<number> {
+        const headers = await this.grid().locator('thead th').allTextContents();
+        const index = headers.findIndex((header) => header.trim() === label);
+        if (index === -1) {
+            throw new Error(`No "${label}" column in the usage grid.`);
+        }
+
+        return index;
+    }
+
+    async cacheReadTokensCell(row: Locator): Promise<Locator> {
+        return row.locator('td').nth(await this.gridColumnIndex('Cache Read Tokens'));
+    }
+
+    async cacheWriteTokensCell(row: Locator): Promise<Locator> {
+        return row.locator('td').nth(await this.gridColumnIndex('Cache Write Tokens'));
+    }
 }

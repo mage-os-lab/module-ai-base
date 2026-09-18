@@ -79,6 +79,30 @@
     color: @mageos-ai-usage-change-down__color;
 }
 
+//  Secondary figures beside the hero total: failed calls and the cache split, none of which
+//  earned the hero's size since they are context for the headline rather than the thing an
+//  administrator opened the page to read.
+.mageos-ai-usage-dashboard-stats {
+    display: flex;
+    gap: 30px;
+    margin: 0 0 20px;
+}
+
+.mageos-ai-usage-dashboard-stat {
+    dt {
+        color: @mageos-ai-usage-ink-secondary;
+        font-size: 1.2rem;
+        margin: 0;
+    }
+
+    dd {
+        color: @mageos-ai-usage-ink;
+        font-size: 1.6rem;
+        font-weight: 600;
+        margin: 0;
+    }
+}
+
 .mageos-ai-usage-dashboard-breakdowns {
     align-items: flex-start;
     display: flex;

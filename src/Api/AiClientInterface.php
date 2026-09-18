@@ -83,6 +83,11 @@ interface AiClientInterface
      * early gets an \Exception from PHP, which is the correct signal that there is no complete
      * turn to append.
      *
+     * When the provider breaks mid-stream, the tokens produced so far are already billed. This
+     * generator yields one final usage StreamChunkInterface built from what the platform reported
+     * before the failure, then rethrows the original exception unchanged. A caller that stops
+     * iterating on that chunk without letting the loop run to exhaustion never sees the exception.
+     *
      * @param ChatRequestInterface $request
      * @param array<string,mixed> $options Provider options (e.g. temperature, max_tokens), plus
      *        self::OPTION_MODEL to run this one call against a different model

@@ -24,6 +24,8 @@
         <testsuite name="Platform">
             <directory>Test/Unit/Model/Chat</directory>
             <file>Test/Unit/Model/Client/SymfonyAiClientChatTest.php</file>
+            <file>Test/Unit/Model/Client/SymfonyAiClientStreamFailureTest.php</file>
+            <file>Test/Unit/Model/Client/UsageNormalizerTest.php</file>
         </testsuite>
         <!--
             Needs a running Magento install with the integration test framework, so it cannot be

@@ -25,6 +25,7 @@ use MageOS\AiBase\Model\Chat\ChatRequest;
 use MageOS\AiBase\Model\Chat\ChatResponse;
 use MageOS\AiBase\Model\Chat\StreamChunk;
 use MageOS\AiBase\Model\Chat\TokenUsage;
+use MageOS\AiBase\Model\Client\AiRequestNotSentException;
 use MageOS\AiBase\Model\Client\RecordingAiClient;
 use MageOS\AiBase\Model\Client\RecordingPlatformAwareAiClient;
 use PHPUnit\Framework\TestCase;
@@ -170,20 +171,37 @@ final class RecordingAiClientTest extends TestCase
         $this->subject($delegate)->chat($this->request());
 
         $saved = $this->repository->getSavedRecords()[0];
-        self::assertSame(20, $saved->getCachedTokens());
+        self::assertSame(20, $saved->getCacheReadTokens());
         self::assertSame(10, $saved->getReasoningTokens());
     }
 
-    public function test_it_records_no_row_when_the_response_carries_no_usage(): void
+    public function test_it_records_cache_read_and_write_tokens(): void
+    {
+        $usage = new TokenUsage(100, 50, null, 20, 10, 5);
+        $delegate = new FakeAiClient(chatResponse: new ChatResponse('Hi', [], $usage));
+
+        $this->subject($delegate)->chat($this->request());
+
+        $saved = $this->repository->getSavedRecords()[0];
+        self::assertSame(20, $saved->getCacheReadTokens());
+        self::assertSame(5, $saved->getCacheWriteTokens());
+    }
+
+    public function test_it_records_a_successful_call_without_usage_as_a_row_with_null_tokens(): void
     {
         $delegate = new FakeAiClient(chatResponse: new ChatResponse('Hi'));
 
         $this->subject($delegate)->chat($this->request());
 
-        self::assertCount(0, $this->repository->getSavedRecords());
+        $saved = $this->repository->getSavedRecords();
+        self::assertCount(1, $saved);
+        self::assertFalse($saved[0]->isFailed());
+        self::assertNull($saved[0]->getInputTokens());
+        self::assertNull($saved[0]->getOutputTokens());
+        self::assertNull($saved[0]->getTotalTokens());
     }
 
-    public function test_it_records_no_row_when_the_wrapped_client_throws(): void
+    public function test_it_records_a_failed_chat_call_with_null_tokens(): void
     {
         $delegate = new FakeAiClient();
         $delegate->givenChatThrows(new LocalizedException(__('boom')));
@@ -194,10 +212,15 @@ final class RecordingAiClientTest extends TestCase
         } catch (LocalizedException) {
         }
 
-        self::assertCount(0, $this->repository->getSavedRecords());
+        $saved = $this->repository->getSavedRecords();
+        self::assertCount(1, $saved);
+        self::assertTrue($saved[0]->isFailed());
+        self::assertNull($saved[0]->getInputTokens());
+        self::assertNull($saved[0]->getOutputTokens());
+        self::assertNull($saved[0]->getTotalTokens());
     }
 
-    public function test_it_rethrows_the_wrapped_client_exception_unchanged(): void
+    public function test_it_rethrows_the_original_exception_from_a_failed_chat_call(): void
     {
         $delegate = new FakeAiClient();
         $exception = new LocalizedException(__('boom'));
@@ -207,6 +230,34 @@ final class RecordingAiClientTest extends TestCase
             $this->subject($delegate)->chat($this->request());
             self::fail('Expected the wrapped exception to propagate.');
         } catch (LocalizedException $caught) {
+            self::assertSame($exception, $caught);
+        }
+    }
+
+    public function test_it_records_nothing_when_the_request_was_never_sent(): void
+    {
+        $delegate = new FakeAiClient();
+        $delegate->givenChatThrows(new AiRequestNotSentException(__('unsupported option')));
+
+        try {
+            $this->subject($delegate)->chat($this->request());
+            self::fail('Expected the exception to propagate.');
+        } catch (AiRequestNotSentException) {
+        }
+
+        self::assertCount(0, $this->repository->getSavedRecords());
+    }
+
+    public function test_it_rethrows_the_request_not_sent_exception_unchanged(): void
+    {
+        $delegate = new FakeAiClient();
+        $exception = new AiRequestNotSentException(__('unsupported option'));
+        $delegate->givenChatThrows($exception);
+
+        try {
+            $this->subject($delegate)->chat($this->request());
+            self::fail('Expected the exception to propagate.');
+        } catch (AiRequestNotSentException $caught) {
             self::assertSame($exception, $caught);
         }
     }
@@ -259,6 +310,45 @@ final class RecordingAiClientTest extends TestCase
         self::assertTrue($saved[0]->isStreamed());
     }
 
+    public function test_it_records_a_failed_stream_with_the_usage_seen_before_the_error(): void
+    {
+        $delegate = new FakeAiClient();
+        $delegate->givenStreamFailsAfter(
+            [
+                new StreamChunk(StreamChunkType::Text, 'Hi'),
+                new StreamChunk(StreamChunkType::Usage, '', null, new TokenUsage(10, 5)),
+            ],
+            new LocalizedException(__('boom')),
+        );
+
+        try {
+            foreach ($this->subject($delegate)->streamChat($this->request()) as $chunk) {
+            }
+            self::fail('Expected the wrapped exception to propagate.');
+        } catch (LocalizedException) {
+        }
+
+        $saved = $this->repository->getSavedRecords();
+        self::assertCount(1, $saved);
+        self::assertTrue($saved[0]->isFailed());
+        self::assertSame(10, $saved[0]->getInputTokens());
+    }
+
+    public function test_it_rethrows_the_original_exception_from_a_failed_stream(): void
+    {
+        $delegate = new FakeAiClient();
+        $exception = new LocalizedException(__('boom'));
+        $delegate->givenStreamFailsAfter([], $exception);
+
+        try {
+            foreach ($this->subject($delegate)->streamChat($this->request()) as $chunk) {
+            }
+            self::fail('Expected the wrapped exception to propagate.');
+        } catch (LocalizedException $caught) {
+            self::assertSame($exception, $caught);
+        }
+    }
+
     public function test_it_records_the_usage_seen_so_far_when_the_caller_abandons_the_stream_after_a_usage_chunk(): void
     {
         $delegate = new FakeAiClient();
@@ -281,7 +371,7 @@ final class RecordingAiClientTest extends TestCase
         self::assertSame(10, $saved[0]->getInputTokens());
     }
 
-    public function test_it_records_nothing_when_the_caller_abandons_the_stream_before_any_usage_arrived(): void
+    public function test_it_records_an_abandoned_stream_as_not_failed(): void
     {
         $delegate = new FakeAiClient();
         $delegate->givenStreamChunks(
@@ -295,7 +385,10 @@ final class RecordingAiClientTest extends TestCase
         }
         unset($stream);
 
-        self::assertCount(0, $this->repository->getSavedRecords());
+        $saved = $this->repository->getSavedRecords();
+        self::assertCount(1, $saved);
+        self::assertFalse($saved[0]->isFailed());
+        self::assertNull($saved[0]->getInputTokens());
     }
 
     public function test_it_records_exactly_one_row_for_a_complete_call(): void
@@ -422,6 +515,8 @@ class FakeAiClient implements AiClientInterface
      */
     private array $streamChunks = [];
 
+    private ?\Throwable $streamException = null;
+
     private ?ChatResponseInterface $streamReturn = null;
 
     public function __construct(
@@ -449,6 +544,10 @@ class FakeAiClient implements AiClientInterface
 
         foreach ($this->streamChunks as $chunk) {
             yield $chunk;
+        }
+
+        if ($this->streamException !== null) {
+            throw $this->streamException;
         }
 
         return $this->streamReturn ?? new ChatResponse();
@@ -492,6 +591,17 @@ class FakeAiClient implements AiClientInterface
     public function givenStreamReturn(ChatResponseInterface $response): void
     {
         $this->streamReturn = $response;
+    }
+
+    /**
+     * @param list<StreamChunkInterface> $chunks Yielded in order before the stream fails; mirrors
+     *        the usage chunk a real failing stream yields before rethrowing (see task 004)
+     * @param \Throwable $exception Thrown after every $chunk has been yielded
+     */
+    public function givenStreamFailsAfter(array $chunks, \Throwable $exception): void
+    {
+        $this->streamChunks = $chunks;
+        $this->streamException = $exception;
     }
 }
 

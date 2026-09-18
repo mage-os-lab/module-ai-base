@@ -66,7 +66,8 @@ final class UsageLogTest extends TestCase
             'input_tokens' => 10,
             'output_tokens' => 5,
             'total_tokens' => 15,
-            'cached_tokens' => 3,
+            'cache_read_tokens' => 3,
+            'cache_write_tokens' => 4,
             'reasoning_tokens' => 2,
         ]));
 
@@ -74,7 +75,8 @@ final class UsageLogTest extends TestCase
         self::assertSame(10, (int) $stored['input_tokens']);
         self::assertSame(5, (int) $stored['output_tokens']);
         self::assertSame(15, (int) $stored['total_tokens']);
-        self::assertSame(3, (int) $stored['cached_tokens']);
+        self::assertSame(3, (int) $stored['cache_read_tokens']);
+        self::assertSame(4, (int) $stored['cache_write_tokens']);
         self::assertSame(2, (int) $stored['reasoning_tokens']);
     }
 
@@ -203,6 +205,86 @@ final class UsageLogTest extends TestCase
 
         self::assertSame(165, $overall['total_tokens']);
         self::assertSame(15, $chatOnly['total_tokens']);
+    }
+
+    public function test_it_counts_rows_without_usage_as_calls(): void
+    {
+        $this->resource->insert($this->row([
+            'input_tokens' => null,
+            'output_tokens' => null,
+            'total_tokens' => null,
+        ]));
+
+        $totals = $this->resource->sumRange(
+            new \DateTimeImmutable('2026-01-01 00:00:00'),
+            new \DateTimeImmutable('2026-02-01 00:00:00')
+        );
+
+        self::assertSame(1, $totals['calls']);
+    }
+
+    public function test_it_sums_tokens_treating_unreported_as_zero(): void
+    {
+        $this->resource->insert($this->row(['total_tokens' => 15]));
+        $this->resource->insert($this->row(['total_tokens' => null]));
+
+        $totals = $this->resource->sumRange(
+            new \DateTimeImmutable('2026-01-01 00:00:00'),
+            new \DateTimeImmutable('2026-02-01 00:00:00')
+        );
+
+        self::assertSame(15, $totals['total_tokens']);
+    }
+
+    public function test_it_sums_cache_read_and_write_separately(): void
+    {
+        $this->resource->insert($this->row(['cache_read_tokens' => 4, 'cache_write_tokens' => 1]));
+        $this->resource->insert($this->row(['cache_read_tokens' => 6, 'cache_write_tokens' => 2]));
+
+        $totals = $this->resource->sumRange(
+            new \DateTimeImmutable('2026-01-01 00:00:00'),
+            new \DateTimeImmutable('2026-02-01 00:00:00')
+        );
+
+        self::assertSame(10, $totals['cache_read_tokens']);
+        self::assertSame(3, $totals['cache_write_tokens']);
+    }
+
+    public function test_it_counts_failed_calls(): void
+    {
+        $this->resource->insert($this->row(['failed' => 1]));
+        $this->resource->insert($this->row(['failed' => 1]));
+        $this->resource->insert($this->row(['failed' => 0]));
+
+        $totals = $this->resource->sumRange(
+            new \DateTimeImmutable('2026-01-01 00:00:00'),
+            new \DateTimeImmutable('2026-02-01 00:00:00')
+        );
+
+        self::assertSame(2, $totals['failed_calls']);
+    }
+
+    public function test_it_reports_zero_failed_calls_for_an_empty_window(): void
+    {
+        $totals = $this->resource->sumRange(
+            new \DateTimeImmutable('2026-01-01 00:00:00'),
+            new \DateTimeImmutable('2026-02-01 00:00:00')
+        );
+
+        self::assertSame(0, $totals['failed_calls']);
+    }
+
+    public function test_it_keeps_cache_sums_null_when_no_row_reported_them(): void
+    {
+        $this->resource->insert($this->row(['cache_read_tokens' => null, 'cache_write_tokens' => null]));
+
+        $totals = $this->resource->sumRange(
+            new \DateTimeImmutable('2026-01-01 00:00:00'),
+            new \DateTimeImmutable('2026-02-01 00:00:00')
+        );
+
+        self::assertNull($totals['cache_read_tokens']);
+        self::assertNull($totals['cache_write_tokens']);
     }
 
     public function test_it_groups_a_window_by_consumer_and_by_service_row(): void
@@ -373,7 +455,7 @@ final class UsageLogTest extends TestCase
         self::assertSame(['2026-01-15', '2026-01-16', '2026-01-17'], array_column($series, 'period'));
         self::assertSame(0, $series[1]['calls']);
         self::assertSame(0, $series[1]['total_tokens']);
-        self::assertNull($series[1]['cached_tokens']);
+        self::assertNull($series[1]['cache_read_tokens']);
     }
 
     public function test_it_narrows_a_total_to_one_store(): void
@@ -526,9 +608,11 @@ final class UsageLogTest extends TestCase
                 'input_tokens' => 10,
                 'output_tokens' => 5,
                 'total_tokens' => 15,
-                'cached_tokens' => null,
+                'cache_read_tokens' => null,
+                'cache_write_tokens' => null,
                 'reasoning_tokens' => null,
                 'streamed' => 0,
+                'failed' => 0,
             ],
             $overrides
         );

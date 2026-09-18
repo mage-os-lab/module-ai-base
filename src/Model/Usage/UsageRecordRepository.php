@@ -184,9 +184,11 @@ class UsageRecordRepository implements UsageRecordRepositoryInterface
             'input_tokens' => $record->getInputTokens(),
             'output_tokens' => $record->getOutputTokens(),
             'total_tokens' => $record->getTotalTokens(),
-            'cached_tokens' => $record->getCachedTokens(),
+            'cache_read_tokens' => $record->getCacheReadTokens(),
+            'cache_write_tokens' => $record->getCacheWriteTokens(),
             'reasoning_tokens' => $record->getReasoningTokens(),
             'streamed' => $record->isStreamed() ? 1 : 0,
+            'failed' => $record->isFailed() ? 1 : 0,
         ];
     }
 

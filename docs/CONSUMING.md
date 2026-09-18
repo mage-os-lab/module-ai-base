@@ -133,9 +133,20 @@ $request = $this->chatRequestBuilderFactory->create()
 $response = $this->aiClientFactory->create()->chat($request);
 $response->getText();             // assistant text, empty when it only asked for tools
 $response->getToolCalls();        // ToolCallInterface[]
-$response->getUsage();            // prompt/completion/total tokens, or null
+$response->getUsage();            // TokenUsageInterface, or null
 $response->getFinishReason();     // FinishReason enum, or null
 ```
+
+`getUsage()` returns a `TokenUsageInterface`, or `null` when the provider reported nothing at
+all, with six independently nullable counts: `getPromptTokens()`, `getCompletionTokens()`,
+`getTotalTokens()`, `getCacheReadTokens()`, `getCacheWriteTokens()` and `getReasoningTokens()`.
+The prompt count **already includes whatever the provider served from cache** on every provider,
+even the one whose own API defines its prompt count as excluding it (Anthropic); adding a cache
+count on top of the prompt count to get "total input" double-counts it. Cache read and cache write
+are two separate subsets of the prompt count, never additions to it, since providers typically bill
+the two at different rates. See [docs/USAGE-TRACKING.md](USAGE-TRACKING.md#token-counts) for the
+full breakdown, and its [provider table](USAGE-TRACKING.md#which-providers-report-what) for which
+providers report which count.
 
 `getFinishReason()` is normalized across providers, because the same event is `length` at
 OpenAI, `max_tokens` at Anthropic and `MAX_TOKENS` at Google. `FinishReason::Length` is the one
@@ -248,6 +259,35 @@ foreach ($turn->getToolCalls() as $call) {
 raises an `\Exception` from PHP, which is the correct signal: there is no complete turn to
 append.
 
+#### A failing stream still reports usage
+
+When a stream breaks partway through, a dropped connection, a provider-side error mid-response,
+`streamChat()` does not swallow what was already billed into the exception. It yields one final
+`StreamChunkType::Usage` chunk carrying whatever the platform had reported up to that point, then
+rethrows the original exception unchanged from the generator's next iteration:
+
+```php
+$usage = null;
+
+try {
+    foreach ($client->streamChat($request) as $chunk) {
+        if ($chunk->getType() === StreamChunkType::Usage) {
+            $usage = $chunk->getUsage();
+        }
+        // ... handle Text/ToolCall chunks as usual
+    }
+} catch (LocalizedException $e) {
+    // $usage holds whatever was billed before the failure, or still null if nothing was
+}
+```
+
+**Keep iterating the loop to see the exception.** A `foreach` that stops on the usage chunk, or
+exits early for any other reason, never reaches the iteration that raises it. This is also what
+lets the usage-recording decorator log a failed streamed call's partial usage instead of losing it:
+it is sitting in the chunk sequence, not only in the exception. See
+[docs/USAGE-TRACKING.md](USAGE-TRACKING.md#failed-calls-and-null-token-rows) for how that row is
+recorded.
+
 ### Failure modes to handle
 
 `create()` and `complete()` throw `LocalizedException` with admin-readable messages:
@@ -258,12 +298,19 @@ append.
 | No client bridge registered for the service code | `create()` |
 | symfony/ai-platform not installed | `create()` |
 | Provider/API call failed (auth, network, provider error) | `complete()` |
+| A call rejected before it ever reached the provider: an unsupported option, an invalid model override, a tool result message missing its call id | `chat()` / `complete()` / `streamChat()`, as `AiRequestNotSentException` |
 
 Treat all of these as recoverable: catch `LocalizedException`, degrade gracefully (skip the
 AI feature, queue for retry, surface the message to the admin). Don't let an unconfigured
 AI backend break checkout or a cron run. The messages are actionable by design — the
 "not installed" one includes the composer command — so surfacing them in admin UIs is
 usually the right move.
+
+`AiRequestNotSentException` extends `LocalizedException`, so an existing `catch (LocalizedException)`
+still catches it without any change, but it is worth telling apart from every other row in the
+table above: nothing was ever sent to the provider, so nothing was billed, and usage tracking
+never writes a row for it either, see
+[docs/USAGE-TRACKING.md](USAGE-TRACKING.md#failed-calls-and-null-token-rows).
 
 ### Which service will `create()` use?
 

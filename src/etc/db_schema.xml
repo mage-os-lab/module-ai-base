@@ -14,16 +14,22 @@
                 comment="Identifier of the module or skill that made the call"/>
         <column xsi:type="smallint" name="store_id" unsigned="true" nullable="false" default="0"
                 comment="Store the call ran under; not null, defaults to the admin store (0). No FK to store: deleting a store must not silently erase historical accounting"/>
-        <column xsi:type="int" name="input_tokens" unsigned="true" nullable="false" default="0" comment="Prompt tokens"/>
-        <column xsi:type="int" name="output_tokens" unsigned="true" nullable="false" default="0" comment="Completion tokens"/>
-        <column xsi:type="int" name="total_tokens" unsigned="true" nullable="false" default="0"
-                comment="Total tokens; provider-reported total, or prompt plus completion when the provider reported none"/>
-        <column xsi:type="int" name="cached_tokens" unsigned="true" nullable="true"
-                comment="Cached portion of the prompt tokens, when the provider reports prompt caching separately"/>
+        <column xsi:type="int" name="input_tokens" unsigned="true" nullable="true"
+                comment="Prompt tokens; null when the provider reported no usage at all"/>
+        <column xsi:type="int" name="output_tokens" unsigned="true" nullable="true"
+                comment="Completion tokens; null when the provider reported no usage at all"/>
+        <column xsi:type="int" name="total_tokens" unsigned="true" nullable="true"
+                comment="Total tokens; provider-reported total, or prompt plus completion when the provider reported none; null when the provider reported no usage at all"/>
+        <column xsi:type="int" name="cache_read_tokens" unsigned="true" nullable="true"
+                comment="Prompt tokens served from cache, when the provider reports cache reads separately"/>
+        <column xsi:type="int" name="cache_write_tokens" unsigned="true" nullable="true"
+                comment="Prompt tokens written to cache, when the provider reports cache writes separately"/>
         <column xsi:type="int" name="reasoning_tokens" unsigned="true" nullable="true"
                 comment="Reasoning portion of the completion tokens, when the provider reports thinking tokens separately"/>
         <column xsi:type="boolean" name="streamed" nullable="false" default="false"
                 comment="Whether the call was served over a streaming response"/>
+        <column xsi:type="boolean" name="failed" nullable="false" default="false"
+                comment="Whether the call threw after being sent to the provider; usage columns may still hold what was reported before the failure"/>
         <column xsi:type="timestamp" name="created_at" on_update="false" nullable="false" default="CURRENT_TIMESTAMP"
                 comment="Timestamp written by the database. Day boundaries are computed in PHP from TimezoneInterface and applied as half-open created_at &gt;= start AND created_at &lt; end ranges; never DATE(created_at) or CONVERT_TZ(), the MySQL timezone tables are not guaranteed to be loaded on a customer install"/>
         <constraint xsi:type="primary" referenceId="PRIMARY">
@@ -59,10 +65,14 @@
         <column xsi:type="int" name="output_tokens" unsigned="true" nullable="false" default="0" comment="Completion tokens"/>
         <column xsi:type="int" name="total_tokens" unsigned="true" nullable="false" default="0"
                 comment="Total tokens; provider-reported total, or prompt plus completion when the provider reported none"/>
-        <column xsi:type="int" name="cached_tokens" unsigned="true" nullable="true"
-                comment="Cached portion of the prompt tokens, when the provider reports prompt caching separately"/>
+        <column xsi:type="int" name="cache_read_tokens" unsigned="true" nullable="true"
+                comment="Prompt tokens served from cache, summed from the reporting calls rolled into this row; null when none reported any"/>
+        <column xsi:type="int" name="cache_write_tokens" unsigned="true" nullable="true"
+                comment="Prompt tokens written to cache, summed from the reporting calls rolled into this row; null when none reported any"/>
         <column xsi:type="int" name="reasoning_tokens" unsigned="true" nullable="true"
                 comment="Reasoning portion of the completion tokens, when the provider reports thinking tokens separately"/>
+        <column xsi:type="int" name="failed_calls" unsigned="true" nullable="false" default="0"
+                comment="Number of calls rolled into this row that threw after being sent to the provider"/>
         <constraint xsi:type="primary" referenceId="PRIMARY">
             <column name="entity_id"/>
         </constraint>

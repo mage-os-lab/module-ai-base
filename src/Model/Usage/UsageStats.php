@@ -336,8 +336,10 @@ class UsageStats implements UsageStatsInterface
             inputTokens: (int) $summed['input_tokens'],
             outputTokens: (int) $summed['output_tokens'],
             totalTokens: (int) $summed['total_tokens'],
-            cachedTokens: $this->toNullableInt($summed['cached_tokens']),
+            cacheReadTokens: $this->toNullableInt($summed['cache_read_tokens']),
             reasoningTokens: $this->toNullableInt($summed['reasoning_tokens']),
+            cacheWriteTokens: $this->toNullableInt($summed['cache_write_tokens']),
+            failedCalls: (int) $summed['failed_calls'],
         );
     }
 
@@ -354,12 +356,17 @@ class UsageStats implements UsageStatsInterface
     {
         return [
             'calls' => (int) $left['calls'] + (int) $right['calls'],
+            'failed_calls' => (int) $left['failed_calls'] + (int) $right['failed_calls'],
             'input_tokens' => (int) $left['input_tokens'] + (int) $right['input_tokens'],
             'output_tokens' => (int) $left['output_tokens'] + (int) $right['output_tokens'],
             'total_tokens' => (int) $left['total_tokens'] + (int) $right['total_tokens'],
-            'cached_tokens' => $this->addNullable(
-                $this->toNullableInt($left['cached_tokens']),
-                $this->toNullableInt($right['cached_tokens'])
+            'cache_read_tokens' => $this->addNullable(
+                $this->toNullableInt($left['cache_read_tokens']),
+                $this->toNullableInt($right['cache_read_tokens'])
+            ),
+            'cache_write_tokens' => $this->addNullable(
+                $this->toNullableInt($left['cache_write_tokens']),
+                $this->toNullableInt($right['cache_write_tokens'])
             ),
             'reasoning_tokens' => $this->addNullable(
                 $this->toNullableInt($left['reasoning_tokens']),
@@ -381,7 +388,7 @@ class UsageStats implements UsageStatsInterface
 
     /**
      * Adds two nullable counts, staying null only when both sides are: the same
-     * "not reported" versus "reported as zero" distinction {@see UsageTotalsInterface::getCachedTokens()}
+     * "not reported" versus "reported as zero" distinction {@see UsageTotalsInterface::getCacheReadTokens()}
      * documents.
      *
      * @param int|null $left
@@ -406,10 +413,12 @@ class UsageStats implements UsageStatsInterface
     {
         return [
             'calls' => 0,
+            'failed_calls' => 0,
             'input_tokens' => 0,
             'output_tokens' => 0,
             'total_tokens' => 0,
-            'cached_tokens' => null,
+            'cache_read_tokens' => null,
+            'cache_write_tokens' => null,
             'reasoning_tokens' => null,
         ];
     }

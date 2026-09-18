@@ -298,14 +298,17 @@ class UsageLog extends AbstractDb implements UsageLogResourceInterface
     }
 
     /**
-     * The six aggregate columns every range query selects, aliased to plain column names.
+     * The eight aggregate columns every range query selects, aliased to plain column names.
      *
      * `calls` counts rows rather than summing a column: unlike the daily roll-up, one raw-log row
-     * is always exactly one call. The four call/token columns coalesce a `NULL` sum (no matching
-     * row) to `0`, matching the "always an int, zero when nothing matched" promise on
-     * {@see UsageRecordRepositoryInterface::sumRange()}. `cached_tokens` and `reasoning_tokens`
-     * are left to sum to a genuine `NULL` when nothing reported them, since MySQL's `SUM()`
-     * already ignores `NULL` inputs and only returns `NULL` itself when every input was `NULL`.
+     * is always exactly one call, whether or not the provider reported any usage for it, which is
+     * why `calls` is a plain `COUNT(*)` rather than coalescing a summed column. `failed_calls`
+     * counts rows whose `failed` flag was set, the same way. The token columns coalesce a `NULL`
+     * sum (no matching row) to `0`, matching the "always an int, zero when nothing matched" promise
+     * on {@see UsageRecordRepositoryInterface::sumRange()}. `cache_read_tokens`,
+     * `cache_write_tokens` and `reasoning_tokens` are left to sum to a genuine `NULL` when nothing
+     * reported them, since MySQL's `SUM()` already ignores `NULL` inputs and only returns `NULL`
+     * itself when every input was `NULL`.
      *
      * @return array<string,\Zend_Db_Expr>
      */
@@ -313,17 +316,19 @@ class UsageLog extends AbstractDb implements UsageLogResourceInterface
     {
         return [
             'calls' => new \Zend_Db_Expr('COUNT(*)'),
+            'failed_calls' => new \Zend_Db_Expr('COALESCE(SUM(failed), 0)'),
             'input_tokens' => new \Zend_Db_Expr('COALESCE(SUM(input_tokens), 0)'),
             'output_tokens' => new \Zend_Db_Expr('COALESCE(SUM(output_tokens), 0)'),
             'total_tokens' => new \Zend_Db_Expr('COALESCE(SUM(total_tokens), 0)'),
-            'cached_tokens' => new \Zend_Db_Expr('SUM(cached_tokens)'),
+            'cache_read_tokens' => new \Zend_Db_Expr('SUM(cache_read_tokens)'),
+            'cache_write_tokens' => new \Zend_Db_Expr('SUM(cache_write_tokens)'),
             'reasoning_tokens' => new \Zend_Db_Expr('SUM(reasoning_tokens)'),
         ];
     }
 
     /**
      * One fetched row of {@see aggregateRange()}: its five grouping-key columns plus
-     * {@see castTotals()}'s six counts, labelled with the caller-supplied $usageDate.
+     * {@see castTotals()}'s eight counts, labelled with the caller-supplied $usageDate.
      *
      * @param array<array-key,mixed> $row
      * @param string $usageDate

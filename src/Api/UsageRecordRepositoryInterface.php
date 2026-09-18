@@ -97,9 +97,9 @@ interface UsageRecordRepositoryInterface
      * `DATE()` or `CONVERT_TZ()`, so converting the window to the store's local day boundaries is
      * the caller's job before it gets here (task 003's schema comments explain why).
      *
-     * Each result row carries `calls` (the number of raw rows that matched the group) plus the
-     * five token counts summed, and the `usage_date` label $usageDate the caller already computed
-     * for the window, so the shape is exactly what
+     * Each result row carries `calls` (the number of raw rows that matched the group), `failed_calls`
+     * and the five token counts summed, and the `usage_date` label $usageDate the caller already
+     * computed for the window, so the shape is exactly what
      * {@see UsageDailyRepositoryInterface::saveAggregates()} expects one of its rows to look like
      * without any further reshaping in between.
      *
@@ -113,10 +113,12 @@ interface UsageRecordRepositoryInterface
     /**
      * Totals every token count across raw rows in `[$from, $to)`, optionally narrowed to one consumer.
      *
-     * Returns an associative array with keys `calls`, `input_tokens`, `output_tokens`,
-     * `total_tokens`, `cached_tokens`, `reasoning_tokens`. The first four are always an int, zero
-     * when nothing matched. `cached_tokens` and `reasoning_tokens` stay null when no matching row
-     * ever reported them, rather than becoming a misleading zero.
+     * Returns an associative array with keys `calls`, `failed_calls`, `input_tokens`,
+     * `output_tokens`, `total_tokens`, `cache_read_tokens`, `cache_write_tokens`,
+     * `reasoning_tokens`. `calls`, `failed_calls` and the three plain token counts are always an
+     * int, zero when nothing matched. `cache_read_tokens`, `cache_write_tokens` and
+     * `reasoning_tokens` stay null when no matching row ever reported them, rather than becoming a
+     * misleading zero.
      *
      * @param \DateTimeInterface $from
      * @param \DateTimeInterface $to

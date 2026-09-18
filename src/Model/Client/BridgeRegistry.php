@@ -15,6 +15,14 @@ namespace MageOS\AiBase\Model\Client;
  * Since symfony/ai-platform 0.12 the bridges ship as one package per provider rather than inside
  * the platform package, so knowing the package name per service code is what lets the admin form
  * tell an administrator exactly what to install.
+ *
+ * @phpstan-type BridgeDefinition array{
+ *     factory?: string,
+ *     package?: string,
+ *     dialect?: string,
+ *     catalog?: string,
+ *     cache_outside_prompt?: bool|string,
+ * }
  */
 class BridgeRegistry
 {
@@ -39,8 +47,13 @@ class BridgeRegistry
     private const KEY_CATALOG = 'catalog';
 
     /**
-     * @param array<string,array{factory?:string,package?:string,dialect?:string,catalog?:string}> $bridges
-     *        Service code => bridge, package, request-option dialect and model catalogue
+     * Key of the cache-outside-prompt flag within a bridge definition.
+     */
+    private const KEY_CACHE_OUTSIDE_PROMPT = 'cache_outside_prompt';
+
+    /**
+     * @param array<string,BridgeDefinition> $bridges Service code => bridge, package,
+     *        request-option dialect, model catalogue and cache-outside-prompt flag
      */
     public function __construct(
         private readonly array $bridges = [],
@@ -128,6 +141,26 @@ class BridgeRegistry
     public function getCatalogClass(string $serviceCode): ?string
     {
         return $this->readString($serviceCode, self::KEY_CATALOG);
+    }
+
+    /**
+     * Whether this service's bridge counts cache reads and writes outside its reported prompt.
+     *
+     * Anthropic's Messages API is the one exception known today: its `input_tokens` excludes
+     * `cache_read_input_tokens` and `cache_creation_input_tokens`, unlike every other bridge,
+     * where cache tokens are already counted inside the reported prompt. The client normalizes
+     * on this flag rather than hardcoding the provider name, so a third-party bridge registered
+     * from its own di.xml can declare its own semantics. An unknown service code, or one that
+     * omits the flag, defaults to false: cache tokens are inside the prompt count.
+     *
+     * @param string $serviceCode
+     * @return bool
+     */
+    public function isCacheOutsidePrompt(string $serviceCode): bool
+    {
+        $value = $this->bridges[$serviceCode][self::KEY_CACHE_OUTSIDE_PROMPT] ?? false;
+
+        return is_string($value) ? filter_var($value, FILTER_VALIDATE_BOOLEAN) : $value;
     }
 
     /**

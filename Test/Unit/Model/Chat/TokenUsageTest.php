@@ -9,18 +9,26 @@ use PHPUnit\Framework\TestCase;
 
 final class TokenUsageTest extends TestCase
 {
-    public function test_it_returns_the_cached_token_count_the_provider_reported(): void
+    public function test_it_returns_the_cache_read_tokens(): void
     {
         $usage = new TokenUsage(120, 45, null, 30);
 
-        self::assertSame(30, $usage->getCachedTokens());
+        self::assertSame(30, $usage->getCacheReadTokens());
     }
 
-    public function test_it_returns_null_for_cached_tokens_when_the_provider_reported_none(): void
+    public function test_it_returns_the_cache_write_tokens(): void
+    {
+        $usage = new TokenUsage(120, 45, null, null, null, 15);
+
+        self::assertSame(15, $usage->getCacheWriteTokens());
+    }
+
+    public function test_it_returns_null_cache_counts_when_none_were_reported(): void
     {
         $usage = new TokenUsage(120, 45);
 
-        self::assertNull($usage->getCachedTokens());
+        self::assertNull($usage->getCacheReadTokens());
+        self::assertNull($usage->getCacheWriteTokens());
     }
 
     public function test_it_returns_the_reasoning_token_count_the_provider_reported(): void
@@ -38,26 +46,33 @@ final class TokenUsageTest extends TestCase
     }
 
     /**
-     * Cached and reasoning tokens are subsets of prompt and completion, not additions to them, so
+     * Cache and reasoning tokens are subsets of prompt and completion, not additions to them, so
      * a provider-reported total must stay exactly what the provider sent regardless of whether
-     * either subset count is also present.
+     * any subset count is also present.
      */
-    public function test_it_leaves_the_total_unchanged_when_cached_and_reasoning_counts_are_present(): void
+    public function test_it_leaves_the_total_unchanged_when_cache_and_reasoning_counts_are_present(): void
     {
-        $usage = new TokenUsage(120, 45, 165, 30, 18);
+        $usage = new TokenUsage(120, 45, 165, 30, 18, 15);
 
         self::assertSame(165, $usage->getTotalTokens());
     }
 
     /**
-     * Cached and reasoning tokens are already counted inside prompt and completion, so the
+     * Cache and reasoning tokens are already counted inside prompt and completion, so the
      * fallback must not add them a second time on top of prompt plus completion.
      */
-    public function test_it_still_falls_back_to_prompt_plus_completion_when_no_total_was_reported(): void
+    public function test_it_falls_back_to_prompt_plus_completion_for_the_total(): void
     {
-        $usage = new TokenUsage(120, 45, null, 30, 18);
+        $usage = new TokenUsage(120, 45, null, 30, 18, 15);
 
         self::assertSame(165, $usage->getTotalTokens());
+    }
+
+    public function test_it_returns_null_total_when_nothing_was_reported(): void
+    {
+        $usage = new TokenUsage();
+
+        self::assertNull($usage->getTotalTokens());
     }
 
     /**
@@ -72,7 +87,8 @@ final class TokenUsageTest extends TestCase
         self::assertSame(120, $usage->getPromptTokens());
         self::assertSame(45, $usage->getCompletionTokens());
         self::assertSame(165, $usage->getTotalTokens());
-        self::assertNull($usage->getCachedTokens());
+        self::assertNull($usage->getCacheReadTokens());
+        self::assertNull($usage->getCacheWriteTokens());
         self::assertNull($usage->getReasoningTokens());
     }
 }

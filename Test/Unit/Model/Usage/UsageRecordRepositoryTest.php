@@ -62,7 +62,7 @@ final class UsageRecordRepositoryTest extends TestCase
             'inputTokens' => 10,
             'outputTokens' => 5,
             'totalTokens' => 15,
-            'cachedTokens' => 3,
+            'cacheReadTokens' => 3,
             'reasoningTokens' => 2,
         ]));
 
@@ -70,8 +70,28 @@ final class UsageRecordRepositoryTest extends TestCase
         self::assertSame(10, $stored[0]['input_tokens']);
         self::assertSame(5, $stored[0]['output_tokens']);
         self::assertSame(15, $stored[0]['total_tokens']);
-        self::assertSame(3, $stored[0]['cached_tokens']);
+        self::assertSame(3, $stored[0]['cache_read_tokens']);
         self::assertSame(2, $stored[0]['reasoning_tokens']);
+    }
+
+    public function test_it_writes_cache_split_failed_flag_and_null_tokens_to_the_row(): void
+    {
+        $this->subject->save($this->record([
+            'inputTokens' => null,
+            'outputTokens' => null,
+            'totalTokens' => null,
+            'cacheReadTokens' => 7,
+            'cacheWriteTokens' => 4,
+            'failed' => true,
+        ]));
+
+        $stored = $this->resource->getStoredRows();
+        self::assertNull($stored[0]['input_tokens']);
+        self::assertNull($stored[0]['output_tokens']);
+        self::assertNull($stored[0]['total_tokens']);
+        self::assertSame(7, $stored[0]['cache_read_tokens']);
+        self::assertSame(4, $stored[0]['cache_write_tokens']);
+        self::assertSame(1, $stored[0]['failed']);
     }
 
     public function test_it_deletes_only_records_older_than_the_given_cutoff(): void
@@ -242,7 +262,7 @@ final class UsageRecordRepositoryTest extends TestCase
     }
 
     /**
-     * @param array<string,int|string|null> $overrides
+     * @param array<string,int|string|bool|null> $overrides
      */
     private function record(array $overrides = []): UsageRecord
     {
@@ -260,12 +280,14 @@ final class UsageRecordRepositoryTest extends TestCase
          *     model: string,
          *     storeId: int,
          *     consumer: string,
-         *     inputTokens?: int,
-         *     outputTokens?: int,
-         *     totalTokens?: int,
-         *     cachedTokens?: int|null,
+         *     inputTokens?: int|null,
+         *     outputTokens?: int|null,
+         *     totalTokens?: int|null,
+         *     cacheReadTokens?: int|null,
+         *     cacheWriteTokens?: int|null,
          *     reasoningTokens?: int|null,
          *     streamed?: bool,
+         *     failed?: bool,
          * } $arguments
          */
         $arguments = array_merge($defaults, $overrides);
@@ -290,7 +312,7 @@ final class UsageRecordRepositoryTest extends TestCase
                 'input_tokens' => 10,
                 'output_tokens' => 5,
                 'total_tokens' => 15,
-                'cached_tokens' => null,
+                'cache_read_tokens' => null,
                 'reasoning_tokens' => null,
                 'streamed' => 0,
             ],
@@ -539,7 +561,7 @@ final class FakeUsageLogResource implements UsageLogResourceInterface
             'input_tokens' => 0,
             'output_tokens' => 0,
             'total_tokens' => 0,
-            'cached_tokens' => null,
+            'cache_read_tokens' => null,
             'reasoning_tokens' => null,
         ];
 
@@ -548,8 +570,8 @@ final class FakeUsageLogResource implements UsageLogResourceInterface
             $totals['input_tokens'] += (int) $row['input_tokens'];
             $totals['output_tokens'] += (int) $row['output_tokens'];
             $totals['total_tokens'] += (int) $row['total_tokens'];
-            if ($row['cached_tokens'] !== null) {
-                $totals['cached_tokens'] = ($totals['cached_tokens'] ?? 0) + (int) $row['cached_tokens'];
+            if ($row['cache_read_tokens'] !== null) {
+                $totals['cache_read_tokens'] = ($totals['cache_read_tokens'] ?? 0) + (int) $row['cache_read_tokens'];
             }
             if ($row['reasoning_tokens'] !== null) {
                 $totals['reasoning_tokens'] = ($totals['reasoning_tokens'] ?? 0) + (int) $row['reasoning_tokens'];

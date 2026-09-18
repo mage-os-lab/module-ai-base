@@ -60,17 +60,23 @@ class UsageDaily extends AbstractDb implements UsageDailyResourceInterface
      * being replaced, so rewriting them on a match would be a no-op at best and a silent
      * cross-group corruption at worst. `service_code` is included even though it is derivable from
      * `service_id`, in case a service row's code ever changes between two roll-up runs of the same
-     * day.
+     * day. `failed_calls`, `cache_read_tokens` and `cache_write_tokens` are included for the same
+     * reason as every other count column: without them here, re-rolling a day that already has a
+     * row would leave that row's failure count and cache split stuck at whatever the first run
+     * wrote, silently going stale on every later run instead of being replaced along with the rest
+     * of the aggregate.
      *
      * @var string[]
      */
     private const UPDATE_ON_DUPLICATE_COLUMNS = [
         'service_code',
         'calls',
+        'failed_calls',
         'input_tokens',
         'output_tokens',
         'total_tokens',
-        'cached_tokens',
+        'cache_read_tokens',
+        'cache_write_tokens',
         'reasoning_tokens',
     ];
 
@@ -249,15 +255,16 @@ class UsageDaily extends AbstractDb implements UsageDailyResourceInterface
     }
 
     /**
-     * The six aggregate columns every totals query selects, aliased to the plain column names.
+     * The eight aggregate columns every totals query selects, aliased to the plain column names.
      *
-     * The four call/token columns coalesce a `NULL` sum (no matching row) to `0`, matching the
-     * "always an int, zero when nothing matched" promise on
-     * {@see UsageDailyRepositoryInterface::sumRange()}. `cached_tokens` and `reasoning_tokens` are
-     * left to sum to a genuine `NULL` when nothing reported them, since MySQL's `SUM()` already
-     * ignores `NULL` inputs and only returns `NULL` itself when every input was `NULL` — exactly
-     * the "stays null, never becomes a misleading zero" rule those two columns follow everywhere
-     * else in this module.
+     * `calls` and `failed_calls` sum the daily table's own pre-aggregated counts rather than
+     * counting rows: unlike the raw log, one row here already represents many calls. The token
+     * columns coalesce a `NULL` sum (no matching row) to `0`, matching the "always an int, zero
+     * when nothing matched" promise on {@see UsageDailyRepositoryInterface::sumRange()}.
+     * `cache_read_tokens`, `cache_write_tokens` and `reasoning_tokens` are left to sum to a genuine
+     * `NULL` when nothing reported them, since MySQL's `SUM()` already ignores `NULL` inputs and
+     * only returns `NULL` itself when every input was `NULL` — exactly the "stays null, never
+     * becomes a misleading zero" rule those columns follow everywhere else in this module.
      *
      * @return array<string,\Zend_Db_Expr>
      */
@@ -265,10 +272,12 @@ class UsageDaily extends AbstractDb implements UsageDailyResourceInterface
     {
         return [
             'calls' => new \Zend_Db_Expr('COALESCE(SUM(calls), 0)'),
+            'failed_calls' => new \Zend_Db_Expr('COALESCE(SUM(failed_calls), 0)'),
             'input_tokens' => new \Zend_Db_Expr('COALESCE(SUM(input_tokens), 0)'),
             'output_tokens' => new \Zend_Db_Expr('COALESCE(SUM(output_tokens), 0)'),
             'total_tokens' => new \Zend_Db_Expr('COALESCE(SUM(total_tokens), 0)'),
-            'cached_tokens' => new \Zend_Db_Expr('SUM(cached_tokens)'),
+            'cache_read_tokens' => new \Zend_Db_Expr('SUM(cache_read_tokens)'),
+            'cache_write_tokens' => new \Zend_Db_Expr('SUM(cache_write_tokens)'),
             'reasoning_tokens' => new \Zend_Db_Expr('SUM(reasoning_tokens)'),
         ];
     }

@@ -598,6 +598,55 @@ class Dashboard extends Template
     }
 
     /**
+     * The selected period's failed call count, per decision 6 of the usage tracking review: a
+     * failed call still counts in {@see UsageTotalsInterface::getCalls()}, so this is shown beside
+     * that figure rather than subtracted out of it.
+     *
+     * @return int
+     */
+    public function getFailedCalls(): int
+    {
+        return $this->getTotals()->getFailedCalls();
+    }
+
+    /**
+     * The selected period's cache-read prompt tokens, thousands grouped.
+     *
+     * @return string `__('Not reported')` when nothing in the window ever reported a cache-read
+     *         count, the same "not reported" versus "reported as zero" distinction
+     *         {@see UsageTotalsInterface::getCacheReadTokens()} draws.
+     */
+    public function getFormattedCacheReadTokens(): string
+    {
+        return $this->formatNullableTokenCount($this->getTotals()->getCacheReadTokens());
+    }
+
+    /**
+     * The selected period's cache-write prompt tokens, thousands grouped.
+     *
+     * On the same "not reported" terms as {@see getFormattedCacheReadTokens()}.
+     *
+     * @return string
+     */
+    public function getFormattedCacheWriteTokens(): string
+    {
+        return $this->formatNullableTokenCount($this->getTotals()->getCacheWriteTokens());
+    }
+
+    /**
+     * A token count for display, distinguishing "not reported" from "reported as zero" the way a
+     * plain `0` cannot: a bare zero reads as "no cache activity", which is a different fact from
+     * "no provider in this window told us".
+     *
+     * @param int|null $tokenCount
+     * @return string
+     */
+    private function formatNullableTokenCount(?int $tokenCount): string
+    {
+        return $tokenCount === null ? (string) __('Not reported') : number_format((float) $tokenCount, 0);
+    }
+
+    /**
      * Provider name per configured row id, for turning a by-service breakdown's opaque
      * `service_id` into something an administrator recognises.
      *

@@ -64,6 +64,40 @@ final class UsageDailyTest extends TestCase
         self::assertSame(700, (int) $stored[0]['total_tokens']);
     }
 
+    public function test_it_rolls_up_cache_split_and_failed_calls_into_the_daily_table(): void
+    {
+        $this->resource->upsertAggregates([$this->row([
+            'failed_calls' => 2,
+            'cache_read_tokens' => 5,
+            'cache_write_tokens' => 3,
+        ])]);
+
+        $stored = $this->fetchAllRows()[0];
+        self::assertSame(2, (int) $stored['failed_calls']);
+        self::assertSame(5, (int) $stored['cache_read_tokens']);
+        self::assertSame(3, (int) $stored['cache_write_tokens']);
+    }
+
+    public function test_it_overwrites_failed_calls_and_cache_split_when_a_day_is_rolled_up_again(): void
+    {
+        $this->resource->upsertAggregates([$this->row([
+            'failed_calls' => 2,
+            'cache_read_tokens' => 5,
+            'cache_write_tokens' => 3,
+        ])]);
+        $this->resource->upsertAggregates([$this->row([
+            'failed_calls' => 1,
+            'cache_read_tokens' => 9,
+            'cache_write_tokens' => 4,
+        ])]);
+
+        $stored = $this->fetchAllRows();
+        self::assertCount(1, $stored);
+        self::assertSame(1, (int) $stored[0]['failed_calls']);
+        self::assertSame(9, (int) $stored[0]['cache_read_tokens']);
+        self::assertSame(4, (int) $stored[0]['cache_write_tokens']);
+    }
+
     /**
      * The requirement this whole task exists for: MySQL's unique key on
      * (`usage_date`, `service_id`, `model`, `consumer`, `store_id`) is what lets an identical
@@ -145,7 +179,7 @@ final class UsageDailyTest extends TestCase
                 'input_tokens' => 10,
                 'output_tokens' => 5,
                 'total_tokens' => 15,
-                'cached_tokens' => 2,
+                'cache_read_tokens' => 2,
             ]),
             $this->row([
                 'consumer' => 'docs_search',
@@ -163,7 +197,7 @@ final class UsageDailyTest extends TestCase
         );
 
         self::assertSame(165, $overall['total_tokens']);
-        self::assertSame(2, $overall['cached_tokens']);
+        self::assertSame(2, $overall['cache_read_tokens']);
         self::assertSame(15, $chatOnly['total_tokens']);
         self::assertNull($chatOnly['reasoning_tokens']);
     }
@@ -350,10 +384,12 @@ final class UsageDailyTest extends TestCase
                 'consumer' => 'chat',
                 'store_id' => 0,
                 'calls' => 1,
+                'failed_calls' => 0,
                 'input_tokens' => 10,
                 'output_tokens' => 5,
                 'total_tokens' => 15,
-                'cached_tokens' => null,
+                'cache_read_tokens' => null,
+                'cache_write_tokens' => null,
                 'reasoning_tokens' => null,
             ],
             $overrides

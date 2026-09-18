@@ -90,39 +90,47 @@ interface UsageRecordInterface
     /**
      * Prompt tokens the call consumed.
      *
-     * A stored row always has a count, defaulting to 0 when the provider reported none, so this
-     * stays a plain int rather than mirroring the nullable {@see TokenUsageInterface::getPromptTokens()}
-     * it was built from.
+     * Null means the provider reported nothing at all for this call, not that it reported zero: a
+     * call recorded through {@see isFailed()} before the provider answered, or a provider that
+     * never reports usage, has no count to fall back to 0 for without misreporting "unknown" as
+     * "definitely none".
      *
-     * @return int
+     * @return int|null
      */
-    public function getInputTokens(): int;
+    public function getInputTokens(): ?int;
 
     /**
      * Completion tokens the call produced.
      *
-     * @return int
+     * @return int|null
      */
-    public function getOutputTokens(): int;
+    public function getOutputTokens(): ?int;
 
     /**
      * Total tokens for the call, provider-reported or prompt plus completion.
      *
-     * @return int
+     * @return int|null
      */
-    public function getTotalTokens(): int;
+    public function getTotalTokens(): ?int;
 
     /**
-     * Cached portion of the prompt tokens, when the provider reported prompt caching separately.
+     * Prompt tokens served from cache, when the provider reports cache reads separately.
      *
-     * Stays nullable, unlike the three counts above: a stored row has no default cache count to
-     * fall back to the way it falls back to 0 for tokens actually spent, and treating "not
-     * reported" the same as "reported as zero" would misreport providers that support caching but
-     * happened not to hit it on this call the same as providers that cannot report it at all.
+     * Stays nullable like the three counts above: a stored row has no default cache count to fall
+     * back to, and treating "not reported" the same as "reported as zero" would misreport providers
+     * that support caching but happened not to hit it on this call the same as providers that
+     * cannot report it at all.
      *
      * @return int|null
      */
-    public function getCachedTokens(): ?int;
+    public function getCacheReadTokens(): ?int;
+
+    /**
+     * Prompt tokens written to cache, when the provider reports cache writes separately.
+     *
+     * @return int|null
+     */
+    public function getCacheWriteTokens(): ?int;
 
     /**
      * Reasoning portion of the completion tokens, when the provider reported thinking tokens separately.
@@ -137,6 +145,17 @@ interface UsageRecordInterface
      * @return bool
      */
     public function isStreamed(): bool;
+
+    /**
+     * Whether the call threw after being sent to the provider.
+     *
+     * Usage columns may still hold whatever the provider reported before the failure, which is why
+     * this is a separate flag rather than something inferred from null token counts: a call with no
+     * usage report can still have succeeded, and a failed call can still have partial usage.
+     *
+     * @return bool
+     */
+    public function isFailed(): bool;
 
     /**
      * Timestamp the database assigned when the row was written, or null before it has been saved.

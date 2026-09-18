@@ -11,6 +11,7 @@ use Magento\Framework\ObjectManagerInterface;
 use Magento\TestFramework\Helper\Bootstrap;
 use MageOS\AiBase\Api\UsageRecordRepositoryInterface;
 use MageOS\AiBase\Model\Usage\UsageLog;
+use MageOS\AiBase\Model\Usage\UsageRecord;
 use PHPUnit\Framework\TestCase;
 
 /**
@@ -89,6 +90,53 @@ final class UsageRecordRepositoryTest extends TestCase
 
         self::assertCount(2, $searchResults->getItems());
         self::assertSame(5, $searchResults->getTotalCount());
+    }
+
+    public function test_it_saves_and_loads_null_token_counts(): void
+    {
+        $this->repository->save(new UsageRecord(
+            serviceId: '_row1',
+            serviceCode: 'anthropic',
+            model: 'claude-sonnet',
+            storeId: 0,
+            consumer: 'chat',
+            inputTokens: null,
+            outputTokens: null,
+            totalTokens: null,
+            failed: true,
+        ));
+
+        $items = $this->repository->getList($this->searchCriteriaBuilder->create())->getItems();
+
+        self::assertCount(1, $items);
+        $loaded = reset($items);
+        self::assertNull($loaded->getData('input_tokens'));
+        self::assertNull($loaded->getData('output_tokens'));
+        self::assertNull($loaded->getData('total_tokens'));
+    }
+
+    public function test_it_saves_and_loads_cache_split_and_failed_flag(): void
+    {
+        $this->repository->save(new UsageRecord(
+            serviceId: '_row1',
+            serviceCode: 'anthropic',
+            model: 'claude-sonnet',
+            storeId: 0,
+            consumer: 'chat',
+            inputTokens: 100,
+            outputTokens: 20,
+            totalTokens: 120,
+            cacheReadTokens: 15,
+            cacheWriteTokens: 8,
+            failed: true,
+        ));
+
+        $items = $this->repository->getList($this->searchCriteriaBuilder->create())->getItems();
+        $loaded = reset($items);
+
+        self::assertSame(15, (int) $loaded->getData('cache_read_tokens'));
+        self::assertSame(8, (int) $loaded->getData('cache_write_tokens'));
+        self::assertSame(1, (int) $loaded->getData('failed'));
     }
 
     /**

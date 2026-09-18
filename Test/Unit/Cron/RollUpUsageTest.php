@@ -129,7 +129,7 @@ final class RollUpUsageTest extends TestCase
                 'input_tokens' => 10,
                 'output_tokens' => 5,
                 'total_tokens' => 15,
-                'cached_tokens' => null,
+                'cache_read_tokens' => null,
                 'reasoning_tokens' => null,
             ],
             $overrides
@@ -307,7 +307,7 @@ final class FakeUsageRecordRepository implements UsageRecordRepositoryInterface
             'input_tokens' => 0,
             'output_tokens' => 0,
             'total_tokens' => 0,
-            'cached_tokens' => null,
+            'cache_read_tokens' => null,
             'reasoning_tokens' => null,
         ];
 
@@ -316,8 +316,8 @@ final class FakeUsageRecordRepository implements UsageRecordRepositoryInterface
             $totals['input_tokens'] += (int) $row['input_tokens'];
             $totals['output_tokens'] += (int) $row['output_tokens'];
             $totals['total_tokens'] += (int) $row['total_tokens'];
-            if ($row['cached_tokens'] !== null) {
-                $totals['cached_tokens'] = ($totals['cached_tokens'] ?? 0) + (int) $row['cached_tokens'];
+            if ($row['cache_read_tokens'] !== null) {
+                $totals['cache_read_tokens'] = ($totals['cache_read_tokens'] ?? 0) + (int) $row['cache_read_tokens'];
             }
             if ($row['reasoning_tokens'] !== null) {
                 $totals['reasoning_tokens'] = ($totals['reasoning_tokens'] ?? 0) + (int) $row['reasoning_tokens'];
