@@ -49,7 +49,7 @@
         "symfony/ai-open-router-platform": "Enables the bundled AI client and Test Connection for OpenRouter."
     },
     "require-dev": {
-        "bitexpert/phpstan-magento": "^0.43",
+        "bitexpert/phpstan-magento": "^0.44",
         "magento/magento-coding-standard": "*",
         "phpstan/phpstan": "^2.0",
         "phpunit/phpunit": "^10.5"
