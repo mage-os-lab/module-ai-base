@@ -130,6 +130,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Unit tests for the `EncryptedServices` placeholder round-trip and `SensitiveDataProcessor` masking/restore.
 
 ### Changed
+- **BREAKING:** `Api\Data\StreamChunkType` gained `ThinkingStart` and `ToolCallStart`. A bridge
+  that reports the platform's `ThinkingStart`, `ToolCallStart` or `ToolInputDelta` delta — the
+  Anthropic bridge does, for both signals, as soon as the model opens a thinking or tool-use block
+  — now surfaces it as a chunk of the matching new type, instead of `SymfonyAiClient` silently
+  dropping it. `ThinkingStart` carries no payload; `ToolCallStart` carries the call's id and name
+  with empty arguments, and `ToolInputDelta` maps to the same chunk type rather than exposing the
+  partial JSON a consumer would otherwise have to reassemble itself. The completed call still
+  arrives exactly once as before, arguments included, on its own `ToolCall` chunk, so a tool loop
+  needs no change. A `match` over `StreamChunkType` with no default arm throws
+  `UnhandledMatchError` the moment either new case is yielded; see docs/CONSUMING.md's
+  "Streaming" section for the updated example and why a default arm is worth adding. A bridge that
+  reports neither signal is unaffected: the consumer simply never sees that chunk kind.
 - **BREAKING:** `Api\AiClientInterface` gained `getConsumer()`, and `Api\Data\TokenUsageInterface` gained `getCacheReadTokens()`, `getCacheWriteTokens()` and `getReasoningTokens()`. Cache is reported as two separate, independently-nullable subsets of the prompt count, a read and a write, rather than one combined figure, since providers typically bill the two at different rates; every bundled provider's prompt count is also normalized to include cache the same way, even the one (Anthropic) whose own API excludes it, so a caller never has to know which provider answered to read the prompt count honestly. Custom implementations of `TokenUsageInterface` must add all three new methods. The bundled `Model\Client\SymfonyAiClient` and `Model\Chat\TokenUsage` already do; see `docs/ARCHITECTURE.md`'s "Client path" for the normalization rule and `docs/USAGE-TRACKING.md`'s "Token counts" for what it means for a recorded row.
 - **BREAKING:** `Api\Data\UsageRecordInterface` gained `getCacheWriteTokens()` and `isFailed()`, and `getInputTokens()`, `getOutputTokens()` and `getTotalTokens()` are now nullable (`?int`). A row is now written for a call that failed before the provider reported any usage, or that succeeded reporting none at all, and `null` on any of these means "the provider never reported this count", never "reported as zero". Custom implementations must add the two new methods and widen the three existing ones. The bundled `Model\Usage\UsageRecord` already does.
 - **BREAKING:** `Api\Data\UsageTotalsInterface` gained `getCacheWriteTokens()` and `getFailedCalls()`, alongside the already-listed `getCacheReadTokens()` and `getReasoningTokens()`. `getFailedCalls()` is counted separately from, not subtracted out of, `getCalls()`: a failed call still used a connection and may still have spent tokens before it threw. Custom implementations must add both. The bundled `Model\Usage\UsageTotals` already does.

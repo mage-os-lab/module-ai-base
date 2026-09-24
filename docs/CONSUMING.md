@@ -207,13 +207,20 @@ cannot see), and `withToolResult()` binds each result to the call that produced 
 ```php
 foreach ($client->streamChat($request) as $chunk) {
     match ($chunk->getType()) {
-        StreamChunkType::Text     => $this->emit($chunk->getText()),
-        StreamChunkType::Thinking => null,                    // reasoning, not the answer
-        StreamChunkType::ToolCall => $calls[] = $chunk->getToolCall(),
-        StreamChunkType::Usage    => $usage = $chunk->getUsage(),
+        StreamChunkType::Text          => $this->emit($chunk->getText()),
+        StreamChunkType::Thinking      => null,                    // reasoning, not the answer
+        StreamChunkType::ThinkingStart => $this->emit('thinking…'),
+        StreamChunkType::ToolCall      => $calls[] = $chunk->getToolCall(),
+        StreamChunkType::ToolCallStart => $this->emit('searching ' . $chunk->getToolCall()?->getName()),
+        StreamChunkType::Usage         => $usage = $chunk->getUsage(),
     };
 }
 ```
+
+A `match` with no default arm throws `UnhandledMatchError` the moment a new
+`StreamChunkType` case ships, which is exactly what happened when `ThinkingStart` and
+`ToolCallStart` were added; add a default arm (`default => null`) if you would rather ignore
+chunk kinds you do not yet handle than update this `match` on every release.
 
 Bridging to a callback-style stream is three lines, since `getData()` is a flat payload:
 
@@ -224,9 +231,19 @@ foreach ($client->streamChat($request) as $chunk) {
 ```
 
 Tool calls arrive **complete**, with arguments already accumulated and JSON-decoded by the
-provider bridge. There are no SSE frames to parse and no `input_json_delta` fragments to
-stitch together. A turn requesting several tools yields one chunk per call, so
-`getToolCall()` always means exactly one.
+provider bridge, on a `StreamChunkType::ToolCall` chunk. There are no SSE frames to parse and
+no `input_json_delta` fragments to stitch together. A turn requesting several tools yields one
+chunk per call, so `getToolCall()` always means exactly one.
+
+On a provider that reports it, a `StreamChunkType::ThinkingStart` or `StreamChunkType::ToolCallStart`
+chunk arrives as soon as the model opens that block, before it has written anything — the pause
+where a customer would otherwise stare at an empty box. `ThinkingStart` carries no payload.
+`ToolCallStart` carries the id and name of the call the model is opening, with `getToolCall()`
+returning empty arguments; it may repeat more than once for the same id while the provider streams
+the arguments, so treat it as "a call named X is under way", not as a second, separate call. The
+completed call, arguments included, still arrives exactly once as before, on its own
+`StreamChunkType::ToolCall` chunk. A provider that does not report either signal simply never
+yields that chunk kind; nothing about the rest of the stream changes.
 
 #### The turn a stream produced
 

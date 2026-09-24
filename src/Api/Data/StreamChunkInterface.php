@@ -24,7 +24,11 @@ interface StreamChunkInterface
     public function getText(): string;
 
     /**
-     * The completed tool call, for tool call chunks only.
+     * The tool call, for tool call chunks only.
+     *
+     * Arguments are empty on a {@see StreamChunkType::ToolCallStart} chunk, since the model has
+     * only just opened the call; the completed arguments arrive later on a
+     * {@see StreamChunkType::ToolCall} chunk.
      *
      * @return ToolCallInterface|null
      */

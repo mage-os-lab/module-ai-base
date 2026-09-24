@@ -64,7 +64,8 @@ class StreamChunk implements StreamChunkInterface
     {
         return match ($this->type) {
             StreamChunkType::Text, StreamChunkType::Thinking => ['text' => $this->text],
-            StreamChunkType::ToolCall => [
+            StreamChunkType::ThinkingStart => [],
+            StreamChunkType::ToolCall, StreamChunkType::ToolCallStart => [
                 'id' => $this->toolCall?->getId() ?? '',
                 'name' => $this->toolCall?->getName() ?? '',
                 'input' => $this->toolCall?->getArguments() ?? [],

@@ -34,6 +34,8 @@ use Symfony\AI\Platform\Result\Stream\Delta\TextDelta;
 use Symfony\AI\Platform\Result\Stream\Delta\ThinkingDelta;
 use Symfony\AI\Platform\Result\Stream\Delta\ThinkingStart;
 use Symfony\AI\Platform\Result\Stream\Delta\ToolCallComplete;
+use Symfony\AI\Platform\Result\Stream\Delta\ToolCallStart;
+use Symfony\AI\Platform\Result\Stream\Delta\ToolInputDelta;
 use Symfony\AI\Platform\Result\TextResult;
 use Symfony\AI\Platform\Result\ToolCall;
 use Symfony\AI\Platform\Result\ToolCallResult;
@@ -314,6 +316,12 @@ final class SymfonyAiClientChatTest extends TestCase
     /**
      * The bridge already accumulates tool_use blocks and decodes their JSON, so a completed call
      * arrives whole. Consumers hand-parsing SSE do this themselves and get it subtly wrong.
+     *
+     * ThinkingStart and ToolCallStart fire before the model has written anything, which is what
+     * lets a consumer say "thinking" or "searching the catalog" during the pause instead of
+     * showing an empty box; ToolInputDelta then keeps firing while the arguments are written, and
+     * maps to the same ToolCallStart chunk rather than dribbling out partial JSON a consumer would
+     * otherwise have to reassemble itself.
      */
     public function test_streaming_maps_every_delta_kind_and_ignores_the_rest(): void
     {
@@ -322,6 +330,8 @@ final class SymfonyAiClientChatTest extends TestCase
             new TextDelta('lo'),
             new ThinkingStart(),
             new ThinkingDelta('weighing options'),
+            new ToolCallStart('toolu_01', 'get_orders'),
+            new ToolInputDelta('toolu_01', 'get_orders', '{"status":'),
             new ToolCallComplete([new ToolCall('toolu_01', 'get_orders', ['status' => 'pending'])]),
             new TokenUsage(promptTokens: 120, completionTokens: 45),
         ]));
@@ -333,17 +343,47 @@ final class SymfonyAiClientChatTest extends TestCase
             [
                 StreamChunkType::Text,
                 StreamChunkType::Text,
+                StreamChunkType::ThinkingStart,
                 StreamChunkType::Thinking,
+                StreamChunkType::ToolCallStart,
+                StreamChunkType::ToolCallStart,
                 StreamChunkType::ToolCall,
                 StreamChunkType::Usage,
             ],
             $types,
-            'ThinkingStart carries no payload and must not surface as an empty chunk.'
+            'ThinkingStart, ToolCallStart and ToolInputDelta must each surface their own chunk '
+                . 'instead of being dropped.'
         );
         self::assertSame('Hel', $chunks[0]->getText());
-        self::assertSame('weighing options', $chunks[2]->getText());
-        self::assertSame('get_orders', $chunks[3]->getToolCall()?->getName());
-        self::assertSame(45, $chunks[4]->getUsage()?->getCompletionTokens());
+        self::assertSame('weighing options', $chunks[3]->getText());
+        self::assertSame('get_orders', $chunks[4]->getToolCall()?->getName());
+        self::assertSame([], $chunks[4]->getToolCall()?->getArguments());
+        self::assertSame('get_orders', $chunks[5]->getToolCall()?->getName());
+        self::assertSame([], $chunks[5]->getToolCall()?->getArguments());
+        self::assertSame(['status' => 'pending'], $chunks[6]->getToolCall()?->getArguments());
+        self::assertSame(45, $chunks[7]->getUsage()?->getCompletionTokens());
+    }
+
+    /**
+     * A ToolCallStart chunk carries a non-null getToolCall() the same way a completed ToolCall
+     * chunk does, so the turn a stream returns must not pick it up as a second, empty-argument
+     * call: the id repeats once the completed call arrives, and a tool loop resolving it twice
+     * would call it twice.
+     */
+    public function test_streaming_does_not_double_count_a_tool_call_still_being_opened(): void
+    {
+        $platform = new FakePlatform(new FakeResult(null, null, [
+            new ToolCallStart('toolu_01', 'get_orders'),
+            new ToolInputDelta('toolu_01', 'get_orders', '{"status":"pending"}'),
+            new ToolCallComplete([new ToolCall('toolu_01', 'get_orders', ['status' => 'pending'])]),
+        ]));
+
+        $stream = $this->client($platform)->streamChat($this->helloRequest());
+        iterator_to_array($stream, false);
+
+        $toolCalls = $stream->getReturn()->getToolCalls();
+        self::assertCount(1, $toolCalls);
+        self::assertSame(['status' => 'pending'], $toolCalls[0]->getArguments());
     }
 
     /**

@@ -14,6 +14,8 @@ enum StreamChunkType: string
 {
     case Text = 'text';
     case Thinking = 'thinking';
+    case ThinkingStart = 'thinking_start';
     case ToolCall = 'tool_call';
+    case ToolCallStart = 'tool_call_start';
     case Usage = 'usage';
 }

@@ -143,7 +143,7 @@ class SymfonyAiClient implements AiClientInterface, PlatformAwareInterface
             foreach ($deltas as $delta) {
                 foreach ($this->toStreamChunks($delta) as $chunk) {
                     $text .= $chunk->getType() === StreamChunkType::Text ? $chunk->getText() : '';
-                    $toolCall = $chunk->getToolCall();
+                    $toolCall = $chunk->getType() === StreamChunkType::ToolCall ? $chunk->getToolCall() : null;
                     if ($toolCall !== null) {
                         $toolCalls[] = $toolCall;
                     }
@@ -587,7 +587,10 @@ class SymfonyAiClient implements AiClientInterface, PlatformAwareInterface
      *
      * A list rather than a single chunk because one delta is not one event: a model requesting
      * several tools in the same turn produces exactly one ToolCallComplete holding all of them.
-     * Deltas that carry no payload of their own translate to nothing.
+     * ThinkingStart and ToolCallStart exist purely to signal that a block has opened before it has
+     * anything to say, so a consumer stops staring at a silent connection during the pause before
+     * the first word or tool call; a delta this module has no mapping for still translates to
+     * nothing.
      *
      * @param mixed $delta
      * @return list<StreamChunkInterface>
@@ -600,6 +603,15 @@ class SymfonyAiClient implements AiClientInterface, PlatformAwareInterface
         if ($delta instanceof \Symfony\AI\Platform\Result\Stream\Delta\ThinkingDelta) {
             return [new StreamChunk(StreamChunkType::Thinking, $delta->getThinking())];
         }
+        if ($delta instanceof \Symfony\AI\Platform\Result\Stream\Delta\ThinkingStart) {
+            return [new StreamChunk(StreamChunkType::ThinkingStart)];
+        }
+        if ($delta instanceof \Symfony\AI\Platform\Result\Stream\Delta\ToolCallStart) {
+            return [$this->toToolCallStartChunk($delta->getId(), $delta->getName())];
+        }
+        if ($delta instanceof \Symfony\AI\Platform\Result\Stream\Delta\ToolInputDelta) {
+            return [$this->toToolCallStartChunk($delta->getId(), $delta->getName())];
+        }
         if ($delta instanceof \Symfony\AI\Platform\Result\Stream\Delta\ToolCallComplete) {
             return $this->toToolCallChunks($delta);
         }
@@ -608,6 +620,25 @@ class SymfonyAiClient implements AiClientInterface, PlatformAwareInterface
         }
 
         return [];
+    }
+
+    /**
+     * A chunk announcing that a tool call has opened, before its arguments are known.
+     *
+     * Shared by {@see \Symfony\AI\Platform\Result\Stream\Delta\ToolCallStart}, which fires once
+     * per call, and {@see \Symfony\AI\Platform\Result\Stream\Delta\ToolInputDelta}, which then
+     * fires repeatedly while the model writes that call's arguments: a consumer only wants to
+     * know a call is under way and what it is called, not to reassemble the partial JSON itself,
+     * so both map to the same chunk shape with empty arguments. The completed call, arguments
+     * included, still arrives once as today on a {@see StreamChunkType::ToolCall} chunk.
+     *
+     * @param string $id
+     * @param string $name
+     * @return StreamChunkInterface
+     */
+    private function toToolCallStartChunk(string $id, string $name): StreamChunkInterface
+    {
+        return new StreamChunk(StreamChunkType::ToolCallStart, '', new ToolCall($id, $name, []));
     }
 
     /**
