@@ -4,10 +4,14 @@ declare(strict_types=1);
 
 namespace MageOS\AiBase\Test\Unit\Model\Client;
 
+use MageOS\AiBase\Api\Data\FinishReason;
 use MageOS\AiBase\Api\Data\MessageRole;
 use MageOS\AiBase\Api\Data\StreamChunkType;
 use MageOS\AiBase\Model\Chat\ChatMessage;
 use MageOS\AiBase\Model\Chat\ChatRequest;
+use MageOS\AiBase\Model\Client\AiExceptionMapper;
+use MageOS\AiBase\Model\Client\AiRateLimitedException;
+use MageOS\AiBase\Model\Client\AiServiceException;
 use MageOS\AiBase\Model\Client\BridgeRegistry;
 use MageOS\AiBase\Model\Client\OptionNormalizer;
 use MageOS\AiBase\Model\Client\SymfonyAiClient;
@@ -58,7 +62,7 @@ final class SymfonyAiClientStreamFailureTest extends TestCase
         self::assertSame(45, $usageChunks[0]->getUsage()?->getCompletionTokens());
     }
 
-    public function test_it_rethrows_the_original_exception_after_yielding_usage(): void
+    public function test_it_wraps_the_mapped_exception_after_yielding_usage(): void
     {
         $platform = new FakeStreamingPlatform(static function (): \Generator {
             yield new TokenUsage(promptTokens: 10, completionTokens: 5);
@@ -66,10 +70,56 @@ final class SymfonyAiClientStreamFailureTest extends TestCase
             throw new \RuntimeException('overloaded');
         });
 
-        $this->expectException(\RuntimeException::class);
-        $this->expectExceptionMessage('overloaded');
+        try {
+            iterator_to_array($this->client($platform)->streamChat($this->helloRequest()));
+            self::fail('Expected an AiServiceException.');
+        } catch (AiServiceException $e) {
+            self::assertStringContainsString('overloaded', $e->getMessage());
+            self::assertInstanceOf(\RuntimeException::class, $e->getPrevious());
+            self::assertSame('overloaded', $e->getPrevious()->getMessage());
+        }
+    }
 
-        iterator_to_array($this->client($platform)->streamChat($this->helloRequest()));
+    public function test_it_maps_a_mid_stream_platform_failure_to_its_typed_exception(): void
+    {
+        $platform = new FakeStreamingPlatform(static function (): \Generator {
+            yield new TextDelta('partial');
+
+            throw new \Symfony\AI\Platform\Exception\RateLimitExceededException(30, 'slow down');
+        });
+
+        try {
+            iterator_to_array($this->client($platform)->streamChat($this->helloRequest()));
+            self::fail('Expected an AiRateLimitedException.');
+        } catch (AiRateLimitedException $e) {
+            self::assertSame(30, $e->getRetryAfter());
+            self::assertInstanceOf(
+                \Symfony\AI\Platform\Exception\RateLimitExceededException::class,
+                $e->getPrevious(),
+            );
+        }
+    }
+
+    public function test_it_ends_the_stream_normally_when_the_answer_is_truncated(): void
+    {
+        $platform = new FakeStreamingPlatform(static function (): \Generator {
+            yield new TextDelta('partial answer');
+            yield new TokenUsage(promptTokens: 10, completionTokens: 5);
+
+            throw new \Symfony\AI\Platform\Exception\MaxOutputTokensException('truncated');
+        });
+
+        $stream = $this->client($platform)->streamChat($this->helloRequest());
+        $chunks = iterator_to_array($stream, false);
+
+        self::assertSame(
+            [StreamChunkType::Text, StreamChunkType::Usage],
+            array_map(static fn ($c) => $c->getType(), $chunks),
+        );
+
+        $turn = $stream->getReturn();
+        self::assertSame('partial answer', $turn->getText());
+        self::assertSame(FinishReason::Length, $turn->getFinishReason());
     }
 
     public function test_it_rethrows_without_a_usage_chunk_when_no_usage_was_reported(): void
@@ -119,8 +169,9 @@ final class SymfonyAiClientStreamFailureTest extends TestCase
     }
 
     /**
-     * Iterates the stream to exhaustion, keeping every chunk yielded before the RuntimeException
-     * the fake always throws, so the caught-and-discarded exception cannot hide a missing chunk.
+     * Iterates the stream to exhaustion, keeping every chunk yielded before the mapped exception
+     * the fake's underlying RuntimeException always causes, so the caught-and-discarded exception
+     * cannot hide a missing chunk.
      *
      * @return list<\MageOS\AiBase\Api\Data\StreamChunkInterface>
      */
@@ -132,7 +183,7 @@ final class SymfonyAiClientStreamFailureTest extends TestCase
                 $chunks[] = $chunk;
             }
             self::fail('Expected the stream to rethrow.');
-        } catch (\RuntimeException) {
+        } catch (AiServiceException) {
         }
 
         return $chunks;
@@ -159,6 +210,7 @@ final class SymfonyAiClientStreamFailureTest extends TestCase
             '_row_1',
             $this->optionNormalizer(),
             $this->usageNormalizer(),
+            new AiExceptionMapper(),
         );
     }
 

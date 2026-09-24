@@ -14,6 +14,8 @@ use MageOS\AiBase\Model\Chat\ChatMessage;
 use MageOS\AiBase\Model\Chat\ChatRequest;
 use MageOS\AiBase\Model\Chat\ToolCall as AiBaseToolCall;
 use MageOS\AiBase\Model\Chat\ToolDefinition;
+use MageOS\AiBase\Model\Client\AiExceptionMapper;
+use MageOS\AiBase\Model\Client\AiRateLimitedException;
 use MageOS\AiBase\Model\Client\AiRequestNotSentException;
 use MageOS\AiBase\Model\Client\BridgeRegistry;
 use MageOS\AiBase\Model\Client\OptionNormalizer;
@@ -291,6 +293,45 @@ final class SymfonyAiClientChatTest extends TestCase
         }
     }
 
+    public function test_it_maps_an_authentication_failure_to_its_typed_exception(): void
+    {
+        $platform = new FakePlatform(
+            null,
+            new \Symfony\AI\Platform\Exception\AuthenticationException('Invalid API key'),
+        );
+
+        $this->expectException(\MageOS\AiBase\Model\Client\AiAuthenticationException::class);
+
+        $this->client($platform)->chat($this->helloRequest());
+    }
+
+    public function test_it_maps_a_rate_limit_failure_and_keeps_the_retry_after(): void
+    {
+        $platform = new FakePlatform(
+            null,
+            new \Symfony\AI\Platform\Exception\RateLimitExceededException(42, 'slow down'),
+        );
+
+        try {
+            $this->client($platform)->chat($this->helloRequest());
+            self::fail('Expected an AiRateLimitedException.');
+        } catch (AiRateLimitedException $e) {
+            self::assertSame(42, $e->getRetryAfter());
+        }
+    }
+
+    public function test_it_returns_a_truncated_response_instead_of_throwing_on_max_output_tokens(): void
+    {
+        $platform = new FakePlatform(new FakeResult(
+            resultFailure: new \Symfony\AI\Platform\Exception\MaxOutputTokensException('truncated'),
+        ));
+
+        $response = $this->client($platform)->chat($this->helloRequest());
+
+        self::assertSame('', $response->getText());
+        self::assertSame(AiBaseFinishReason::Length, $response->getFinishReason());
+    }
+
     public function test_complete_returns_plain_text_for_a_single_prompt(): void
     {
         $platform = new FakePlatform(new FakeResult(new TextResult('A fine description.')));
@@ -407,6 +448,7 @@ final class SymfonyAiClientChatTest extends TestCase
             '_row_1',
             $this->optionNormalizer(),
             $this->usageNormalizer(),
+            new AiExceptionMapper(),
         );
 
         self::assertSame(UsageRecordInterface::CONSUMER_UNKNOWN, $client->getConsumer());
@@ -425,6 +467,7 @@ final class SymfonyAiClientChatTest extends TestCase
             '_row_1',
             $this->optionNormalizer(),
             $this->usageNormalizer(),
+            new AiExceptionMapper(),
             '   ',
         );
 
@@ -460,6 +503,7 @@ final class SymfonyAiClientChatTest extends TestCase
             '_row_1',
             $this->optionNormalizer(),
             $this->usageNormalizer(),
+            new AiExceptionMapper(),
         );
 
         self::assertInstanceOf(PlatformInterface::class, $client->getPlatform());
@@ -790,6 +834,7 @@ final class SymfonyAiClientChatTest extends TestCase
             '_row_1',
             $this->optionNormalizer(),
             $this->usageNormalizer(),
+            new AiExceptionMapper(),
         );
     }
 
@@ -1026,11 +1071,16 @@ final class FakeResult
         private readonly mixed $result = null,
         private readonly ?Metadata $metadata = null,
         private readonly array $deltas = [],
+        private readonly ?\Throwable $resultFailure = null,
     ) {
     }
 
     public function getResult(): mixed
     {
+        if ($this->resultFailure !== null) {
+            throw $this->resultFailure;
+        }
+
         return $this->result;
     }
 

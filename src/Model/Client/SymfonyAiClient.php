@@ -86,6 +86,8 @@ class SymfonyAiClient implements AiClientInterface, PlatformAwareInterface
      * @param OptionNormalizer $optionNormalizer
      * @param UsageNormalizer $usageNormalizer Folds cache reads and writes into the reported usage
      *        per this service's bridge; see {@see toAiBaseUsage()}
+     * @param AiExceptionMapper $exceptionMapper Turns a symfony/ai failure into this module's own
+     *        typed exception; see {@see wrap()}
      * @param string|null $consumer Feature or module the factory attributed this client to;
      *        read back, normalized, through getConsumer()
      */
@@ -96,6 +98,7 @@ class SymfonyAiClient implements AiClientInterface, PlatformAwareInterface
         private readonly string $serviceId,
         private readonly OptionNormalizer $optionNormalizer,
         private readonly UsageNormalizer $usageNormalizer,
+        private readonly AiExceptionMapper $exceptionMapper,
         private readonly ?string $consumer = null,
     ) {
     }
@@ -109,6 +112,8 @@ class SymfonyAiClient implements AiClientInterface, PlatformAwareInterface
 
         try {
             return $this->toChatResponse($result);
+        } catch (\Symfony\AI\Platform\Exception\MaxOutputTokensException) {
+            return $this->truncatedResponse('', [], $this->extractUsage($result), $result);
         } catch (\Throwable $e) {
             throw $this->wrap($e);
         }
@@ -120,8 +125,11 @@ class SymfonyAiClient implements AiClientInterface, PlatformAwareInterface
      * Symfony runs its token-usage listener on the error path too, so the counts are sitting in the
      * result metadata at the moment the stream throws. Yielding one usage chunk from that metadata
      * before rethrowing is what lets the recording decorator record what was actually billed
-     * instead of losing it to the exception. The original exception is rethrown unchanged, never
-     * wrapped.
+     * instead of losing it to the exception. The exception itself is mapped through {@see wrap()}
+     * the same way every other failure in this class is, so `@throws LocalizedException` holds for
+     * a mid-stream failure too, with one exception: a `MaxOutputTokensException` is not an error to
+     * this module, it means the answer was cut off, so the stream ends normally instead, with
+     * `FinishReason::Length` and the text collected before the provider truncated it.
      *
      * @inheritdoc
      */
@@ -151,10 +159,14 @@ class SymfonyAiClient implements AiClientInterface, PlatformAwareInterface
                     yield $chunk;
                 }
             }
+        } catch (\Symfony\AI\Platform\Exception\MaxOutputTokensException) {
+            yield from $this->yieldUsageMissedByTheDeltas($result, $usage);
+
+            return $this->truncatedResponse($text, $toolCalls, $usage, $result);
         } catch (\Throwable $e) {
             yield from $this->yieldUsageMissedByTheDeltas($result, $usage);
 
-            throw $e;
+            throw $this->wrap($e);
         }
 
         // Token counts and the stop reason arrive at the very end of a stream, and the platform
@@ -659,16 +671,44 @@ class SymfonyAiClient implements AiClientInterface, PlatformAwareInterface
     }
 
     /**
-     * Present a provider or library failure as an admin-readable error naming the service.
+     * Present a provider or library failure as one of this module's typed exceptions.
+     *
+     * Admin-readable and naming the service, the same way every wrapped failure always has.
      *
      * @param \Throwable $e
      * @return LocalizedException
      */
     private function wrap(\Throwable $e): LocalizedException
     {
-        return new LocalizedException(
-            __('AI request to service "%1" failed: %2', $this->serviceCode, $e->getMessage()),
-            $e instanceof \Exception ? $e : null
+        return $this->exceptionMapper->map($e, $this->serviceCode);
+    }
+
+    /**
+     * The turn assembled so far, reported as truncated rather than as a failure.
+     *
+     * `MaxOutputTokensException` means the provider stopped writing because it hit the output token
+     * ceiling, not that anything went wrong: the text collected up to that point is a real, usable,
+     * truncated answer, and {@see ChatResponseInterface::getFinishReason()} already documents
+     * `FinishReason::Length` as the case every consumer should check for exactly this.
+     *
+     * @param string $text
+     * @param list<\MageOS\AiBase\Api\Data\ToolCallInterface> $toolCalls
+     * @param TokenUsageInterface|null $usage
+     * @param \Symfony\AI\Platform\Result\DeferredResult $result
+     * @return ChatResponse
+     */
+    private function truncatedResponse(
+        string $text,
+        array $toolCalls,
+        ?TokenUsageInterface $usage,
+        object $result,
+    ): ChatResponse {
+        return new ChatResponse(
+            $text,
+            $toolCalls,
+            $usage,
+            FinishReason::Length,
+            $this->extractRawFinishReason($result),
         );
     }
 }

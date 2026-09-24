@@ -9,6 +9,7 @@ use Magento\Framework\Exception\LocalizedException;
 use MageOS\AiBase\Api\AiServiceSelectorInterface;
 use MageOS\AiBase\Api\PlatformAwareInterface;
 use MageOS\AiBase\Model\AiService;
+use MageOS\AiBase\Model\Client\AiExceptionMapper;
 use MageOS\AiBase\Model\Client\BridgeRegistry;
 use MageOS\AiBase\Model\Client\ClientFactory;
 use MageOS\AiBase\Model\Client\OptionNormalizer;
@@ -284,6 +285,7 @@ final class ClientFactoryTest extends TestCase
                 $data['serviceId'],
                 new OptionNormalizer(new BridgeRegistry([])),
                 new UsageNormalizer(new BridgeRegistry([])),
+                new AiExceptionMapper(),
                 $data['consumer'],
             )
         );
@@ -338,6 +340,7 @@ final class ClientFactoryTest extends TestCase
                 $data['serviceId'],
                 new OptionNormalizer(new BridgeRegistry([])),
                 new UsageNormalizer(new BridgeRegistry([])),
+                new AiExceptionMapper(),
                 $data['consumer'],
             )
         );
@@ -569,6 +572,7 @@ final class ClientFactoryTest extends TestCase
                 $data['serviceId'],
                 new OptionNormalizer(new BridgeRegistry([])),
                 new UsageNormalizer(new BridgeRegistry([])),
+                new AiExceptionMapper(),
                 $data['consumer'],
             )
         );
@@ -647,6 +651,7 @@ final class ClientFactoryTest extends TestCase
                 $data['serviceId'],
                 new OptionNormalizer(new BridgeRegistry([])),
                 new UsageNormalizer(new BridgeRegistry([])),
+                new AiExceptionMapper(),
                 $data['consumer'],
             )
         );
@@ -680,6 +685,7 @@ final class ClientFactoryTest extends TestCase
                 $data['serviceId'],
                 new OptionNormalizer(new BridgeRegistry([])),
                 new UsageNormalizer(new BridgeRegistry([])),
+                new AiExceptionMapper(),
                 $data['consumer'],
             )
         );

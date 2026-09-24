@@ -8,6 +8,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **Typed client exceptions**, including during a stream. `chat()`, `complete()` and `streamChat()`
+  now throw one of `Model\Client\AiAuthenticationException`, `AiRateLimitedException` (carrying
+  `getRetryAfter(): ?int`), `AiTransientException`, `AiInvalidRequestException` or
+  `AiToolCallException` instead of a single generic `LocalizedException`, so a consumer can retry
+  a rate limit, skip a non-retryable rejection, and leave everything else alone without parsing
+  messages. Every one still extends the new common base `AiServiceException`, itself a
+  `LocalizedException`, so an existing `catch (LocalizedException)` keeps working unchanged. The
+  new `Model\Client\AiExceptionMapper` builds them by matching the symfony/ai-platform exception
+  class symfony/ai already reports (guarded by `class_exists`, never by parsing HTTP statuses or
+  headers itself); an unrecognized failure still comes back as `AiServiceException` rather than
+  escaping untyped. `streamChat()`'s `foreach` over the delta stream is now inside the same mapped
+  error handling as `invoke()`/`asStream()` — previously a mid-stream failure reached the consumer
+  as the raw, unmapped symfony/ai exception, breaking the interface's documented
+  `@throws LocalizedException`. A `MaxOutputTokensException` (the Anthropic and OpenResponses
+  bridges throw it when a response is truncated at the output token limit) is no longer treated as
+  a failure at all: both `chat()` and `streamChat()` now return the assembled turn with
+  `FinishReason::Length` and the text collected so far, so a stream can report a truncated answer
+  the same way a buffered call already could. See `docs/CONSUMING.md`'s new "Typed exceptions"
+  section for the full mapping and which bridges (Ollama, HuggingFace, Azure, OpenRouter, LM
+  Studio) report less than the rest.
 - **AI usage tracking**: every call made through `AiClientInterface` is now recorded — token
   counts and metadata only, **never prompt or response content** — and surfaced at
   **Reports > AI Token Usage** as a dashboard (totals, period-over-period change against the same

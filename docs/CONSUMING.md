@@ -264,7 +264,8 @@ append.
 When a stream breaks partway through, a dropped connection, a provider-side error mid-response,
 `streamChat()` does not swallow what was already billed into the exception. It yields one final
 `StreamChunkType::Usage` chunk carrying whatever the platform had reported up to that point, then
-rethrows the original exception unchanged from the generator's next iteration:
+raises the mapped typed exception (see [Typed exceptions](#typed-exceptions) below) from the
+generator's next iteration, exactly like a failure from `chat()` or `complete()` would:
 
 ```php
 $usage = null;
@@ -288,29 +289,84 @@ it is sitting in the chunk sequence, not only in the exception. See
 [docs/USAGE-TRACKING.md](USAGE-TRACKING.md#failed-calls-and-null-token-rows) for how that row is
 recorded.
 
+#### A truncated stream ends normally, not as an exception
+
+When a provider cuts a stream off because it hit the configured output token limit, that is not
+raised as an exception at all. The generator ends the same way a complete stream does: `getReturn()`
+carries the text collected so far and reports `FinishReason::Length`, exactly as a non-streamed
+`chat()` call reports a truncated answer (see `getFinishReason()` under
+[Conversations, tools and streaming](#conversations-tools-and-streaming) above).
+
 ### Failure modes to handle
 
-`create()` and `complete()` throw `LocalizedException` with admin-readable messages:
+`create()` throws `LocalizedException` for setup problems (no service configured, no bridge
+registered, symfony/ai-platform not installed) with admin-readable messages. `chat()`,
+`complete()` and `streamChat()` throw one of this module's own typed exceptions, every one of
+which extends `LocalizedException`, so an existing `catch (LocalizedException)` still catches
+everything without any change:
 
-| Condition | When |
-|---|---|
-| No service configured (at all, or for the requested code) | `create()` |
-| No client bridge registered for the service code | `create()` |
-| symfony/ai-platform not installed | `create()` |
-| Provider/API call failed (auth, network, provider error) | `complete()` |
-| A call rejected before it ever reached the provider: an unsupported option, an invalid model override, a tool result message missing its call id | `chat()` / `complete()` / `streamChat()`, as `AiRequestNotSentException` |
+| Condition | When | Exception |
+|---|---|---|
+| No service configured (at all, or for the requested code) | `create()` | `LocalizedException` |
+| No client bridge registered for the service code | `create()` | `LocalizedException` |
+| symfony/ai-platform not installed | `create()` | `LocalizedException` |
+| A call rejected before it ever reached the provider: an unsupported option, an invalid model override, a tool result message missing its call id | `chat()` / `complete()` / `streamChat()` | `AiRequestNotSentException` |
+| The provider rejected the configured credentials | `chat()` / `complete()` / `streamChat()` | `AiAuthenticationException` |
+| The provider throttled the call | `chat()` / `complete()` / `streamChat()` | `AiRateLimitedException` (`getRetryAfter(): ?int`) |
+| A server error, an overloaded model, or a stream that ended before reporting completion | `chat()` / `complete()` / `streamChat()` | `AiTransientException` |
+| A bad request, a prompt over the context window, an unknown model, or content the provider's safety filter refused | `chat()` / `complete()` / `streamChat()` | `AiInvalidRequestException` |
+| The model's tool call arguments could not be parsed as JSON | `chat()` / `complete()` / `streamChat()` | `AiToolCallException` |
+| Any other provider or library failure | `chat()` / `complete()` / `streamChat()` | `AiServiceException` |
 
-Treat all of these as recoverable: catch `LocalizedException`, degrade gracefully (skip the
-AI feature, queue for retry, surface the message to the admin). Don't let an unconfigured
-AI backend break checkout or a cron run. The messages are actionable by design — the
-"not installed" one includes the composer command — so surfacing them in admin UIs is
-usually the right move.
+Treat all of these as recoverable: catch `LocalizedException` (or a specific subtype),
+degrade gracefully (skip the AI feature, queue for retry, surface the message to the admin).
+Don't let an unconfigured AI backend break checkout or a cron run. The `create()` messages are
+actionable by design — the "not installed" one includes the composer command — so surfacing
+them in admin UIs is usually the right move.
 
-`AiRequestNotSentException` extends `LocalizedException`, so an existing `catch (LocalizedException)`
-still catches it without any change, but it is worth telling apart from every other row in the
-table above: nothing was ever sent to the provider, so nothing was billed, and usage tracking
-never writes a row for it either, see
+`AiRequestNotSentException` is worth telling apart from every other row in the table above:
+nothing was ever sent to the provider, so nothing was billed, and usage tracking never writes a
+row for it either, see
 [docs/USAGE-TRACKING.md](USAGE-TRACKING.md#failed-calls-and-null-token-rows).
+
+### Typed exceptions
+
+`AiServiceException` is the base of every exception a reached-the-provider call can throw; catching
+it (or `LocalizedException`) catches all of them, the same way it always has. Catch a subtype to
+react differently per failure:
+
+```php
+use MageOS\AiBase\Model\Client\AiAuthenticationException;
+use MageOS\AiBase\Model\Client\AiInvalidRequestException;
+use MageOS\AiBase\Model\Client\AiRateLimitedException;
+use MageOS\AiBase\Model\Client\AiServiceException;
+use MageOS\AiBase\Model\Client\AiTransientException;
+
+try {
+    $response = $client->complete($prompt);
+} catch (AiRateLimitedException $e) {
+    $this->scheduleRetry($e->getRetryAfter() ?? 30);
+} catch (AiTransientException $e) {
+    $this->scheduleRetry();
+} catch (AiAuthenticationException|AiInvalidRequestException $e) {
+    $this->logger->error($e->getMessage());   // retrying the same request will not help
+} catch (AiServiceException $e) {
+    $this->logger->error($e->getMessage());
+}
+```
+
+Each type is built by mapping the underlying symfony/ai-platform exception class, so what a
+consumer can distinguish is bounded by what the bridge in use actually reports:
+
+- **Ollama and HuggingFace** do not report a type at all: Ollama's bridge does not check the HTTP
+  status on `/api/chat`, and HuggingFace's turns a 401 or a 429 into a generic
+  `InvalidArgumentException`. Every failure from either stays `AiServiceException` with the
+  provider's own message.
+- **Azure, OpenRouter and LM Studio** report the failure type (so `AiRateLimitedException` and the
+  others are reachable), but not a wait time, so `getRetryAfter()` returns `null` on all three.
+
+An exception this module does not recognize is not swallowed or left untyped either: it still
+comes back as `AiServiceException`, with the original kept as `getPrevious()`.
 
 ### Which service will `create()` use?
 
