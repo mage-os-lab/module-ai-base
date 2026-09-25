@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What this is
 
-`mage-os/module-ai-base` — a small Magento 2 module (`MageOS_AiBase`) that exposes an admin configuration UI for registering multiple AI backends (OpenAI, Anthropic, Azure, Google, Deepseek, HuggingFace, LM Studio, Ollama, OpenRouter), a provider-agnostic client (`AiClientInterface`) other modules use to actually make calls, and a consumer API for reading the stored configuration directly. Every call made through the bundled client is also recorded — token counts and metadata only, never prompt or response content — into two tables and surfaced on a **Reports > AI Token Usage** dashboard, an admin grid, and a `bin/magento mageos:ai:usage` CLI report; see `docs/USAGE-TRACKING.md`. It does **not** estimate cost, and it cannot record a call made through the `PlatformAwareInterface::getPlatform()` escape hatch, which bypasses the client entirely.
+`mage-os/module-ai-base` — a small Magento 2 module (`MageOS_AiBase`) that exposes an admin configuration UI for registering multiple AI backends (OpenAI, Anthropic, Azure, Google, Deepseek, HuggingFace, LM Studio, Ollama, OpenCode Zen, OpenCode Custom, OpenRouter), a provider-agnostic client (`AiClientInterface`) other modules use to actually make calls, and a consumer API for reading the stored configuration directly. Every call made through the bundled client is also recorded — token counts and metadata only, never prompt or response content — into two tables and surfaced on a **Reports > AI Token Usage** dashboard, an admin grid, and a `bin/magento mageos:ai:usage` CLI report; see `docs/USAGE-TRACKING.md`. It does **not** estimate cost, and it cannot record a call made through the `PlatformAwareInterface::getPlatform()` escape hatch, which bypasses the client entirely.
 
 The module is installed into a host Magento 2 app; this repo contains no runnable Magento instance and no build step.
 
@@ -109,7 +109,7 @@ Stored data flow:
 
 1. Create `src/AiServices/<Name>.php` implementing `AiServiceConfigurationInterface`. The configuration template's input `name` attributes must follow `<%- _fieldName %>[<service_code>][<field>]` — that nesting is what the selector expects when reading back.
 2. Register it in `etc/di.xml` under the `services` argument of `Model\ServiceRegistry`. The item name should match the class's `getCode()`, which is what the registry keys by.
-3. To make it usable through the bundled client, add a `Model\Client\BridgeRegistry` entry with its `factory`, `package` and request-option `dialect` (see `Model\Client\OptionNormalizer` for the dialects).
+3. To make it usable through the bundled client, add a `Model\Client\BridgeRegistry` entry with its `factory`, `package` and request-option `dialect` (see `Model\Client\OptionNormalizer` for the dialects). Neither `factory` nor `package` has to be a `symfony/*` one: `opencode-zen` points at `MageOS\AiOpenCodeZenPlatform\Factory` from `mage-os/library-ai-opencode-zen-platform`, because upstream has released no OpenCode bridge. A hosted provider's `createPlatform()` must take the API key as its **first positional** parameter, which is what `ClientFactory`'s default dispatch arm passes; declaring a `baseUrl` parameter additionally gets the row's stored `base_url` by name.
 4. No other wiring is required — the admin UI and selector pick it up automatically.
 
 ## Conventions observed in this codebase

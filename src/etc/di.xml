@@ -89,6 +89,8 @@
                 <item name="huggingface" xsi:type="object">MageOS\AiBase\AiServices\HuggingFace</item>
                 <item name="lmstudio" xsi:type="object">MageOS\AiBase\AiServices\LmStudio</item>
                 <item name="ollama" xsi:type="object">MageOS\AiBase\AiServices\Ollama</item>
+                <item name="opencode-zen" xsi:type="object">MageOS\AiBase\AiServices\OpenCode</item>
+                <item name="opencode-custom" xsi:type="object">MageOS\AiBase\AiServices\OpenCodeCustom</item>
                 <item name="openrouter" xsi:type="object">MageOS\AiBase\AiServices\OpenRouter</item>
                 <item name="openai" xsi:type="object">MageOS\AiBase\AiServices\OpenAi</item>
             </argument>
@@ -149,6 +151,36 @@
                     <item name="package" xsi:type="string">symfony/ai-ollama-platform</item>
                     <item name="dialect" xsi:type="string">ollama</item>
                     <item name="catalog" xsi:type="string">Symfony\AI\Platform\Bridge\Ollama\ModelCatalog</item>
+                </item>
+                <!-- OpenCode Zen. The one bridge here that is not a symfony/* package: upstream has
+                     released none for OpenCode, so Mage-OS ships the bridge itself, built on
+                     symfony/ai-generic-platform. It stays a `suggest` like every other optional
+                     bridge, and the admin form names it the same way.
+
+                     No `catalog`: the bridge accepts any model id and routes it to Chat
+                     Completions, because Zen is a gateway whose catalogue turns over monthly and
+                     is published as an endpoint rather than a list. There is therefore nothing for
+                     ClientFactory::createCatalog() to extend — which is the point, since what it
+                     extends a catalogue *with* is the administrator's own model choice, and here
+                     that choice is never rejected to begin with. -->
+                <item name="opencode-zen" xsi:type="array">
+                    <item name="factory" xsi:type="string">MageOS\AiOpenCodeZenPlatform\Factory</item>
+                    <item name="package" xsi:type="string">mage-os/library-ai-opencode-zen-platform</item>
+                    <item name="dialect" xsi:type="string">openai_chat</item>
+                </item>
+                <!-- OpenCode Custom: a self-hosted `opencode serve` instance. Not an OpenAI-compatible
+                     endpoint but an agent server with a session API, so the bridge opens a session
+                     per call, prompts it with tools switched off, and deletes it again. Also a
+                     Mage-OS package, for the same reason as the Zen one above.
+
+                     No `catalog`: models are `providerID/modelID` pairs from whatever providers the
+                     server has configured, which only the server knows. Its own dialect, because
+                     the message endpoint takes none of the universal options, which are dropped
+                     rather than refused; see the `opencode_server` entry on OptionNormalizer below. -->
+                <item name="opencode-custom" xsi:type="array">
+                    <item name="factory" xsi:type="string">MageOS\AiOpenCodeCustomPlatform\Factory</item>
+                    <item name="package" xsi:type="string">mage-os/library-ai-opencode-custom-platform</item>
+                    <item name="dialect" xsi:type="string">opencode_server</item>
                 </item>
                 <item name="openrouter" xsi:type="array">
                     <item name="factory" xsi:type="string">Symfony\AI\Platform\Bridge\OpenRouter\Factory</item>
@@ -222,6 +254,23 @@
                         <item name="stop" xsi:type="string">stopSequences</item>
                     </item>
                     <item name="lists" xsi:type="array">
+                        <item name="stop" xsi:type="string">stop</item>
+                    </item>
+                </item>
+                <!-- A self-hosted opencode server's message endpoint accepts no sampling options at
+                     all (verified against its OpenAPI spec at 1.18.32: model, agent, system, tools,
+                     parts, format, variant); the server applies its own. The map is therefore empty
+                     and every universal option is listed under `ignore`: dropped before the request,
+                     not refused. Refusing broke every consumer that sets one without knowing which
+                     backend an administrator picked, this module's own Test Connection
+                     (`max_tokens` = 16) included. A dropped option can only make an answer longer or
+                     less deterministic than asked for, never wrong. -->
+                <item name="opencode_server" xsi:type="array">
+                    <item name="map" xsi:type="array"/>
+                    <item name="ignore" xsi:type="array">
+                        <item name="max_tokens" xsi:type="string">max_tokens</item>
+                        <item name="temperature" xsi:type="string">temperature</item>
+                        <item name="top_p" xsi:type="string">top_p</item>
                         <item name="stop" xsi:type="string">stop</item>
                     </item>
                 </item>

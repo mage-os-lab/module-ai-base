@@ -66,10 +66,11 @@ rather than guessing.
 | Anthropic | Yes | Yes, reported outside the prompt count by the provider's own API, folded back into the normalized prompt count by this module (see [Token counts](#token-counts) above) | Yes, same treatment as cache read | Not reported by the bridge this module uses |
 | OpenAI | Yes | Yes, already counted inside the prompt as the provider reports it | Not reported by the bridge this module uses | Yes, when the model itself reports reasoning tokens (its extended-thinking-style models) |
 | Azure (OpenAI) | Not verified | Not verified | Not verified | Not verified. Azure's bridge speaks the same request shape as OpenAI's, so the same behavior is expected, but the bridge package is not installed here to confirm it |
-| DeepSeek, LM Studio, OpenRouter (OpenAI-compatible bridges) | Not verified | Not verified | Not verified | Not verified. Each depends on what that specific endpoint's own Chat Completions response reports |
+| DeepSeek, LM Studio, OpenRouter, OpenCode Zen (OpenAI-compatible bridges) | Not verified | Not verified | Not verified | Not verified. Each depends on what that specific endpoint's own Chat Completions response reports. For OpenCode Zen that is per model, since it fronts several providers behind one endpoint |
 | HuggingFace | Not verified | Not verified | Not verified | Not verified. An earlier review of this feature raised that this bridge reports no usage at all on any call; that claim has not been independently confirmed against the bridge itself and should not be read as settled fact |
 | Google (Gemini) | Not verified | Not verified | Not verified | Not verified. An earlier review of this feature raised that this bridge reports no usage specifically on a streamed call; that claim has not been independently confirmed against the bridge itself and should not be read as settled fact |
 | Ollama | Not verified | Not verified | Not verified | Not verified |
+| OpenCode Custom (self-hosted opencode server) | Yes, read off the server's own per-message count | Yes, as the server reports it | Yes, as the server reports it | Yes, as the server reports it. Whether the server's input count already includes cache reads follows its own accounting across upstream providers and has not been verified. The count covers the whole agent turn the server ran, including its own system prompt |
 
 Whatever a provider does not report, this module never invents. A call through a provider that
 reports nothing at all still writes a row, with every token count `null` on it, the same as any

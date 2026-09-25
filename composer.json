@@ -40,6 +40,8 @@
         "symfony/ai-platform": "^0.13"
     },
     "suggest": {
+        "mage-os/library-ai-opencode-custom-platform": "Enables the bundled AI client and Test Connection for a self-hosted OpenCode server.",
+        "mage-os/library-ai-opencode-zen-platform": "Enables the bundled AI client and Test Connection for OpenCode Zen.",
         "symfony/ai-azure-platform": "Enables the bundled AI client and Test Connection for Azure OpenAI.",
         "symfony/ai-deep-seek-platform": "Enables the bundled AI client and Test Connection for Deepseek.",
         "symfony/ai-gemini-platform": "Enables the bundled AI client and Test Connection for Google Gemini.",

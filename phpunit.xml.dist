@@ -26,6 +26,7 @@
             <file>Test/Unit/Model/Client/SymfonyAiClientChatTest.php</file>
             <file>Test/Unit/Model/Client/SymfonyAiClientStreamFailureTest.php</file>
             <file>Test/Unit/Model/Client/UsageNormalizerTest.php</file>
+            <file>Test/Unit/Model/Client/OpenCodeServerToolLoopTest.php</file>
         </testsuite>
         <!--
             Needs a running Magento install with the integration test framework, so it cannot be

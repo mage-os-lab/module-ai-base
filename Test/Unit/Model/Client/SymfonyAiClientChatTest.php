@@ -596,6 +596,27 @@ final class SymfonyAiClientChatTest extends TestCase
     }
 
     /**
+     * Regression: Test Connection calls `complete($prompt, ['max_tokens' => 16])`, and so does
+     * every consumer that caps its answers without knowing which backend was picked. For a
+     * self-hosted opencode server, whose message endpoint has no such option, that has to reach the
+     * provider as a call without it, not fail with "not supported by AI service".
+     */
+    public function test_an_opencode_server_drops_the_universal_options_instead_of_failing(): void
+    {
+        $platform = new FakePlatform(new FakeResult(new TextResult('OK')));
+
+        $answer = $this->client($platform, 'opencode-custom')->complete(
+            'Reply with the single word: OK',
+            ['max_tokens' => 16, 'temperature' => 0.2, 'top_p' => 0.9, 'stop' => 'END'],
+        );
+
+        self::assertSame('OK', $answer);
+        foreach (['max_tokens', 'temperature', 'top_p', 'stop'] as $option) {
+            self::assertArrayNotHasKey($option, $platform->options);
+        }
+    }
+
+    /**
      * Anthropic rejects a request without max_tokens, so the one call that works everywhere else
      * would fail there alone unless the client supplies the limit the others default themselves.
      */
@@ -814,6 +835,7 @@ final class SymfonyAiClientChatTest extends TestCase
                 'google' => ['dialect' => 'gemini'],
                 'ollama' => ['dialect' => 'ollama'],
                 'deepseek' => ['dialect' => 'openai_chat'],
+                'opencode-custom' => ['dialect' => 'opencode_server'],
             ]),
             [
                 'openai_responses' => ['map' => [
@@ -854,6 +876,10 @@ final class SymfonyAiClientChatTest extends TestCase
                         'stop' => 'stop',
                     ],
                     'lists' => ['stop'],
+                ],
+                'opencode_server' => [
+                    'map' => [],
+                    'ignore' => ['max_tokens', 'temperature', 'top_p', 'stop'],
                 ],
             ]
         );

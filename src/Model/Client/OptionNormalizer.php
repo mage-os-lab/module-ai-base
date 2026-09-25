@@ -29,7 +29,8 @@ namespace MageOS\AiBase\Model\Client;
  * @phpstan-type Dialect array{
  *     map?: array<string,string>,
  *     lists?: array<array-key, string>,
- *     defaults?: array<string,mixed>
+ *     defaults?: array<string,mixed>,
+ *     ignore?: array<array-key, string>
  * }
  * @phpstan-type RequestOptions array<string,mixed>
  */
@@ -59,6 +60,12 @@ class OptionNormalizer
     private const KEY_DEFAULTS = 'defaults';
 
     /**
+     * Dialect key listing canonical options the provider has no equivalent for and that are
+     * dropped without an error, rather than refused.
+     */
+    private const KEY_IGNORE = 'ignore';
+
+    /**
      * @param BridgeRegistry $bridgeRegistry Says which dialect each service code speaks
      * @param array<string,Dialect> $dialects Dialect name => ['map' => [], 'lists' => [], 'defaults' => []]
      */
@@ -77,7 +84,8 @@ class OptionNormalizer
      * @param string $serviceCode
      * @param RequestOptions $options
      * @return RequestOptions
-     * @throws AiRequestNotSentException When an option has no equivalent at the target provider
+     * @throws AiRequestNotSentException When an option has no equivalent at the target provider and
+     *         the provider's dialect does not list it under `ignore`
      */
     public function normalize(string $serviceCode, array $options): array
     {
@@ -113,6 +121,14 @@ class OptionNormalizer
 
         $value = $options[$canonical];
         unset($options[$canonical]);
+
+        // A provider with nothing to map the option onto, but where dropping it is harmless: the
+        // answer may be longer or less deterministic than asked for, never wrong. Refusing instead
+        // would break every consumer that sets the option without knowing which backend an
+        // administrator configured, including this module's own Test Connection.
+        if ($target === null && $this->ignores($dialect, $canonical)) {
+            return $options;
+        }
 
         if ($target === null) {
             throw new AiRequestNotSentException(__(
@@ -171,6 +187,22 @@ class OptionNormalizer
     private function castValue(array $dialect, string $canonical, mixed $value): mixed
     {
         return $this->wantsList($dialect, $canonical) ? (array) $value : $this->toNumberIfNumeric($value);
+    }
+
+    /**
+     * Whether this provider drops the option silently instead of refusing it.
+     *
+     * Both `di.xml` shapes count, for the same reason as {@see wantsList()}.
+     *
+     * @param Dialect $dialect
+     * @param string $canonical
+     * @return bool
+     */
+    private function ignores(array $dialect, string $canonical): bool
+    {
+        $ignore = $dialect[self::KEY_IGNORE] ?? [];
+
+        return in_array($canonical, $ignore, true) || array_key_exists($canonical, $ignore);
     }
 
     /**

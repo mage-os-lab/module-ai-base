@@ -323,11 +323,86 @@ quarantines that churn to two classes; signatures are verified against **v0.13.0
 re-verified on upgrade — which is why the require is pinned to `^0.13` rather than left open.
 
 Consequences: consumers depend on `AiClientInterface` only; bridges are still FQCN strings
-resolved lazily with guards, because the seven non-required providers remain optional and a
+resolved lazily with guards, because the nine non-required providers remain optional and a
 store may remove the required bridges via `replace`; native implementations can replace the
 whole layer via a `<preference>` without touching consumers. Note that pure `class_exists`
 checks on `*Factory` names are unreliable inside Magento test/codegen environments (factories
 are auto-generated) — hence the additional `method_exists` guard.
+
+### Decision: one bridge that is not Symfony's
+
+`BridgeRegistry` names a factory class and a composer package per service code, and until OpenCode
+every one of those was a `symfony/*` package. Upstream releases one bridge package per provider and
+has released none for OpenCode, so the choice was between leaving the provider unusable through the
+bundled client — configuration-only, which the registry already supports — and shipping the bridge.
+
+It is shipped, as **`mage-os/library-ai-opencode-zen-platform`**: a plain PHP library, MIT like the
+Symfony code it is built on, carrying no Magento code and needing no `setup:upgrade`. It is thin
+because it can be: OpenCode Zen speaks the OpenAI Chat Completions body, so the bridge is
+`symfony/ai-generic-platform`'s client pointed at Zen's host, plus a model catalogue. It stays a
+`suggest` on this module, for the same pay-for-what-you-use reason every non-required bridge does.
+
+Kept out of this module deliberately. Putting those two classes in `src/` would have made
+`symfony/ai-generic-platform` a hard requirement of every install, including the ones that never
+configure OpenCode, and would have buried a reusable Symfony AI bridge inside a Magento module
+where no non-Magento project could reach it.
+
+Its model catalogue enumerates nothing and accepts any model id, which is the opposite of every
+Symfony bridge's frozen static list. Zen is a gateway: its catalogue turns over monthly and is
+published as an endpoint, so a frozen copy would reject a model an administrator can see in the
+gateway's own listing. `ClientFactory::createCatalog()` exists to paper over exactly that staleness
+for the bridges that do freeze; here there is nothing to paper over, which is why the `opencode-zen`
+entry registers no `catalog` at all.
+
+The remaining limitation is deliberate and documented: Zen fans its catalogue out across
+`/v1/chat/completions`, `/v1/responses`, `/v1/messages`, `/v1/models/<id>` and `/v1/systemone`,
+and a `BridgeRegistry` entry carries exactly one request-option `dialect`. Routing per model family
+inside the bridge would leave that one dialect wrong for half the models, so the bridge speaks Chat
+Completions only and the other families fail against the gateway, with the gateway's own message.
+
+### Decision: a stateful agent server as a stateless provider
+
+`opencode-custom` points the bundled client at a self-hosted `opencode serve` instance. That server
+is not a completion API: it is opencode's agent, reached over a session API (`POST /session`,
+`POST /session/{id}/message`), answering through whichever providers it has configured, and by
+default allowed to read, edit and run commands on the machine it runs on. The bridge
+(`mage-os/library-ai-opencode-custom-platform`) maps one `AiClientInterface` call onto one
+throw-away session:
+
+- **Isolation first.** Each session is created with a deny-everything permission ruleset, and each
+  prompt is sent with every tool switched off. Two switches rather than one, because the server
+  (1.18.32) silently ignores request fields it does not recognise: a renamed option in a later
+  release would turn one of them into a no-op without an error. Whether a real model is then
+  actually unable to reach a tool **has not been verified against a live model**; both fields are
+  asserted on the wire in the bridge's unit tests.
+- **No state carried.** The session is deleted in a `finally`, success or not. Conversation history
+  therefore travels inside the one prompt, flattened into a labelled transcript; system messages
+  use the server's own `system` field.
+- **Tool calling is emulated, not given up.** The first version refused any request carrying tools,
+  which conflated the opencode *agent* running tools on its own host (off, and staying off) with the
+  *model* asking the caller to run the caller's tools. That made the provider unusable for
+  `MagoAssistant_Mago`, whose every turn is a tool loop. The bridge now describes offered tools in
+  the system prompt and parses `<tool_call>` blocks back into real `ToolCall` objects, so the tools
+  still execute in Magento with Mago's write confirmations, per-admin permissions and privacy
+  scrubbing intact. Reliability is the model's: a model that ignores the format answers in prose,
+  which is returned as text. Rejected alternative: the server's `format: json_schema` structured
+  output, which it implements by injecting its own `StructuredOutput` *tool* — fighting the very
+  switches that keep the agent harmless.
+- **What it does give up.** Real streaming (the server answers once the agent has finished; a streaming caller gets
+  the whole answer as one chunk), and every universal option: the message endpoint has no
+  `max_tokens`, `temperature`, `top_p` or `stop`, so the `opencode_server` dialect maps none of
+  them and lists all four under `ignore`: they are dropped before the request. Refusing them was the
+  first design, and it broke every consumer that sets one without knowing which backend an
+  administrator picked, this module's own Test Connection included. A dropped option can make an
+  answer longer or less deterministic than asked for, never wrong; an option a provider cannot
+  honour *and* whose loss would change the meaning of a call should stay refused.
+- **What it gains.** The server has already done the provider integration: through one entry an
+  administrator reaches Claude, GPT, and local models, with credentials that stay on the server.
+
+Answers pass through the server's agent, so they carry its system prompt and the `AGENTS.md` of the
+directory the server runs in unless the row names a plain agent (`agent` field). An upstream failure
+is reported by the server as HTTP 200 with the error on the message; the bridge raises it as the
+matching platform exception, so it reaches `SymfonyAiClient` exactly like any other bridge's error.
 
 ### Why there is an escape hatch anyway
 

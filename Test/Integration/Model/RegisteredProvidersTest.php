@@ -34,6 +34,8 @@ final class RegisteredProvidersTest extends TestCase
         'huggingface',
         'lmstudio',
         'ollama',
+        'opencode-custom',
+        'opencode-zen',
         'openai',
         'openrouter',
     ];

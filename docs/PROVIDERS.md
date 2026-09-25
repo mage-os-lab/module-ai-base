@@ -100,7 +100,9 @@ Use snake_case. Established names — reuse them, several code paths key on them
 |---|---|
 | `api_key` | Credential (encrypted, masked in the form) |
 | `model` | Selected model; for Azure this doubles as the deployment name |
-| `base_url` | Local-runtime endpoint (Ollama, LM Studio) |
+| `base_url` | Local-runtime endpoint (Ollama, LM Studio), a hosted provider's endpoint override (OpenCode Zen), or a self-hosted server's address (OpenCode Custom) |
+| `username` | Login for a self-hosted server that has one (OpenCode Custom) |
+| `agent` | Which agent a self-hosted agent server should answer through (OpenCode Custom) |
 | `endpoint` | Hosted resource endpoint (Azure) |
 | `api_version` | Optional API version override (Azure) |
 
@@ -163,6 +165,31 @@ the mapping is safe to ship even when symfony/ai-platform is absent. `package` i
 form tells an administrator to install when the bridge is missing; a provider with no released
 bridge omits it and is labelled unsupported instead.
 
+`factory` does **not** have to be a Symfony class, and `package` does not have to be a `symfony/*`
+package. Upstream releases one bridge per provider and has released none for OpenCode, so this
+module registers `MageOS\AiOpenCodeZenPlatform\Factory` from `mage-os/library-ai-opencode-zen-platform`
+— a bridge built on `symfony/ai-generic-platform` — through this same entry, and everything that
+reads the registry treats it identically. Write your own the same way when a provider has no
+upstream bridge; the only contract is a static `createPlatform()` that returns a platform object.
+
+**Signature contract.** `ClientFactory` dispatches over these factory class names, passing the
+credential **positionally** and everything else by name. A hosted provider's `createPlatform()`
+must therefore take the API key first, as every Symfony hosted bridge does. Note that
+`Symfony\AI\Platform\Bridge\Generic\Factory` does *not* — it takes the base URL first — so a bridge
+delegating to it needs its own wrapper with the hosted parameter order, which is what
+`LmStudio\Factory` and `MageOS\AiOpenCodeZenPlatform\Factory` both are. A bridge that is not an
+HTTP completion API at all is fine too: `MageOS\AiOpenCodeCustomPlatform\Factory` drives a
+self-hosted opencode server's session API behind the same `createPlatform()` shape.
+
+**Row fields.** If your factory declares a parameter named `baseUrl`, `username` or `agent`, the
+stored `base_url`, `username` or `agent` field on the service row is passed to it by name, when
+non-empty (`Model\Client\ClientFactory::ROW_ARGUMENTS`). That is how a hosted provider behind a
+proxy, or a gateway an organisation runs itself, is reached without a bridge of its own, and how a
+self-hosted server gets its login and agent. It applies only to providers that go through the
+default dispatch arm: the local runtimes (Ollama, LM Studio) pass their
+endpoint positionally, and passing it by name as well would raise *"Named parameter $baseUrl
+overwrites previous argument"* — LM Studio's first parameter really is spelled `baseUrl`.
+
 `dialect` names the request-option shape your provider speaks, which decides how the universal
 options (`max_tokens`, `temperature`, `top_p`, `stop`) are spelled on the wire — see
 [CONSUMING.md](CONSUMING.md#options). The shipped dialects are `openai_chat` (the
@@ -187,6 +214,10 @@ options (`max_tokens`, `temperature`, `top_p`, `stop`) are spelled on the wire �
                 <item name="defaults" xsi:type="array">
                     <item name="max_tokens" xsi:type="number">4096</item>
                 </item>
+                <!-- options the provider has no equivalent for, dropped without an error -->
+                <item name="ignore" xsi:type="array">
+                    <item name="stop" xsi:type="string">stop</item>
+                </item>
             </item>
         </argument>
     </arguments>
@@ -194,7 +225,11 @@ options (`max_tokens`, `temperature`, `top_p`, `stop`) are spelled on the wire �
 ```
 
 An option absent from `map` is treated as unsupported by that provider and raises a
-`LocalizedException` naming both, rather than being dropped on the way to the wire. Declaring no
+`LocalizedException` naming both, rather than being dropped on the way to the wire — unless the
+dialect lists it under `ignore`, in which case it is removed silently. Use `ignore` only where
+losing the option cannot change the meaning of a call (a cap or a sampling setting), because
+consumers set these options without knowing which provider an administrator picked, and a refused
+one fails every call they make. `opencode_server` ignores all four. Declaring no
 dialect at all passes every option through untouched.
 
 The factory signatures are verified against **symfony/ai-platform v0.13.0**; the component is

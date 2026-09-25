@@ -24,6 +24,19 @@ use MageOS\AiBase\Model\Usage\UsageConfig;
 class ClientFactory implements AiClientFactoryInterface
 {
     /**
+     * Stored row field => bridge factory parameter it is passed to by name, when declared.
+     *
+     * `base_url` is the one every provider with an endpoint field shares; `username` and `agent`
+     * are a self-hosted opencode server's login and the agent it should answer through. No
+     * Symfony bridge at 0.13 declares either of the last two, so they reach only a bridge that asks.
+     */
+    private const ROW_ARGUMENTS = [
+        'base_url' => 'baseUrl',
+        'username' => 'username',
+        'agent'    => 'agent',
+    ];
+
+    /**
      * @param AiServiceSelectorInterface $serviceSelector
      * @param SymfonyAiClientFactory $clientFactory
      * @param BridgeRegistry $bridgeRegistry Service code => bridge factory and composer package
@@ -291,7 +304,7 @@ class ClientFactory implements AiClientFactoryInterface
             ),
             default => $factoryClass::createPlatform(
                 $this->stringValue($config, 'api_key'),
-                ...$this->optionalArguments($factoryClass, $code, $config),
+                ...$this->optionalArguments($factoryClass, $code, $config, withBaseUrl: true),
             ),
         };
 
@@ -324,10 +337,19 @@ class ClientFactory implements AiClientFactoryInterface
      * @param string $factoryClass Bridge factory FQCN
      * @param string $code Service code
      * @param array<string,mixed> $config Stored service configuration
+     * @param bool $withBaseUrl Whether the caller left this method to pass the endpoint and the
+     *        other {@see ROW_ARGUMENTS}. Only the default arm above may: the arms that pass an
+     *        endpoint positionally must not, since a bridge whose first parameter happens to be
+     *        spelled `baseUrl` — LM Studio's is — would receive it twice and raise "Named parameter
+     *        $baseUrl overwrites previous argument".
      * @return array<string,mixed> Argument name => value
      */
-    private function optionalArguments(string $factoryClass, string $code, array $config): array
-    {
+    private function optionalArguments(
+        string $factoryClass,
+        string $code,
+        array $config,
+        bool $withBaseUrl = false
+    ): array {
         $accepted = [];
         foreach ((new \ReflectionMethod($factoryClass, 'createPlatform'))->getParameters() as $parameter) {
             $accepted[$parameter->getName()] = true;
@@ -340,6 +362,24 @@ class ClientFactory implements AiClientFactoryInterface
         if ($catalog !== null && isset($accepted['modelCatalog'])) {
             $arguments['modelCatalog'] = $catalog;
         }
+
+        if (!$withBaseUrl) {
+            return $arguments;
+        }
+
+        // Row fields a bridge may declare a parameter for. A hosted provider fronted by a proxy,
+        // or a gateway an organisation runs itself, speaks its provider's wire format at an address
+        // of its own; a self-hosted server additionally has its own login and agent. Each is passed
+        // only when the factory declares it *and* the row holds a non-empty value, so a bridge keeps
+        // its own default for every provider whose form offers no such field, and rows saved before
+        // a field was added keep working.
+        foreach (self::ROW_ARGUMENTS as $field => $parameter) {
+            $value = isset($accepted[$parameter]) ? ($config[$field] ?? null) : null;
+            if (is_string($value) && trim($value) !== '') {
+                $arguments[$parameter] = $parameter === 'baseUrl' ? rtrim(trim($value), '/') : trim($value);
+            }
+        }
+
         return $arguments;
     }
 
