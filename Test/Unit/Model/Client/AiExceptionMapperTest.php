@@ -23,6 +23,8 @@ use Symfony\AI\Platform\Exception\MalformedToolCallException;
 use Symfony\AI\Platform\Exception\ModelNotFoundException;
 use Symfony\AI\Platform\Exception\RateLimitExceededException;
 use Symfony\AI\Platform\Exception\ServerException;
+use Symfony\Component\HttpClient\Exception\TimeoutException;
+use Symfony\Component\HttpClient\Exception\TransportException;
 
 /**
  * symfony/ai-platform is a soft dependency of this module, so these run only where it is
@@ -74,6 +76,14 @@ final class AiExceptionMapperTest extends TestCase
             ],
             'incomplete stream' => [
                 static fn () => new IncompleteStreamException('provider said no'),
+                AiTransientException::class,
+            ],
+            'connection failure' => [
+                static fn () => new TransportException('provider said no'),
+                AiTransientException::class,
+            ],
+            'idle timeout' => [
+                static fn () => new TimeoutException('provider said no'),
                 AiTransientException::class,
             ],
             'bad request' => [

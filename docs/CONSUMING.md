@@ -366,7 +366,7 @@ everything without any change:
 | A call rejected before it ever reached the provider: an unsupported option, an invalid model override, a tool result message missing its call id | `chat()` / `complete()` / `streamChat()` | `AiRequestNotSentException` |
 | The provider rejected the configured credentials | `chat()` / `complete()` / `streamChat()` | `AiAuthenticationException` |
 | The provider throttled the call | `chat()` / `complete()` / `streamChat()` | `AiRateLimitedException` (`getRetryAfter(): ?int`) |
-| A server error, an overloaded model, or a stream that ended before reporting completion | `chat()` / `complete()` / `streamChat()` | `AiTransientException` |
+| A server error, an overloaded model, a network failure (connection refused, DNS failure, connection reset, timeout), or a stream that ended before reporting completion | `chat()` / `complete()` / `streamChat()` | `AiTransientException` |
 | A bad request, a prompt over the context window, or an unknown model | `chat()` / `complete()` / `streamChat()` | `AiInvalidRequestException` |
 | The provider's safety filter refused to answer | `chat()` / `complete()` / `streamChat()` | `AiContentFilteredException` (extends `AiInvalidRequestException`) |
 | The model's tool call arguments could not be parsed as JSON | `chat()` / `complete()` / `streamChat()` | `AiToolCallException` |

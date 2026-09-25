@@ -21,6 +21,12 @@ use Magento\Framework\Exception\LocalizedException;
  * that work through `HttpStatusErrorHandlingTrait`, and re-parsing it here would have to be
  * re-verified on every symfony/ai upgrade, which is exactly what this module chose not to take on
  * (see the decision record in docs/ARCHITECTURE.md).
+ *
+ * A network failure (connection refused, DNS failure, connection reset, idle timeout) is not
+ * translated by symfony/ai at all: neither the platform nor its bridges catch the HTTP client's
+ * `TransportExceptionInterface`, so it arrives here exactly as the HTTP client threw it.
+ * Retrying it is as likely to succeed as retrying a server error, so it maps to
+ * {@see AiTransientException} too.
  */
 class AiExceptionMapper
 {
@@ -49,6 +55,7 @@ class AiExceptionMapper
         if ($this->isAnyInstanceOf($exception, [
             \Symfony\AI\Platform\Exception\ServerException::class,
             \Symfony\AI\Platform\Exception\IncompleteStreamException::class,
+            \Symfony\Contracts\HttpClient\Exception\TransportExceptionInterface::class,
         ])) {
             return new AiTransientException($phrase, $cause);
         }
@@ -73,7 +80,7 @@ class AiExceptionMapper
     }
 
     /**
-     * Whether the exception is of the given class, guarded against that class being absent.
+     * Whether the exception is of the given class or interface, guarded against it being absent.
      *
      * @template T of object
      * @param \Throwable $exception
@@ -83,7 +90,7 @@ class AiExceptionMapper
      */
     private function isInstanceOf(\Throwable $exception, string $class): bool
     {
-        return class_exists($class) && $exception instanceof $class;
+        return (class_exists($class) || interface_exists($class)) && $exception instanceof $class;
     }
 
     /**
