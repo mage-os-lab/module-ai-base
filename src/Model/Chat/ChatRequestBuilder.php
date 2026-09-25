@@ -11,6 +11,7 @@ use MageOS\AiBase\Api\Data\ChatRequestInterface;
 use MageOS\AiBase\Api\Data\ChatRequestInterfaceFactory;
 use MageOS\AiBase\Api\Data\ChatResponseInterface;
 use MageOS\AiBase\Api\Data\MessageRole;
+use MageOS\AiBase\Api\Data\ReasoningInterface;
 use MageOS\AiBase\Api\Data\ToolCallInterface;
 use MageOS\AiBase\Api\Data\ToolDefinitionInterface;
 use MageOS\AiBase\Api\Data\ToolDefinitionInterfaceFactory;
@@ -66,7 +67,13 @@ class ChatRequestBuilder implements ChatRequestBuilderInterface
      */
     public function withAssistantTurn(ChatResponseInterface $response): ChatRequestBuilderInterface
     {
-        return $this->withAssistantMessage($response->getText(), $response->getToolCalls());
+        return $this->withMessage(
+            MessageRole::Assistant,
+            $response->getText(),
+            $response->getToolCalls(),
+            null,
+            $response->getReasoning(),
+        );
     }
 
     /**
@@ -113,6 +120,7 @@ class ChatRequestBuilder implements ChatRequestBuilderInterface
      * @param string $content
      * @param ToolCallInterface[] $toolCalls
      * @param ToolCallInterface|null $answeredToolCall
+     * @param ReasoningInterface[] $reasoning
      * @return ChatRequestBuilderInterface
      */
     private function withMessage(
@@ -120,12 +128,14 @@ class ChatRequestBuilder implements ChatRequestBuilderInterface
         string $content,
         array $toolCalls = [],
         ?ToolCallInterface $answeredToolCall = null,
+        array $reasoning = [],
     ): ChatRequestBuilderInterface {
         $message = $this->messageFactory->create([
             'role' => $role,
             'content' => $content,
             'toolCalls' => $toolCalls,
             'answeredToolCall' => $answeredToolCall,
+            'reasoning' => $reasoning,
         ]);
 
         return $this->withState([...$this->messages, $message], $this->tools);

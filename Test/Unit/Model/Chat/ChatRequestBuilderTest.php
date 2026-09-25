@@ -15,6 +15,7 @@ use MageOS\AiBase\Model\Chat\ChatMessage;
 use MageOS\AiBase\Model\Chat\ChatRequest;
 use MageOS\AiBase\Model\Chat\ChatRequestBuilder;
 use MageOS\AiBase\Model\Chat\ChatResponse;
+use MageOS\AiBase\Model\Chat\Reasoning;
 use MageOS\AiBase\Model\Chat\ToolCall;
 use MageOS\AiBase\Model\Chat\ToolDefinition;
 use PHPUnit\Framework\TestCase;
@@ -81,6 +82,29 @@ final class ChatRequestBuilderTest extends TestCase
         self::assertSame(MessageRole::Tool, $messages[2]->getRole());
         self::assertSame('toolu_01', $messages[2]->getToolCallId());
         self::assertSame('{"count":3}', $messages[2]->getContent());
+    }
+
+    /**
+     * A provider that reasoned before calling a tool can reject the next turn of the loop if its
+     * reasoning is missing, so the builder has to carry it exactly as ChatRequest::withAssistantTurn()
+     * does, not just the text and tool calls.
+     */
+    public function test_appends_the_models_own_turn_with_its_reasoning_intact(): void
+    {
+        $call = new ToolCall('toolu_01', 'get_orders', ['status' => 'pending']);
+        $reasoning = new Reasoning('weighing options', 'sig_abc');
+        $response = new ChatResponse('Let me look', [$call], null, null, null, [$reasoning]);
+
+        $request = $this->builder()
+            ->withUserMessage('Which orders are pending?')
+            ->withAssistantTurn($response)
+            ->build();
+
+        $turn = $request->getMessages()[1];
+        self::assertSame(MessageRole::Assistant, $turn->getRole());
+        self::assertSame('Let me look', $turn->getContent());
+        self::assertSame([$call], $turn->getToolCalls());
+        self::assertSame([$reasoning], $turn->getReasoning());
     }
 
     /**
