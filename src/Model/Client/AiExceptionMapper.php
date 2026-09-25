@@ -43,7 +43,6 @@ class AiExceptionMapper
         }
 
         if ($this->isInstanceOf($exception, \Symfony\AI\Platform\Exception\RateLimitExceededException::class)) {
-            /** @var \Symfony\AI\Platform\Exception\RateLimitExceededException $exception */
             return new AiRateLimitedException($phrase, $exception->getRetryAfter(), $cause);
         }
 
@@ -54,11 +53,14 @@ class AiExceptionMapper
             return new AiTransientException($phrase, $cause);
         }
 
+        if ($this->isInstanceOf($exception, \Symfony\AI\Platform\Exception\ContentFilterException::class)) {
+            return new AiContentFilteredException($phrase, $cause);
+        }
+
         if ($this->isAnyInstanceOf($exception, [
             \Symfony\AI\Platform\Exception\BadRequestException::class,
             \Symfony\AI\Platform\Exception\ExceedContextSizeException::class,
             \Symfony\AI\Platform\Exception\ModelNotFoundException::class,
-            \Symfony\AI\Platform\Exception\ContentFilterException::class,
         ])) {
             return new AiInvalidRequestException($phrase, $cause);
         }
@@ -73,9 +75,11 @@ class AiExceptionMapper
     /**
      * Whether the exception is of the given class, guarded against that class being absent.
      *
+     * @template T of object
      * @param \Throwable $exception
-     * @param class-string $class
+     * @param class-string<T> $class
      * @return bool
+     * @phpstan-assert-if-true T $exception
      */
     private function isInstanceOf(\Throwable $exception, string $class): bool
     {

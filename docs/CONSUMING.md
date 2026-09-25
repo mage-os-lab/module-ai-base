@@ -18,7 +18,10 @@ description generation, translations, chat, ...). To *add* a provider, see
 ```
 
 Type-hint only against `MageOS\AiBase\Api\*` interfaces. Never depend on `Model\*` classes
-or on symfony/ai types — implementations can be swapped by the host store via `<preference>`.
+or on symfony/ai types, with one exception: the exception classes in `Model\Client\*` that
+`chat()`, `complete()` and `streamChat()` throw (listed under
+[Failure modes to handle](#failure-modes-to-handle)) are public API, since catching one means
+naming it — implementations can be swapped by the host store via `<preference>`.
 Everything below follows that rule: requests are assembled through
 `Api\ChatRequestBuilderInterface`, and every `Api\Data` interface has a `<preference>`, so the
 Magento-generated `*InterfaceFactory` for it resolves if you'd rather build one directly.
@@ -296,6 +299,9 @@ raised as an exception at all. The generator ends the same way a complete stream
 carries the text collected so far and reports `FinishReason::Length`, exactly as a non-streamed
 `chat()` call reports a truncated answer (see `getFinishReason()` under
 [Conversations, tools and streaming](#conversations-tools-and-streaming) above).
+On Anthropic, `getRawFinishReason()` is `null` on a truncated stream: the bridge throws at
+`message_stop`, before the delta that carries the stop reason, so only the normalized
+`FinishReason::Length` is available there. A buffered `chat()` call is unaffected.
 
 ### Failure modes to handle
 
@@ -314,7 +320,8 @@ everything without any change:
 | The provider rejected the configured credentials | `chat()` / `complete()` / `streamChat()` | `AiAuthenticationException` |
 | The provider throttled the call | `chat()` / `complete()` / `streamChat()` | `AiRateLimitedException` (`getRetryAfter(): ?int`) |
 | A server error, an overloaded model, or a stream that ended before reporting completion | `chat()` / `complete()` / `streamChat()` | `AiTransientException` |
-| A bad request, a prompt over the context window, an unknown model, or content the provider's safety filter refused | `chat()` / `complete()` / `streamChat()` | `AiInvalidRequestException` |
+| A bad request, a prompt over the context window, or an unknown model | `chat()` / `complete()` / `streamChat()` | `AiInvalidRequestException` |
+| The provider's safety filter refused to answer | `chat()` / `complete()` / `streamChat()` | `AiContentFilteredException` (extends `AiInvalidRequestException`) |
 | The model's tool call arguments could not be parsed as JSON | `chat()` / `complete()` / `streamChat()` | `AiToolCallException` |
 | Any other provider or library failure | `chat()` / `complete()` / `streamChat()` | `AiServiceException` |
 

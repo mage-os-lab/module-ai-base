@@ -10,8 +10,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 - **Typed client exceptions**, including during a stream. `chat()`, `complete()` and `streamChat()`
   now throw one of `Model\Client\AiAuthenticationException`, `AiRateLimitedException` (carrying
-  `getRetryAfter(): ?int`), `AiTransientException`, `AiInvalidRequestException` or
-  `AiToolCallException` instead of a single generic `LocalizedException`, so a consumer can retry
+  `getRetryAfter(): ?int`), `AiTransientException`, `AiInvalidRequestException` (with the
+  `AiContentFilteredException` subtype for a safety-filter refusal) or `AiToolCallException` instead of a single generic `LocalizedException`, so a consumer can retry
   a rate limit, skip a non-retryable rejection, and leave everything else alone without parsing
   messages. Every one still extends the new common base `AiServiceException`, itself a
   `LocalizedException`, so an existing `catch (LocalizedException)` keeps working unchanged. The

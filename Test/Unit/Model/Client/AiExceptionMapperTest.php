@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace MageOS\AiBase\Test\Unit\Model\Client;
 
 use MageOS\AiBase\Model\Client\AiAuthenticationException;
+use MageOS\AiBase\Model\Client\AiContentFilteredException;
 use MageOS\AiBase\Model\Client\AiExceptionMapper;
 use MageOS\AiBase\Model\Client\AiInvalidRequestException;
 use MageOS\AiBase\Model\Client\AiRateLimitedException;
@@ -89,7 +90,7 @@ final class AiExceptionMapperTest extends TestCase
             ],
             'content filter' => [
                 static fn () => new ContentFilterException('provider said no'),
-                AiInvalidRequestException::class,
+                AiContentFilteredException::class,
             ],
             'malformed tool call' => [
                 static fn () => new MalformedToolCallException('provider said no'),
