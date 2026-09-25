@@ -160,7 +160,7 @@ $response->getFinishReason();     // normalized across providers; Length means t
 
 $stream = $client->streamChat($request);
 foreach ($stream as $chunk) {
-    // StreamChunkType::Text | Thinking | ToolCall | Usage
+    // StreamChunkType::Text | Thinking | ThinkingStart | ToolCall | ToolCallStart | Usage
 }
 $turn = $stream->getReturn();     // the assembled ChatResponseInterface, ready to append
 ```

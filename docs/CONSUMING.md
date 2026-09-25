@@ -211,9 +211,19 @@ foreach ($client->streamChat($request) as $chunk) {
         StreamChunkType::Thinking      => null,                    // reasoning, not the answer
         StreamChunkType::ThinkingStart => $this->emit('thinking…'),
         StreamChunkType::ToolCall      => $calls[] = $chunk->getToolCall(),
-        StreamChunkType::ToolCallStart => $this->emit('searching ' . $chunk->getToolCall()?->getName()),
+        StreamChunkType::ToolCallStart => $this->announceToolCall($chunk->getToolCall()),
         StreamChunkType::Usage         => $usage = $chunk->getUsage(),
     };
+}
+
+private function announceToolCall(ToolCallInterface $toolCall): void
+{
+    if (isset($this->announcedToolCallIds[$toolCall->getId()])) {
+        return;
+    }
+
+    $this->announcedToolCallIds[$toolCall->getId()] = true;
+    $this->emit('searching ' . $toolCall->getName());
 }
 ```
 
@@ -236,11 +246,12 @@ no `input_json_delta` fragments to stitch together. A turn requesting several to
 chunk per call, so `getToolCall()` always means exactly one.
 
 On a provider that reports it, a `StreamChunkType::ThinkingStart` or `StreamChunkType::ToolCallStart`
-chunk arrives as soon as the model opens that block, before it has written anything — the pause
+chunk arrives as soon as the model opens that block, before it has written anything: the pause
 where a customer would otherwise stare at an empty box. `ThinkingStart` carries no payload.
 `ToolCallStart` carries the id and name of the call the model is opening, with `getToolCall()`
 returning empty arguments; it may repeat more than once for the same id while the provider streams
-the arguments, so treat it as "a call named X is under way", not as a second, separate call. The
+the arguments, so treat it as "a call named X is under way", not as a second, separate call, and
+key anything you show the customer on the id, as `announceToolCall()` above does. The
 completed call, arguments included, still arrives exactly once as before, on its own
 `StreamChunkType::ToolCall` chunk. A provider that does not report either signal simply never
 yields that chunk kind; nothing about the rest of the stream changes.
