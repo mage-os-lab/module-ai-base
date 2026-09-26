@@ -34,7 +34,7 @@ use MageOS\AiBase\Model\Chat\ToolCall;
  * symfony/ai-platform. Native signatures therefore say `object`, while the
  * docblocks name the real platform type: annotations are never autoloaded, so
  * static analysis gets to check these calls without the runtime gaining a
- * dependency on a package that may be absent. Written against symfony/ai-platform v0.13.0; the
+ * dependency on a package that may be absent. Written against symfony/ai-platform v0.14.0; the
  * component is experimental and not covered by Symfony's BC promise, so
  * pin the version and re-verify on upgrade.
  */

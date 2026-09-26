@@ -303,7 +303,7 @@ saves so credential restore can match rows.
 
 The client layer adapts [symfony/ai-platform](https://github.com/symfony/ai) rather than
 hand-rolling per-provider HTTP clients. The **OpenAI and Anthropic bridges are hard
-requirements** (pinned `^0.13`); every other bridge stays under `suggest`.
+requirements** (pinned `^0.14`); every other bridge stays under `suggest`.
 
 Originally every symfony/ai package was a soft dependency, for three reasons: installability
 (symfony/ai-platform needs Symfony 7.3+ components, which older Magento releases cannot
@@ -322,9 +322,9 @@ Its README says so outright: *"This Component is experimental. Experimental feat
 covered by Symfony's Backward Compatibility Promise."* That is not hypothetical on the surface
 a tool loop touches most: its changelog reworked `Message::ofAssistant()` in 0.9 and
 `Message::ofToolCall()` in 0.11, 0.12 moved every bridge into its own package, and 0.13
-added `ListenerInterface::onError()`. The adapter (`SymfonyAiClient` + `ClientFactory`)
-quarantines that churn to two classes; signatures are verified against **v0.13.0** and must be
-re-verified on upgrade — which is why the require is pinned to `^0.13` rather than left open.
+added `ListenerInterface::onError()`, and 0.14 added `TokenUsageInterface::getModel()`. The
+adapter (`SymfonyAiClient` + `ClientFactory`) quarantines that churn to two classes; signatures are verified against **v0.14.0** and must be
+re-verified on upgrade — which is why the require is pinned to `^0.14` rather than left open.
 
 Consequences: consumers depend on `AiClientInterface` only; bridges are still FQCN strings
 resolved lazily with guards, because the seven non-required providers remain optional and a

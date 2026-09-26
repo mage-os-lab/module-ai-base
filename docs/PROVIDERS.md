@@ -236,7 +236,7 @@ to look at the model configured on the row, not at this module:
 Where a model needs something else, send the provider's own option instead of the neutral one;
 it wins over the translation.
 
-The factory signatures are verified against **symfony/ai-platform v0.13.0**; the component is
+The factory signatures are verified against **symfony/ai-platform v0.14.0**; the component is
 experimental with no BC promise — pin your version and re-verify on upgrade. Hosted providers
 pass the API key; local runtimes pass `base_url`; Azure passes endpoint/deployment/api_version/key
 (see `Model\Client\ClientFactory::createPlatform()` for the dispatch).

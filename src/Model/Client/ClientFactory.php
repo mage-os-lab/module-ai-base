@@ -265,7 +265,7 @@ class ClientFactory implements AiClientFactoryInterface
         $config = $service->getConfiguration();
 
         // Bridge Factory::createPlatform() signatures vary by provider (verified
-        // against symfony/ai-platform v0.13.0): hosted providers take an API key;
+        // against symfony/ai-platform v0.14.0): hosted providers take an API key;
         // local runtimes take an endpoint/base URL; Azure takes endpoint +
         // deployment (the selected model) + API version + key.
         //
