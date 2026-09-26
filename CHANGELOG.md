@@ -8,6 +8,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **OpenAI-Compatible provider** (`openai_compatible`), for self-hosted OpenAI-compatible gateways
+  and aggregators (LiteLLM, an OpenRouter-style proxy, Eden AI) that speak the Chat Completions wire
+  format on a host of the administrator's own choosing. Unlike Ollama and LM Studio it has no
+  sensible default host, so the Base URL field ships empty; a trailing `/v1` (or `/v1/`) is stripped
+  automatically, since the bridge already appends its own `/v1/chat/completions`. Routed through
+  `Symfony\AI\Platform\Bridge\Generic\Factory` (package `symfony/ai-generic-platform`, a soft
+  dependency like every non-OpenAI/Anthropic bridge).
 - **Typed client exceptions**, including during a stream. `chat()`, `complete()` and `streamChat()`
   now throw one of `Model\Client\AiAuthenticationException`, `AiRateLimitedException` (carrying
   `getRetryAfter(): ?int`), `AiTransientException`, `AiInvalidRequestException` (with the

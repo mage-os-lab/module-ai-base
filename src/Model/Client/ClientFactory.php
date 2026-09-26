@@ -266,11 +266,12 @@ class ClientFactory implements AiClientFactoryInterface
 
         // Bridge Factory::createPlatform() signatures vary by provider (verified
         // against symfony/ai-platform v0.14.0): hosted providers take an API key;
-        // local runtimes take an endpoint/base URL; Azure takes endpoint +
-        // deployment (the selected model) + API version + key.
+        // local runtimes take an endpoint/base URL; openai_compatible takes both, since unlike
+        // Ollama/LM Studio it fronts no specific runtime and cannot assume one is unauthenticated;
+        // Azure takes endpoint + deployment (the selected model) + API version + key.
         //
         // Every arm ends in optionalArguments() so that no provider is left out of the model
-        // catalogue: the two that take their endpoint positionally are also the two with a
+        // catalogue: the ones that take their endpoint positionally are also the ones with a
         // free-text model field, which makes them the likeliest to hold a model no static
         // catalogue lists.
         $platform = match ($code) {
@@ -280,6 +281,11 @@ class ClientFactory implements AiClientFactoryInterface
             ),
             'lmstudio' => $factoryClass::createPlatform(
                 $this->resolveBaseUrl($config, LmStudio::DEFAULT_BASE_URL),
+                ...$this->optionalArguments($factoryClass, $code, $config),
+            ),
+            'openai_compatible' => $factoryClass::createPlatform(
+                $this->resolveOpenAiCompatibleBaseUrl($config),
+                $this->stringValue($config, 'api_key') ?: null,
                 ...$this->optionalArguments($factoryClass, $code, $config),
             ),
             'azure' => $factoryClass::createPlatform(
@@ -484,5 +490,23 @@ class ClientFactory implements AiClientFactoryInterface
         $baseUrl = is_string($baseUrl) && trim($baseUrl) !== '' ? trim($baseUrl) : $default;
 
         return rtrim($baseUrl, '/');
+    }
+
+    /**
+     * Read the openai_compatible base URL, stripping a trailing API version segment.
+     *
+     * {@see \Symfony\AI\Platform\Bridge\Generic\Factory::createPlatform()}'s bridge always appends
+     * `/v1/chat/completions` itself, so an administrator pasting the `/v1`-suffixed URL their gateway
+     * shows them (as LiteLLM and most OpenAI-compatible gateways do) would otherwise double it into a
+     * path the gateway 404s on, with nothing in the response pointing at why.
+     *
+     * @param array<string,mixed> $config Stored service configuration
+     * @return string
+     */
+    private function resolveOpenAiCompatibleBaseUrl(array $config): string
+    {
+        $baseUrl = rtrim(trim($this->stringValue($config, 'base_url')), '/');
+
+        return preg_replace('#/v1$#', '', $baseUrl) ?? $baseUrl;
     }
 }

@@ -53,13 +53,18 @@ trait FieldFactoryTrait
      *
      * @param FieldDescriptorInterfaceFactory $factory
      * @param string $default
+     * @param string|null $label Overrides the default "Base URL" label, e.g. to warn about a
+     *        provider-specific pitfall in the field an administrator actually reads.
      * @return FieldDescriptorInterface
      */
-    private function baseUrlField(FieldDescriptorInterfaceFactory $factory, string $default): FieldDescriptorInterface
-    {
+    private function baseUrlField(
+        FieldDescriptorInterfaceFactory $factory,
+        string $default,
+        ?string $label = null,
+    ): FieldDescriptorInterface {
         return $factory->create([
             'name'    => 'base_url',
-            'label'   => 'Base URL',
+            'label'   => $label ?? 'Base URL',
             'type'    => FieldDescriptorInterface::TYPE_TEXT,
             'default' => $default,
         ]);

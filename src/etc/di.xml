@@ -91,6 +91,7 @@
                 <item name="ollama" xsi:type="object">MageOS\AiBase\AiServices\Ollama</item>
                 <item name="openrouter" xsi:type="object">MageOS\AiBase\AiServices\OpenRouter</item>
                 <item name="openai" xsi:type="object">MageOS\AiBase\AiServices\OpenAi</item>
+                <item name="openai_compatible" xsi:type="object">MageOS\AiBase\AiServices\OpenAiCompatible</item>
             </argument>
         </arguments>
     </type>
@@ -161,6 +162,11 @@
                     <item name="package" xsi:type="string">symfony/ai-open-ai-platform</item>
                     <item name="dialect" xsi:type="string">openai_responses</item>
                     <item name="catalog" xsi:type="string">Symfony\AI\Platform\Bridge\OpenAi\ModelCatalog</item>
+                </item>
+                <item name="openai_compatible" xsi:type="array">
+                    <item name="factory" xsi:type="string">Symfony\AI\Platform\Bridge\Generic\Factory</item>
+                    <item name="package" xsi:type="string">symfony/ai-generic-platform</item>
+                    <item name="dialect" xsi:type="string">openai_chat</item>
                 </item>
             </argument>
         </arguments>

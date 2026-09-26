@@ -504,6 +504,67 @@ final class ClientFactoryTest extends TestCase
         self::assertSame($expected, RecordingLocalRuntimeFactory::$baseUrl);
     }
 
+    /**
+     * Base URL and API key both reach the bridge, in that order — the shape
+     * {@see \Symfony\AI\Platform\Bridge\Generic\Factory::createPlatform()} declares.
+     */
+    public function test_create_passes_base_url_and_api_key_to_the_openai_compatible_bridge(): void
+    {
+        $this->serviceSelector->method('getByCode')->with('openai_compatible')->willReturn([
+            new AiService('row_compat', 'openai_compatible', [
+                'base_url' => 'https://litellm.internal:4000',
+                'api_key'  => 'sk-local',
+                'model'    => 'local-model',
+            ]),
+        ]);
+        $this->clientFactory->method('create')->willReturn($this->createMock(SymfonyAiClient::class));
+
+        $subject = $this->newSubject(new BridgeRegistry([
+            'openai_compatible' => [
+                'factory' => RecordingGenericFactory::class,
+                'package' => 'symfony/ai-generic-platform',
+            ],
+        ]));
+
+        $subject->create('openai_compatible');
+
+        self::assertSame('https://litellm.internal:4000', RecordingGenericFactory::$baseUrl);
+        self::assertSame('sk-local', RecordingGenericFactory::$apiKey);
+    }
+
+    /**
+     * A pasted base URL ending in /v1 (or /v1/) is stripped before reaching the bridge — the bridge
+     * always appends /v1/chat/completions itself, so leaving it in would double it into a 404.
+     */
+    #[TestWith(['https://litellm.internal:4000/v1', 'https://litellm.internal:4000'])]
+    #[TestWith(['https://litellm.internal:4000/v1/', 'https://litellm.internal:4000'])]
+    #[TestWith(['https://litellm.internal:4000/', 'https://litellm.internal:4000'])]
+    #[TestWith(['https://litellm.internal:4000', 'https://litellm.internal:4000'])]
+    public function test_create_strips_a_trailing_v1_or_slash_from_the_openai_compatible_base_url(
+        string $storedBaseUrl,
+        string $expected
+    ): void {
+        $this->serviceSelector->method('getByCode')->with('openai_compatible')->willReturn([
+            new AiService('row_compat', 'openai_compatible', [
+                'base_url' => $storedBaseUrl,
+                'api_key'  => 'sk-local',
+                'model'    => 'local-model',
+            ]),
+        ]);
+        $this->clientFactory->method('create')->willReturn($this->createMock(SymfonyAiClient::class));
+
+        $subject = $this->newSubject(new BridgeRegistry([
+            'openai_compatible' => [
+                'factory' => RecordingGenericFactory::class,
+                'package' => 'symfony/ai-generic-platform',
+            ],
+        ]));
+
+        $subject->create('openai_compatible');
+
+        self::assertSame($expected, RecordingGenericFactory::$baseUrl);
+    }
+
     public function test_create_by_id_reports_a_missing_bridge_for_the_selected_row(): void
     {
         $this->serviceSelector->method('getById')->with('_row_a')
@@ -762,6 +823,31 @@ final class RecordingLocalRuntimeFactory
     public static function createPlatform(?string $hostUrl = null, ?object $httpClient = null): object
     {
         self::$baseUrl = $hostUrl;
+
+        return new \stdClass();
+    }
+}
+
+/**
+ * Stand-in for {@see \Symfony\AI\Platform\Bridge\Generic\Factory::createPlatform()}, whose base URL
+ * and API key are its first two positional arguments, in that order — unlike the local runtimes,
+ * which take no API key at all. Reproducing that shape here is what makes a wrong argument order or
+ * a mismatched named argument in ClientFactory show up as a failing assertion instead of passing
+ * silently against a fake that happens to accept whatever it is given.
+ */
+final class RecordingGenericFactory
+{
+    public static ?string $baseUrl = null;
+    public static ?string $apiKey = null;
+
+    public static function createPlatform(
+        string $baseUrl,
+        ?string $apiKey = null,
+        ?object $httpClient = null,
+        ?object $modelCatalog = null,
+    ): object {
+        self::$baseUrl = $baseUrl;
+        self::$apiKey = $apiKey;
 
         return new \stdClass();
     }

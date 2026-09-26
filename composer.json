@@ -43,6 +43,7 @@
         "symfony/ai-azure-platform": "Enables the bundled AI client and Test Connection for Azure OpenAI.",
         "symfony/ai-deep-seek-platform": "Enables the bundled AI client and Test Connection for Deepseek.",
         "symfony/ai-gemini-platform": "Enables the bundled AI client and Test Connection for Google Gemini.",
+        "symfony/ai-generic-platform": "Enables the bundled AI client and Test Connection for OpenAI-Compatible (LiteLLM, OpenRouter-style gateways, and other self-hosted OpenAI-compatible servers).",
         "symfony/ai-hugging-face-platform": "Enables the bundled AI client and Test Connection for HuggingFace.",
         "symfony/ai-lm-studio-platform": "Enables the bundled AI client and Test Connection for LM Studio.",
         "symfony/ai-ollama-platform": "Enables the bundled AI client and Test Connection for Ollama.",
