@@ -45,4 +45,34 @@ final class DiXmlTest extends TestCase
             self::assertNull($flag, $serviceCode);
         }
     }
+
+    /**
+     * The opencode server's message endpoint has no sampling options, and every consumer sets
+     * them without knowing which backend was picked; this module's own Test Connection sends
+     * `max_tokens`. So the `opencode_server` dialect maps none and ignores all four. Losing either
+     * half fails: a mapping would send a body field the server ignores anyway, and a missing
+     * `ignore` entry turns a harmless option back into an error on every call.
+     */
+    public function test_the_opencode_server_dialect_maps_nothing_and_ignores_every_universal_option(): void
+    {
+        $dialect = $this->config->xpath(
+            '//type[@name="MageOS\AiBase\Model\Client\BridgeRegistry"]/arguments/argument[@name="bridges"]'
+            . '/item[@name="opencode-custom"]/item[@name="dialect"]',
+        )[0] ?? null;
+        self::assertSame('opencode_server', (string) $dialect);
+
+        $base = '//type[@name="MageOS\AiBase\Model\Client\OptionNormalizer"]/arguments/argument[@name="dialects"]'
+            . '/item[@name="opencode_server"]';
+
+        $map = $this->config->xpath($base . '/item[@name="map"]');
+        self::assertCount(1, $map, 'The opencode_server dialect must declare a map.');
+        self::assertCount(0, $map[0]->children(), 'The opencode_server map must stay empty.');
+
+        $ignored = array_map(
+            static fn (\SimpleXMLElement $item): string => (string) $item['name'],
+            $this->config->xpath($base . '/item[@name="ignore"]/item') ?: [],
+        );
+        sort($ignored);
+        self::assertSame(['max_tokens', 'stop', 'temperature', 'top_p'], $ignored);
+    }
 }
