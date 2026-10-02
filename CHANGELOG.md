@@ -8,6 +8,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **Google Gemini loads its models live** through **Refresh Models**, like OpenAI, Anthropic,
+  OpenRouter, Ollama and LM Studio already did. `AiServices\Google` now implements
+  `ModelListProviderInterface` and reads `GET /v1beta/models` with the `x-goog-api-key` header. It
+  keeps only models whose `supportedGenerationMethods` include `generateContent`, which leaves out
+  embedding models, strips the `models/` prefix from each id, and follows `nextPageToken`.
 - **OpenAI-Compatible provider** (`openai_compatible`), for self-hosted OpenAI-compatible gateways
   and aggregators (LiteLLM, an OpenRouter-style proxy, Eden AI) that speak the Chat Completions wire
   format on a host of the administrator's own choosing. Unlike Ollama and LM Studio it has no
@@ -238,6 +243,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `composer.json`: declare `magento/module-backend`, `module-config`, `module-store` requirements; suggest one bridge package per provider (`symfony/ai-open-ai-platform`, `symfony/ai-anthropic-platform`, and so on) rather than `symfony/ai-platform`, which has shipped no bridges since 0.12; exclude `registration.php` from the classmap.
 
 ### Fixed
+- The Google Gemini fallback model list offered only retired models (`gemini-2.0-pro`,
+  `gemini-2.0-flash`, `gemini-1.5-pro`), so a new Gemini row failed Test Connection with every model
+  the form offered. It now offers Google's `gemini-pro-latest`,
+  `gemini-flash-latest` and `gemini-flash-lite-latest` aliases, which follow Google's releases
+  instead of going stale with them.
 - `ChatRequestBuilder::withAssistantTurn()` now keeps the response's reasoning on the replayed assistant turn, as `ChatRequest::withAssistantTurn()` already did. It only passed the text and tool calls on, so a tool loop built with the builder silently dropped the reasoning a thinking provider expects back on the next request, and on Anthropic with extended thinking that request could be rejected.
 - Turning a saved service off did nothing. The enable toggle is a checkbox with a hidden input of the same name carrying the "off" value, and the form restores stored values by name onto the first matching element, which is the hidden one: the stored "on" overwrote the "off" before the form was ever submitted. Found by the end-to-end suite on its first run.
 - **Test Connection and Refresh Models now act on the row their button sits in.** Both sent only the service code, and both controllers resolved that through `create($code)`, which returns the *first* configured row of that code. An administrator with two rows of the same provider, which is the setup row ids exist for, tested the first row's credentials from the second row's button and read the result against the key in front of them; Refresh Models fetched the model list with that same wrong account. The form now sends the row id and the controllers resolve it through `createById()` and `getById()`. A request carrying only a code still resolves as before.
