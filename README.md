@@ -219,9 +219,10 @@ opts in via the `encrypted` option (`FieldDescriptorInterface::isEncrypted()`); 
 bundled providers flag their `api_key` field. Third-party providers should pass
 `'encrypted' => true` when building credential field descriptors — encrypted fields
 are also always rendered as password inputs in the admin form. For rows whose provider
-schema is not registered (e.g. the provider module was removed), fields named
-`api_key`, `token`, `secret`, or the legacy `apikey` spelling are treated as
-credentials as a fallback.
+schema is not registered (e.g. the provider module was removed), a field whose name ends
+in a common credential word (`api_key`, `client_secret`, `access_token`, `password`,
+`credential`, `bearer` and the like; see [docs/PROVIDERS.md](docs/PROVIDERS.md) for the
+full rule) is treated as a credential as a fallback.
 Values saved before encryption was introduced are detected and returned as-is, and are
 re-encrypted the next time the configuration is saved in the admin.
 

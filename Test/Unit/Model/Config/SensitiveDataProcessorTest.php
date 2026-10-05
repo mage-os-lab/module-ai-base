@@ -11,6 +11,7 @@ use MageOS\AiBase\Api\Data\FieldDescriptorInterface;
 use MageOS\AiBase\Model\Config\SensitiveDataProcessor;
 use MageOS\AiBase\Model\ServiceRegistry;
 use MageOS\AiBase\Model\FieldDescriptor;
+use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\MockObject\MockObject;
 use PHPUnit\Framework\TestCase;
 
@@ -56,11 +57,11 @@ final class SensitiveDataProcessorTest extends TestCase
     public function test_schema_marked_field_encrypts_despite_non_matching_name(): void
     {
         $result = $this->subject->encryptRow(self::KNOWN_SERVICE, [
-            'credential' => 'schema-flagged-secret',
+            'certificate' => 'schema-flagged-secret',
             'model'      => 'fake-1',
         ]);
 
-        self::assertSame('0:3:enc(schema-flagged-secret)', $result['credential']);
+        self::assertSame('0:3:enc(schema-flagged-secret)', $result['certificate']);
         self::assertSame('fake-1', $result['model']);
     }
 
@@ -79,15 +80,58 @@ final class SensitiveDataProcessorTest extends TestCase
         self::assertSame('0:3:enc(orphan-secret)', $result['secret']);
     }
 
-    public function test_unknown_service_code_falls_back_to_name_heuristic(): void
+    /**
+     * A row can outlive the provider module that declared its schema, and a third-party provider
+     * does not have to call its credential `api_key`. Whatever it is called, it must not be stored
+     * in the clear once the schema is gone.
+     */
+    #[DataProvider('credentialNamesProvider')]
+    public function test_unknown_service_code_falls_back_to_name_heuristic(string $fieldName): void
     {
-        $result = $this->subject->encryptRow(self::UNKNOWN_SERVICE, [
-            'token'      => 'heuristic-secret',
-            'credential' => 'not-covered-by-heuristic',
-        ]);
+        $result = $this->subject->encryptRow(self::UNKNOWN_SERVICE, [$fieldName => 'heuristic-secret']);
 
-        self::assertSame('0:3:enc(heuristic-secret)', $result['token']);
-        self::assertSame('not-covered-by-heuristic', $result['credential']);
+        self::assertSame('0:3:enc(heuristic-secret)', $result[$fieldName]);
+    }
+
+    /**
+     * @return iterable<string,array{string}>
+     */
+    public static function credentialNamesProvider(): iterable
+    {
+        foreach (
+            [
+                'api_key', 'apikey', 'apiKey', 'api-key', 'API_KEY', 'access_key', 'secret_key', 'private_key',
+                'auth_key', 'token', 'access_token', 'bearer_token', 'refresh_token', 'secret', 'client_secret',
+                'api_secret', 'password', 'passwd', 'passphrase', 'credential', 'credentials', 'bearer',
+            ] as $fieldName
+        ) {
+            yield $fieldName => [$fieldName];
+        }
+    }
+
+    /**
+     * Encrypting a field that is not a credential masks it in the form, so a name that merely
+     * mentions a credential must not be enough.
+     */
+    #[DataProvider('nonCredentialNamesProvider')]
+    public function test_unknown_service_code_leaves_a_non_credential_name_alone(string $fieldName): void
+    {
+        $result = $this->subject->encryptRow(self::UNKNOWN_SERVICE, [$fieldName => 'plain-setting']);
+
+        self::assertSame('plain-setting', $result[$fieldName]);
+    }
+
+    /**
+     * @return iterable<string,array{string}>
+     */
+    public static function nonCredentialNamesProvider(): iterable
+    {
+        foreach (
+            ['model', 'base_url', 'max_tokens', 'token_endpoint', 'secret_name', 'organization', 'certificate']
+            as $fieldName
+        ) {
+            yield $fieldName => [$fieldName];
+        }
     }
 
     public function test_encrypt_row_is_idempotent_for_already_encrypted_values(): void
@@ -109,7 +153,7 @@ final class SensitiveDataProcessorTest extends TestCase
 
     public function test_decrypt_row_round_trips_schema_marked_values(): void
     {
-        $row = ['credential' => 'schema-flagged-secret'];
+        $row = ['certificate' => 'schema-flagged-secret'];
         $encrypted = $this->subject->encryptRow(self::KNOWN_SERVICE, $row);
         $decrypted = $this->subject->decryptRow(self::KNOWN_SERVICE, $encrypted);
 
@@ -145,11 +189,11 @@ final class SensitiveDataProcessorTest extends TestCase
     public function test_mask_row_obscures_schema_marked_keys(): void
     {
         $result = $this->subject->maskRow(self::KNOWN_SERVICE, [
-            'credential' => '0:3:enc(secret)',
+            'certificate' => '0:3:enc(secret)',
             'model'      => 'fake-1',
         ]);
 
-        self::assertSame(SensitiveDataProcessor::OBSCURED_PLACEHOLDER, $result['credential']);
+        self::assertSame(SensitiveDataProcessor::OBSCURED_PLACEHOLDER, $result['certificate']);
         self::assertSame('fake-1', $result['model']);
     }
 
@@ -175,11 +219,11 @@ final class SensitiveDataProcessorTest extends TestCase
     {
         $result = $this->subject->restoreRow(
             self::KNOWN_SERVICE,
-            ['credential' => SensitiveDataProcessor::OBSCURED_PLACEHOLDER],
-            ['credential' => '0:3:enc(secret)'],
+            ['certificate' => SensitiveDataProcessor::OBSCURED_PLACEHOLDER],
+            ['certificate' => '0:3:enc(secret)'],
         );
 
-        self::assertSame(['credential' => '0:3:enc(secret)'], $result);
+        self::assertSame(['certificate' => '0:3:enc(secret)'], $result);
     }
 
     public function test_restore_row_keeps_newly_entered_values(): void
@@ -299,7 +343,7 @@ final class SensitiveDataProcessorTest extends TestCase
 
     /**
      * Build a fake provider with a field schema exercising all sensitivity paths:
-     * an encrypted field whose name the heuristic would miss ("credential"), an
+     * an encrypted field whose name the heuristic would miss ("certificate"), an
      * explicitly unencrypted field whose name the heuristic would match ("token"),
      * and a plain unencrypted field ("model").
      *
@@ -331,8 +375,8 @@ final class SensitiveDataProcessorTest extends TestCase
             {
                 return [
                     new FieldDescriptor(
-                        name: 'credential',
-                        label: 'Credential',
+                        name: 'certificate',
+                        label: 'Certificate',
                         type: FieldDescriptorInterface::TYPE_TEXT,
                         encrypted: true,
                     ),

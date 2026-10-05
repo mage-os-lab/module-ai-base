@@ -108,6 +108,7 @@ Stored data flow:
 ## Adding a new AI backend
 
 1. Create `src/AiServices/<Name>.php` implementing `AiServiceConfigurationInterface`. The configuration template's input `name` attributes must follow `<%- _fieldName %>[<service_code>][<field>]` — that nesting is what the selector expects when reading back.
+   **Every field that holds a credential must set `'encrypted' => true` on its descriptor** (`FieldFactoryTrait::apiKeyField()` does). That flag is what encrypts the value at rest and masks it in the form. `Model\Config\SensitiveDataProcessor` also has a name-based fallback for rows whose provider is no longer registered, but it only recognises common credential names (`api_key`, `client_secret`, `access_token`, `password`, ...) and exists as defense in depth, not as the mechanism.
 2. Register it in `etc/di.xml` under the `services` argument of `Model\ServiceRegistry`. The item name should match the class's `getCode()`, which is what the registry keys by.
 3. To make it usable through the bundled client, add a `Model\Client\BridgeRegistry` entry with its `factory`, `package` and request-option `dialect` (see `Model\Client\OptionNormalizer` for the dialects).
 4. No other wiring is required — the admin UI and selector pick it up automatically.

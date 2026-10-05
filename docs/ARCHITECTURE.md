@@ -282,9 +282,10 @@ saves so credential restore can match rows.
 ## Security model
 
 - **Encryption at rest**: descriptor-flagged fields (`'encrypted' => true`) via
-  `EncryptorInterface`. Schema-driven; a name heuristic (`apikey`/`api_key`/`token`/`secret`)
-  applies only to rows whose provider class is no longer registered (defense in depth for
-  removed third-party modules).
+  `EncryptorInterface`. Schema-driven; a name heuristic (a name ending in `api_key`, `token`,
+  `secret`, `password`, `credential`, `bearer` and similar, see `docs/PROVIDERS.md`) applies
+  only to rows whose provider class is no longer registered (defense in depth for removed
+  third-party modules).
 - **No plaintext in the admin**: masked on load, restored on save (see flows above).
   Restore also refuses to carry a masked credential across an edited `base_url`/
   `endpoint` in the same save, since that would let a redirected endpoint read back a

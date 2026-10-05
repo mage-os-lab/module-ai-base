@@ -253,6 +253,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   module writes itself, such as which bridge package to install, are shown unchanged.
   `ModelList\HttpFetcher` now names only the provider's host in its messages, never the full URL or
   the client's text, which stays attached as the cause. ([#52](https://github.com/mage-os-lab/module-ai-base/issues/52))
+- **The name-based credential fallback in `Model\Config\SensitiveDataProcessor` recognises more
+  than `apikey`, `api_key`, `token` and `secret`.** The fallback decides what gets encrypted and
+  masked for a stored row whose provider is no longer registered, such as a third-party provider
+  module that was uninstalled, and a provider that named its credential `client_secret`, `bearer`
+  or `password` would have had it written back in plaintext. A field name, lowercased and with `_`
+  and `-` removed, now counts as a credential when it ends in `apikey`, `accesskey`, `secretkey`,
+  `privatekey`, `authkey`, `token`, `secret`, `password`, `passwd`, `passphrase`, `credential`,
+  `credentials` or `bearer`. A registered provider's `'encrypted'` flag remains authoritative in
+  both directions, and the docs now say that flag is required on every credential field.
+  ([#53](https://github.com/mage-os-lab/module-ai-base/issues/53))
 - The Google Gemini fallback model list offered only retired models (`gemini-2.0-pro`,
   `gemini-2.0-flash`, `gemini-1.5-pro`), so a new Gemini row failed Test Connection with every model
   the form offered. It now offers Google's `gemini-pro-latest`,

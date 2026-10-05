@@ -111,9 +111,13 @@ sets `'encrypted' => true`**. The admin never sees stored credentials again — 
 untouched `******` keeps the stored value; typing a new value replaces it.
 
 Fallback: for rows whose service code has no registered configuration class (e.g. a
-third-party provider module was removed), sensitivity falls back to a name heuristic
-(`apikey`, `api_key`, `token`, `secret`). Do not rely on the heuristic for new code —
-mark your fields explicitly.
+third-party provider module was removed), sensitivity falls back to a name heuristic. A
+field name, lowercased and with `_` and `-` removed, counts as a credential when it ends in
+`apikey`, `accesskey`, `secretkey`, `privatekey`, `authkey`, `token`, `secret`, `password`,
+`passwd`, `passphrase`, `credential`, `credentials` or `bearer`, so `api_key`, `apiKey`,
+`client_secret`, `access_token` and `bearer_token` are covered, while `max_tokens` and
+`token_endpoint` are not. Do not rely on the heuristic for new code — it is defense in depth
+for an unanticipated field name, not a substitute for marking your fields explicitly.
 
 ### 3. Register in di.xml
 

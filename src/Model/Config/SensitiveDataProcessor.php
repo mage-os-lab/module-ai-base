@@ -14,7 +14,7 @@ use MageOS\AiBase\Model\ServiceRegistry;
  * Sensitivity is decided by the registered provider field schema: a field is sensitive
  * when its descriptor reports isEncrypted(). For service codes without a registered
  * schema, or for fields the schema does not describe, a field-name heuristic is used
- * as a fallback (see SENSITIVE_KEYS).
+ * as a fallback (see SENSITIVE_NAME_SUFFIXES).
  *
  * Shared by the config backend model (write path) and the service selector (read path).
  */
@@ -28,12 +28,32 @@ class SensitiveDataProcessor
     /**
      * Name-based fallback for fields not covered by a registered field schema.
      *
-     * Kept for two reasons: stored rows may belong to a third-party provider whose
-     * module was since removed (its schema is no longer registered, but its stored
-     * credentials must stay protected), and as defense in depth for provider fields
-     * that hold credentials but were not flagged as encrypted.
+     * A field counts as a credential when its name, lowercased and with `_` and `-` removed, ends
+     * in one of these. Matching the end of the name covers the conventions a third-party provider
+     * is likely to use (`api_key`, `apiKey`, `client_secret`, `access_token`, `bearer_token`)
+     * without catching names that merely mention one, such as `max_tokens` or `token_endpoint`.
+     *
+     * Kept for two reasons: stored rows may belong to a third-party provider whose module was
+     * since removed (its schema is no longer registered, but its stored credentials must stay
+     * protected), and as defense in depth for provider fields that hold credentials but were not
+     * flagged as encrypted. It is a safety net, not the mechanism: a provider marks each credential
+     * field `'encrypted' => true` in its descriptor, which is authoritative in both directions.
      */
-    private const SENSITIVE_KEYS = ['apikey', 'api_key', 'token', 'secret'];
+    private const SENSITIVE_NAME_SUFFIXES = [
+        'apikey',
+        'accesskey',
+        'secretkey',
+        'privatekey',
+        'authkey',
+        'token',
+        'secret',
+        'password',
+        'passwd',
+        'passphrase',
+        'credential',
+        'credentials',
+        'bearer',
+    ];
 
     /**
      * Fields naming the host a row's credentials are sent to.
@@ -208,7 +228,7 @@ class SensitiveDataProcessor
      * Whether a configuration key holds a credential.
      *
      * The registered field schema is authoritative when it describes the field;
-     * otherwise the SENSITIVE_KEYS name heuristic applies (see its docblock).
+     * otherwise the SENSITIVE_NAME_SUFFIXES name heuristic applies (see its docblock).
      *
      * @param string $serviceCode
      * @param string $key
@@ -221,7 +241,23 @@ class SensitiveDataProcessor
             return $schema[$serviceCode][$key];
         }
 
-        return in_array(strtolower($key), self::SENSITIVE_KEYS, true);
+        return $this->isNamedLikeACredential($key);
+    }
+
+    /**
+     * Whether a field name alone says it holds a credential.
+     *
+     * @param string $key
+     * @return bool
+     */
+    private function isNamedLikeACredential(string $key): bool
+    {
+        $name = str_replace(['_', '-'], '', strtolower($key));
+
+        return array_filter(
+            self::SENSITIVE_NAME_SUFFIXES,
+            static fn (string $suffix): bool => str_ends_with($name, $suffix),
+        ) !== [];
     }
 
     /**
