@@ -12,6 +12,7 @@ use Magento\Framework\Controller\Result\JsonFactory;
 use Magento\Framework\Exception\LocalizedException;
 use MageOS\AiBase\Api\AiClientFactoryInterface;
 use MageOS\AiBase\Api\AiClientInterface;
+use MageOS\AiBase\Model\FailureReporter;
 
 /**
  * Tests connectivity of a configured AI service by sending a minimal prompt.
@@ -40,11 +41,13 @@ class Test extends Action implements HttpPostActionInterface
      * @param Context $context
      * @param JsonFactory $jsonFactory
      * @param AiClientFactoryInterface $clientFactory
+     * @param FailureReporter $failureReporter Logs a failure in full and decides what the page shows
      */
     public function __construct(
         Context $context,
         private readonly JsonFactory $jsonFactory,
         private readonly AiClientFactoryInterface $clientFactory,
+        private readonly FailureReporter $failureReporter,
     ) {
         parent::__construct($context);
     }
@@ -77,15 +80,14 @@ class Test extends Action implements HttpPostActionInterface
                 'latency_ms' => $latencyMs,
                 'response' => mb_substr($response, 0, self::RESPONSE_SNIPPET_LENGTH),
             ]);
-        } catch (LocalizedException $e) {
-            return $result->setData([
-                'success' => false,
-                'error' => $e->getMessage(),
-            ]);
         } catch (\Throwable $e) {
             return $result->setData([
                 'success' => false,
-                'error' => (string)__('Connection test failed: %1', $e->getMessage()),
+                'error' => $this->failureReporter->report(
+                    __('Connection test failed'),
+                    $e,
+                    ['service_id' => $serviceId, 'service_code' => $serviceCode],
+                ),
             ]);
         }
     }

@@ -239,6 +239,9 @@ Only saved rows can be tested, because the client factory reads saved configurat
 several rows share a service code, the first configured row of that code is used. The
 feature relies on the client layer, so it requires `symfony/ai-platform` — if the library
 is not installed, the error message shown by the button names the exact package to install.
+A failure at the provider or on the wire is reported by kind (a rejected key, a rate limit, an
+unreachable host, a rejected request); the full error, which can include the request URL, goes to
+the Magento log rather than the page. The same applies to **Refresh Models** below.
 
 ### Refreshing model lists
 

@@ -13,6 +13,11 @@ use Magento\Framework\Serialize\Serializer\Json;
  *
  * Wraps client creation, transport errors, non-2xx statuses and JSON decoding into a single
  * call that either returns a decoded array or throws an admin-readable LocalizedException.
+ *
+ * The messages name the provider's host and never the full URL or the HTTP client's own text:
+ * both end up verbatim in the admin page, and a self-hosted base URL can carry a token in its
+ * query string or credentials in its authority. The client's exception stays attached as the
+ * cause, so a log record of the LocalizedException still carries everything it said.
  */
 class HttpFetcher
 {
@@ -53,7 +58,7 @@ class HttpFetcher
             $body = (string) $client->getBody();
         } catch (\Throwable $e) {
             throw new LocalizedException(
-                __('Request to %1 failed: %2', $url, $e->getMessage()),
+                __('Request to %1 failed.', $this->hostOf($url)),
                 $e instanceof \Exception ? $e : null
             );
         }
@@ -65,11 +70,11 @@ class HttpFetcher
         try {
             $decoded = $this->jsonSerializer->unserialize($body);
         } catch (\InvalidArgumentException $e) {
-            throw new LocalizedException(__('Response from %1 is not valid JSON.', $url), $e);
+            throw new LocalizedException(__('Response from %1 is not valid JSON.', $this->hostOf($url)), $e);
         }
 
         if (!is_array($decoded)) {
-            throw new LocalizedException(__('Response from %1 is not a JSON object.', $url));
+            throw new LocalizedException(__('Response from %1 is not a JSON object.', $this->hostOf($url)));
         }
 
         return $decoded;
@@ -96,15 +101,14 @@ class HttpFetcher
                 $status
             ),
             404 => __(
-                '%1 has no model list at %2 (HTTP 404). Check the base URL saved for this service.',
-                $this->hostOf($url),
-                $url
+                '%1 has no model list at its base URL (HTTP 404). Check the base URL saved for this service.',
+                $this->hostOf($url)
             ),
             429 => __(
                 '%1 is rate limiting this account (HTTP 429). Wait and try again.',
                 $this->hostOf($url)
             ),
-            default => __('Request to %1 returned HTTP status %2.', $url, $status),
+            default => __('Request to %1 returned HTTP status %2.', $this->hostOf($url), $status),
         };
     }
 
@@ -112,13 +116,17 @@ class HttpFetcher
      * The provider's host, which is the part of the URL an administrator recognises.
      *
      * Matched rather than parsed: Magento's coding standard discourages parse_url(), and the only
-     * thing needed here is the authority of a URL this module built from its own configuration.
+     * thing needed here is the host of a URL this module built from its own configuration. Any
+     * `user:password@` in front of the host is left out, since that is a credential, and the scheme
+     * is optional so that a base URL saved without one still reduces to its host.
      *
      * @param string $url
      * @return string
      */
     private function hostOf(string $url): string
     {
-        return preg_match('~^[a-z][a-z0-9+.-]*://([^/?\#]+)~i', $url, $matches) === 1 ? $matches[1] : $url;
+        return preg_match('~^(?:[a-z][a-z0-9+.-]*://)?(?:[^/?\#@]*@)?([^/?\#]+)~i', $url, $matches) === 1
+            ? $matches[1]
+            : $url;
     }
 }

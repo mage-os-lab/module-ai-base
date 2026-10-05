@@ -14,8 +14,10 @@ use MageOS\AiBase\Api\AiServiceSelectorInterface;
 use MageOS\AiBase\Api\Data\AiServiceConfigurationInterface;
 use MageOS\AiBase\Api\Data\AiServiceInterface;
 use MageOS\AiBase\Controller\Adminhtml\Service\RefreshModels;
+use MageOS\AiBase\Model\FailureReporter;
 use MageOS\AiBase\Model\ModelList\Storage;
 use MageOS\AiBase\Model\ServiceRegistry;
+use MageOS\AiBase\Test\Unit\Stubs\RecordingLogger;
 use PHPUnit\Framework\MockObject\MockObject;
 use PHPUnit\Framework\TestCase;
 
@@ -32,6 +34,7 @@ final class RefreshModelsTest extends TestCase
     private AiServiceSelectorInterface&MockObject $serviceSelector;
     private Storage&MockObject $storage;
     private OpenAi&MockObject $openAi;
+    private RecordingLogger $logger;
 
     /**
      * @var array<string, mixed>|null
@@ -50,6 +53,7 @@ final class RefreshModelsTest extends TestCase
 
         $this->openAi = $this->createMock(OpenAi::class);
         $this->openAi->method('getCode')->willReturn('openai');
+        $this->logger = new RecordingLogger();
     }
 
     /**
@@ -77,6 +81,7 @@ final class RefreshModelsTest extends TestCase
             $this->serviceSelector,
             $this->storage,
             new ServiceRegistry($services),
+            new FailureReporter($this->logger),
         );
     }
 
@@ -167,7 +172,11 @@ final class RefreshModelsTest extends TestCase
         self::assertSame('Request to x returned HTTP status 401.', $this->resultData['error']);
     }
 
-    public function test_execute_wraps_generic_throwable_in_generic_message(): void
+    /**
+     * An untyped failure is the HTTP client's own text, which routinely names the request URL. It
+     * goes to the log and the page gets told only that the refresh failed.
+     */
+    public function test_execute_keeps_an_untyped_failure_out_of_the_page_and_logs_it(): void
     {
         $this->stubParams(['service_code' => 'openai']);
 
@@ -175,12 +184,19 @@ final class RefreshModelsTest extends TestCase
         $configured->method('getConfiguration')->willReturn([]);
         $this->serviceSelector->method('getByCode')->with('openai')->willReturn([$configured]);
 
-        $this->openAi->method('fetchModels')->willThrowException(new \RuntimeException('boom'));
+        $this->openAi->method('fetchModels')->willThrowException(
+            new \RuntimeException('boom at https://gw.example/v1/models?token=super-secret-value')
+        );
 
         $this->createSubject([$this->openAi])->execute();
 
         self::assertFalse($this->resultData['success']);
-        self::assertSame('Model list refresh failed: boom', $this->resultData['error']);
+        self::assertSame(
+            'Model list refresh failed. The full error was written to the log.',
+            $this->resultData['error']
+        );
+        self::assertStringContainsString('super-secret-value', $this->logger->getMessages());
+        self::assertSame('openai', $this->logger->getRecords()[0]['context']['service_code']);
     }
 
     /**

@@ -12,6 +12,9 @@ use Magento\Framework\Exception\LocalizedException;
 use MageOS\AiBase\Api\AiClientFactoryInterface;
 use MageOS\AiBase\Api\AiClientInterface;
 use MageOS\AiBase\Controller\Adminhtml\Service\Test;
+use MageOS\AiBase\Model\Client\AiAuthenticationException;
+use MageOS\AiBase\Model\FailureReporter;
+use MageOS\AiBase\Test\Unit\Stubs\RecordingLogger;
 use PHPUnit\Framework\MockObject\MockObject;
 use PHPUnit\Framework\TestCase;
 
@@ -27,6 +30,7 @@ final class TestTest extends TestCase
     private RequestInterface&MockObject $request;
     private JsonFactory&MockObject $jsonFactory;
     private AiClientFactoryInterface&MockObject $clientFactory;
+    private RecordingLogger $logger;
     private Test $subject;
 
     /**
@@ -54,7 +58,13 @@ final class TestTest extends TestCase
 
         $this->clientFactory = $this->createMock(AiClientFactoryInterface::class);
 
-        $this->subject = new Test($context, $this->jsonFactory, $this->clientFactory);
+        $this->logger = new RecordingLogger();
+        $this->subject = new Test(
+            $context,
+            $this->jsonFactory,
+            $this->clientFactory,
+            new FailureReporter($this->logger),
+        );
     }
 
     /**
@@ -100,18 +110,55 @@ final class TestTest extends TestCase
         self::assertSame('No AI service configured for code "openai".', $this->resultData['error']);
     }
 
-    public function test_execute_wraps_generic_throwable_in_generic_message(): void
+    /**
+     * An untyped failure is the HTTP client's own text, which routinely names the request URL. It
+     * goes to the log, with the row it was for, and the page gets told only that the test failed.
+     */
+    public function test_execute_keeps_an_untyped_failure_out_of_the_page_and_logs_it(): void
     {
         $this->stubParams(['service_id' => '_row_a', 'service_code' => 'openai']);
 
         $client = $this->createMock(AiClientInterface::class);
-        $client->method('complete')->willThrowException(new \RuntimeException('cURL error 7'));
+        $client->method('complete')->willThrowException(
+            new \RuntimeException('cURL error 7 for https://unreachable.example/v1?token=super-secret-value')
+        );
         $this->clientFactory->method('createById')->with('_row_a')->willReturn($client);
 
         $this->subject->execute();
 
         self::assertFalse($this->resultData['success']);
-        self::assertSame('Connection test failed: cURL error 7', $this->resultData['error']);
+        self::assertSame(
+            'Connection test failed. The full error was written to the log.',
+            $this->resultData['error']
+        );
+        self::assertStringContainsString('super-secret-value', $this->logger->getMessages());
+        self::assertSame('_row_a', $this->logger->getRecords()[0]['context']['service_id']);
+    }
+
+    /**
+     * The scenario from issue #52: a base URL carrying a token in its query string, echoed back
+     * into the admin page by the provider's error. The typed exception says what kind of failure
+     * it was, and that is all the page may repeat.
+     */
+    public function test_execute_shows_a_provider_failure_by_kind_without_its_text(): void
+    {
+        $this->stubParams(['service_id' => '_row_a', 'service_code' => 'openai_compatible']);
+
+        $client = $this->createMock(AiClientInterface::class);
+        $client->method('complete')->willThrowException(new AiAuthenticationException(
+            __('AI request to service "openai_compatible" failed: HTTP 401 from %1', 'https://gw.example/v1?token=super-secret-value')
+        ));
+        $this->clientFactory->method('createById')->with('_row_a')->willReturn($client);
+
+        $this->subject->execute();
+
+        self::assertFalse($this->resultData['success']);
+        self::assertSame(
+            'The provider rejected the API key. Check the key saved for this service. '
+            . 'The full error was written to the log.',
+            $this->resultData['error']
+        );
+        self::assertStringContainsString('super-secret-value', $this->logger->getMessages());
     }
 
     public function test_execute_rejects_a_request_naming_no_row_and_no_code(): void

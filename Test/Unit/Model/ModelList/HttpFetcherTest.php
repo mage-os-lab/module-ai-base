@@ -74,9 +74,35 @@ final class HttpFetcherTest extends TestCase
         $this->client->method('getBody')->willReturn('');
 
         $this->expectException(LocalizedException::class);
-        $this->expectExceptionMessage('has no model list at');
+        $this->expectExceptionMessage(
+            'api.example.com has no model list at its base URL (HTTP 404). Check the base URL saved for this service.'
+        );
 
         $this->subject->getJson('https://api.example.com/v1/models');
+    }
+
+    /**
+     * A self-hosted base URL can carry a token in its query string or credentials in front of the
+     * host, and every message here ends up in the admin page. Only the host is named.
+     */
+    public function test_get_json_names_the_host_and_never_the_rest_of_the_url(): void
+    {
+        $this->client->method('getStatus')->willReturn(503);
+        $this->client->method('getBody')->willReturn('');
+
+        try {
+            $this->subject->getJson('https://user:secret@gw.example:8443/v1/models?token=super-secret-value');
+            self::fail('A 503 must throw.');
+        } catch (LocalizedException $e) {
+            self::assertSame('Request to gw.example:8443 returned HTTP status 503.', $e->getMessage());
+        }
+
+        try {
+            $this->subject->getJson('gw.example/v1/models?token=super-secret-value');
+            self::fail('A 503 must throw.');
+        } catch (LocalizedException $e) {
+            self::assertSame('Request to gw.example returned HTTP status 503.', $e->getMessage());
+        }
     }
 
     /**
@@ -115,13 +141,21 @@ final class HttpFetcherTest extends TestCase
         $this->subject->getJson('https://api.example.com/v1/models');
     }
 
-    public function test_get_json_wraps_transport_errors_in_localized_exception(): void
+    /**
+     * The HTTP client's text routinely includes the request URL, so it travels as the cause, where
+     * a log record still carries it, and not in the message the page shows.
+     */
+    public function test_get_json_keeps_the_transport_error_on_the_cause_not_in_the_message(): void
     {
-        $this->client->method('get')->willThrowException(new \Exception('cURL error 7: connection refused'));
+        $cause = new \Exception('cURL error 7: connection refused for http://localhost:11434/api/tags?token=x');
+        $this->client->method('get')->willThrowException($cause);
 
-        $this->expectException(LocalizedException::class);
-        $this->expectExceptionMessage('cURL error 7: connection refused');
-
-        $this->subject->getJson('http://localhost:11434/api/tags');
+        try {
+            $this->subject->getJson('http://localhost:11434/api/tags?token=x');
+            self::fail('A transport failure must throw.');
+        } catch (LocalizedException $e) {
+            self::assertSame('Request to localhost:11434 failed.', $e->getMessage());
+            self::assertSame($cause, $e->getPrevious());
+        }
     }
 }

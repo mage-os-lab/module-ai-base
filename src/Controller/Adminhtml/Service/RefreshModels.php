@@ -9,10 +9,10 @@ use Magento\Backend\App\Action\Context;
 use Magento\Framework\App\Action\HttpPostActionInterface;
 use Magento\Framework\Controller\Result\Json;
 use Magento\Framework\Controller\Result\JsonFactory;
-use Magento\Framework\Exception\LocalizedException;
 use MageOS\AiBase\Api\AiServiceSelectorInterface;
 use MageOS\AiBase\Api\Data\AiServiceInterface;
 use MageOS\AiBase\Api\ModelListProviderInterface;
+use MageOS\AiBase\Model\FailureReporter;
 use MageOS\AiBase\Model\ModelList\Storage;
 use MageOS\AiBase\Model\ServiceRegistry;
 
@@ -35,6 +35,7 @@ class RefreshModels extends Action implements HttpPostActionInterface
      * @param AiServiceSelectorInterface $serviceSelector
      * @param Storage $modelListStorage
      * @param ServiceRegistry $serviceRegistry Registered backends, the same set the admin form gets
+     * @param FailureReporter $failureReporter Logs a failure in full and decides what the page shows
      */
     public function __construct(
         Context $context,
@@ -42,6 +43,7 @@ class RefreshModels extends Action implements HttpPostActionInterface
         private readonly AiServiceSelectorInterface $serviceSelector,
         private readonly Storage $modelListStorage,
         private readonly ServiceRegistry $serviceRegistry,
+        private readonly FailureReporter $failureReporter,
     ) {
         parent::__construct($context);
     }
@@ -87,15 +89,14 @@ class RefreshModels extends Action implements HttpPostActionInterface
                 'count' => count($models),
                 'models' => $models,
             ]);
-        } catch (LocalizedException $e) {
-            return $result->setData([
-                'success' => false,
-                'error' => $e->getMessage(),
-            ]);
         } catch (\Throwable $e) {
             return $result->setData([
                 'success' => false,
-                'error' => (string) __('Model list refresh failed: %1', $e->getMessage()),
+                'error' => $this->failureReporter->report(
+                    __('Model list refresh failed'),
+                    $e,
+                    ['service_id' => $this->getRequestedParam('service_id'), 'service_code' => $serviceCode],
+                ),
             ]);
         }
     }

@@ -243,6 +243,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `composer.json`: declare `magento/module-backend`, `module-config`, `module-store` requirements; suggest one bridge package per provider (`symfony/ai-open-ai-platform`, `symfony/ai-anthropic-platform`, and so on) rather than `symfony/ai-platform`, which has shipped no bridges since 0.12; exclude `registration.php` from the classmap.
 
 ### Fixed
+- **Test Connection and Refresh Models no longer echo a provider's or the HTTP client's error text
+  into the admin page.** Both controllers returned `$e->getMessage()` as it came, and an HTTP client
+  message routinely carries the full request URL, which for a self-hosted base URL can include a
+  token in its query string or credentials in front of the host. A failure is now logged in full,
+  with the row id and service code, through the new `Model\FailureReporter`, and the page gets a
+  summary by kind: a rejected key, a rate limit, an unreachable host or server error, a rejected
+  request, or just that the action failed, each ending with a pointer to the log. Messages this
+  module writes itself, such as which bridge package to install, are shown unchanged.
+  `ModelList\HttpFetcher` now names only the provider's host in its messages, never the full URL or
+  the client's text, which stays attached as the cause. ([#52](https://github.com/mage-os-lab/module-ai-base/issues/52))
 - The Google Gemini fallback model list offered only retired models (`gemini-2.0-pro`,
   `gemini-2.0-flash`, `gemini-1.5-pro`), so a new Gemini row failed Test Connection with every model
   the form offered. It now offers Google's `gemini-pro-latest`,
