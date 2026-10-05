@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace MageOS\AiBase\Test\Unit\Controller\Adminhtml\Service;
 
+require_once __DIR__ . '/../../../Stubs/RecordingLogger.php';
+
 use Magento\Backend\App\Action\Context;
 use Magento\Framework\App\RequestInterface;
 use Magento\Framework\Controller\Result\Json;

@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace MageOS\AiBase\Test\Unit\Model;
 
+require_once __DIR__ . '/../Stubs/RecordingLogger.php';
+
 use Magento\Framework\Exception\LocalizedException;
 use MageOS\AiBase\Model\Client\AiAuthenticationException;
 use MageOS\AiBase\Model\Client\AiContentFilteredException;
