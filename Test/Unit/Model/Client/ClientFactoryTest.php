@@ -10,6 +10,7 @@ use Magento\Framework\Exception\LocalizedException;
 use MageOS\AiBase\AiServices\Azure;
 use MageOS\AiBase\AiServices\LmStudio;
 use MageOS\AiBase\AiServices\Ollama;
+use MageOS\AiBase\AiServices\Opper;
 use MageOS\AiBase\AiServices\OpenAiCompatible;
 use MageOS\AiBase\Api\AiServiceSelectorInterface;
 use MageOS\AiBase\Api\Data\FieldDescriptorInterfaceFactory;
@@ -101,6 +102,7 @@ final class ClientFactoryTest extends TestCase
             new LmStudio($fieldFactory, $modelListFetcher),
             new OpenAiCompatible($fieldFactory),
             new Azure($fieldFactory),
+            new Opper($fieldFactory, $modelListFetcher),
         ]);
     }
 
@@ -602,6 +604,28 @@ final class ClientFactoryTest extends TestCase
         self::assertSame('sk-local', RecordingGenericFactory::$apiKey);
     }
 
+    public function test_opper_passes_positional_credentials_and_shared_optional_arguments(): void
+    {
+        $this->serviceSelector->method('getByCode')->with('opper')->willReturn([
+            new AiService('row_opper', 'opper', ['api_key' => 'op-key', 'model' => 'dynamic/support']),
+        ]);
+        $this->clientFactory->method('create')->willReturn($this->createMock(SymfonyAiClient::class));
+        $subject = $this->newSubject(new BridgeRegistry([
+            'opper' => [
+                'factory' => RecordingGenericFactory::class,
+                'package' => 'symfony/ai-generic-platform',
+                'catalog' => FakeModelCatalog::class,
+            ],
+        ]));
+
+        $subject->create('opper');
+
+        self::assertSame('https://api.opper.ai', RecordingGenericFactory::$baseUrl);
+        self::assertSame('op-key', RecordingGenericFactory::$apiKey);
+        self::assertInstanceOf(HttpClientInterface::class, RecordingGenericFactory::$httpClient);
+        self::assertNotNull(RecordingGenericFactory::$modelCatalog);
+    }
+
     /**
      * A pasted base URL ending in /v1 (or /v1/) is stripped before reaching the bridge — the bridge
      * always appends /v1/chat/completions itself, so leaving it in would double it into a 404.
@@ -914,6 +938,8 @@ final class RecordingGenericFactory
 {
     public static ?string $baseUrl = null;
     public static ?string $apiKey = null;
+    public static ?object $httpClient = null;
+    public static ?object $modelCatalog = null;
 
     public static function createPlatform(
         string $baseUrl,
@@ -923,6 +949,8 @@ final class RecordingGenericFactory
     ): object {
         self::$baseUrl = $baseUrl;
         self::$apiKey = $apiKey;
+        self::$httpClient = $httpClient;
+        self::$modelCatalog = $modelCatalog;
 
         return new \stdClass();
     }

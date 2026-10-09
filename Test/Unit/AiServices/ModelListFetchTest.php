@@ -11,6 +11,7 @@ use MageOS\AiBase\AiServices\Anthropic;
 use MageOS\AiBase\AiServices\Google;
 use MageOS\AiBase\AiServices\Ollama;
 use MageOS\AiBase\AiServices\OpenAi;
+use MageOS\AiBase\AiServices\Opper;
 use MageOS\AiBase\Api\Data\FieldDescriptorInterfaceFactory;
 use MageOS\AiBase\Model\ModelList\HttpFetcher;
 use PHPUnit\Framework\MockObject\MockObject;
@@ -61,6 +62,40 @@ final class ModelListFetchTest extends TestCase
         $this->expectExceptionMessage('missing "data" list');
 
         $service->fetchModels(['api_key' => 'sk-test']);
+    }
+
+    public function test_opper_fetches_key_scoped_chat_models_pools_and_routes(): void
+    {
+        $this->fetcher->expects(self::once())->method('getJson')
+            ->with('https://api.opper.ai/v3/compat/models', ['Authorization' => 'Bearer op-key'])
+            ->willReturn(['data' => [
+                ['id' => 'anthropic/claude-sonnet-4.5', 'opper' => ['type' => 'llm', 'kind' => 'model']],
+                ['id' => 'claude-sonnet-4.5', 'opper' => ['type' => 'llm', 'kind' => 'pool']],
+                ['id' => 'dynamic/support', 'opper' => ['kind' => 'dynamic_route']],
+                ['id' => 'openai/text-embedding-3-small', 'opper' => ['type' => 'embedding']],
+                ['object' => 'model'],
+                ['id' => ''],
+                'invalid',
+            ]]);
+
+        $service = new Opper($this->fieldFactory, $this->fetcher);
+
+        self::assertSame([
+            'anthropic/claude-sonnet-4.5' => 'anthropic/claude-sonnet-4.5',
+            'claude-sonnet-4.5' => 'claude-sonnet-4.5',
+            'dynamic/support' => 'dynamic/support',
+        ], $service->fetchModels(['api_key' => 'op-key']));
+    }
+
+    public function test_opper_rejects_a_missing_model_list(): void
+    {
+        $this->fetcher->method('getJson')->willReturn(['error' => ['message' => 'nope']]);
+        $service = new Opper($this->fieldFactory, $this->fetcher);
+
+        $this->expectException(LocalizedException::class);
+        $this->expectExceptionMessage('missing "data" list');
+
+        $service->fetchModels(['api_key' => 'op-key']);
     }
 
     public function test_anthropic_fetch_models_uses_default_base_url_and_prefers_display_names(): void

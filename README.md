@@ -16,7 +16,7 @@ and a dashboard that shows what each module spends.
 
 ## What it provides
 
-- **Provider configuration.** OpenAI, Anthropic, Google Gemini, Azure OpenAI, DeepSeek, OpenRouter,
+- **Provider configuration.** OpenAI, Anthropic, Google Gemini, Azure OpenAI, DeepSeek, OpenRouter, Opper,
   Hugging Face, Ollama, LM Studio and any OpenAI-compatible gateway. Add a provider more than once,
   name each row, switch rows off, test the connection and refresh the model list from the form. API
   keys are encrypted at rest and never shown again.

@@ -85,6 +85,7 @@ final class ServicesTest extends TestCase
             'HuggingFace'=> [\MageOS\AiBase\AiServices\HuggingFace::class],
             'LmStudio'   => [\MageOS\AiBase\AiServices\LmStudio::class],
             'Ollama'     => [\MageOS\AiBase\AiServices\Ollama::class],
+            'Opper'      => [\MageOS\AiBase\AiServices\Opper::class],
             'OpenAi'     => [\MageOS\AiBase\AiServices\OpenAi::class],
             'OpenAiCompatible' => [\MageOS\AiBase\AiServices\OpenAiCompatible::class],
             'OpenRouter' => [\MageOS\AiBase\AiServices\OpenRouter::class],

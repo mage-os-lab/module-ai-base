@@ -6,7 +6,9 @@ namespace MageOS\AiBase\Test\Unit\AiServices;
 
 use MageOS\AiBase\AiServices\Azure;
 use MageOS\AiBase\AiServices\Deepseek;
+use MageOS\AiBase\AiServices\Opper;
 use MageOS\AiBase\Api\Data\FieldDescriptorInterfaceFactory;
+use MageOS\AiBase\Api\JsonFetcherInterface;
 use PHPUnit\Framework\TestCase;
 
 /**
@@ -35,6 +37,22 @@ final class PlatformArgumentsTest extends TestCase
         $provider = new Deepseek($this->createMock(FieldDescriptorInterfaceFactory::class));
 
         self::assertSame([''], $provider->getPlatformArguments(['api_key' => ['oops']]));
+    }
+
+    /**
+     * Opper keeps the positional-only contract and never casts malformed credentials to strings.
+     */
+    public function test_opper_uses_a_fixed_host_even_with_malformed_configuration(): void
+    {
+        $provider = new Opper(
+            $this->createMock(FieldDescriptorInterfaceFactory::class),
+            $this->createMock(JsonFetcherInterface::class),
+        );
+
+        self::assertSame([
+            'https://api.opper.ai',
+            '',
+        ], $provider->getPlatformArguments(['api_key' => ['oops'], 'base_url' => 'https://other.example']));
     }
 
     public function test_azure_passes_endpoint_deployment_api_version_and_key_in_that_order(): void

@@ -53,7 +53,7 @@ final class ServicesButtonsTest extends TestCase
     public function test_a_provider_whose_package_is_missing_is_unavailable_but_installable(): void
     {
         $this->bridgeRegistry = new BridgeRegistry(['ollama' => [
-            'factory' => 'Symfony\\AI\\Platform\\Bridge\\Ollama\\Factory',
+            'factory' => 'Absent\\Ollama',
             'package' => 'symfony/ai-ollama-platform',
         ]]);
 
