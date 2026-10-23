@@ -5,6 +5,10 @@ on:
     branches: [main]
   pull_request:
 
+# No job here writes to the repository; a compromised action or dependency gets a read-only token.
+permissions:
+  contents: read
+
 jobs:
   # The admin form is a different form depending on the application mode: developer mode offers
   # every registered provider and explains what to install, production offers only the ones that
@@ -76,7 +80,9 @@ jobs:
       E2E_MAGENTO_EXEC: docker exec store
       E2E_MAGENTO_ROOT: /data
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
 
       # Just the container. It serves the store on port 80 itself, so there is no proxy to
       # terminate TLS and therefore no forwarded protocol to get wrong, which is what broke the
@@ -176,7 +182,7 @@ jobs:
         run: docker logs store > magento.log 2>&1
 
       - name: Upload artifacts
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         if: always()
         with:
           name: e2e-${{ matrix.PLATFORM }}-${{ matrix.PHP_VERSION }}-${{ matrix.MAGENTO_MODE }}

@@ -8,14 +8,38 @@ on:
   # the base branch silently gives it no CI at all.
   pull_request:
 
+# No job here writes to the repository; a compromised action or dependency gets a read-only token.
+permissions:
+  contents: read
+
 jobs:
+  # Resolved fresh on every run, since this repo keeps no lock file: it audits what a store
+  # installing the module today would get. Abandoned packages are reported, not failed on, because
+  # the ones flagged come from Magento core, which this module cannot change.
+  composer-audit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
+      - uses: shivammathur/setup-php@eb7c497e18156a6bbabfef1d3a82760b9eda3962 # 2.40.0
+        with:
+          php-version: '8.2'
+          coverage: none
+      - name: Resolve dependencies without installing them
+        run: composer update --no-install --no-interaction --no-progress
+      - name: Audit resolved dependencies
+        run: composer audit --locked --no-dev --abandoned=report
+
   compute-matrix:
     runs-on: ubuntu-latest
     outputs:
       matrix: ${{ steps.supported.outputs.matrix }}
     steps:
-      - uses: actions/checkout@v4
-      - uses: graycoreio/github-actions-magento2/supported-version@v8.9.0
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
+      - uses: graycoreio/github-actions-magento2/supported-version@a65d0e50647829a9f6f972d72d87054a9c848fe0 # v8.9.0
         id: supported
         with:
           project: mage-os
@@ -34,8 +58,10 @@ jobs:
     outputs:
       matrix: ${{ steps.lowest.outputs.matrix }}
     steps:
-      - uses: actions/checkout@v4
-      - uses: graycoreio/github-actions-magento2/supported-version@v8.9.0
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
+      - uses: graycoreio/github-actions-magento2/supported-version@a65d0e50647829a9f6f972d72d87054a9c848fe0 # v8.9.0
         id: supported
         with:
           project: magento-open-source
@@ -63,9 +89,11 @@ jobs:
       matrix:
         php: ['8.2', '8.4', '8.5']
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
 
-      - uses: shivammathur/setup-php@v2
+      - uses: shivammathur/setup-php@eb7c497e18156a6bbabfef1d3a82760b9eda3962 # 2.40.0
         with:
           php-version: ${{ matrix.php }}
           coverage: none
@@ -90,9 +118,11 @@ jobs:
       matrix:
         php: ['8.2', '8.3', '8.4', '8.5']
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
 
-      - uses: shivammathur/setup-php@v2
+      - uses: shivammathur/setup-php@eb7c497e18156a6bbabfef1d3a82760b9eda3962 # 2.40.0
         with:
           php-version: ${{ matrix.php }}
           coverage: none
@@ -107,7 +137,7 @@ jobs:
 
   check-extension:
     needs: compute-matrix
-    uses: graycoreio/github-actions-magento2/.github/workflows/check-extension.yaml@v8.9.0
+    uses: graycoreio/github-actions-magento2/.github/workflows/check-extension.yaml@a65d0e50647829a9f6f972d72d87054a9c848fe0 # v8.9.0
     with:
       matrix: ${{ needs.compute-matrix.outputs.matrix }}
       # The default mirror (https://mirror.mage-os.org/) only proxies magento/*
@@ -118,6 +148,6 @@ jobs:
 
   check-extension-lowest:
     needs: compute-lowest-matrix
-    uses: graycoreio/github-actions-magento2/.github/workflows/check-extension.yaml@v8.9.0
+    uses: graycoreio/github-actions-magento2/.github/workflows/check-extension.yaml@a65d0e50647829a9f6f972d72d87054a9c848fe0 # v8.9.0
     with:
       matrix: ${{ needs.compute-lowest-matrix.outputs.matrix }}
