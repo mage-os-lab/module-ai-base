@@ -8,6 +8,42 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **OpenCode Zen provider** (`opencode-zen`, `AiServices\OpenCode`): the
+  [OpenCode Zen](https://opencode.ai/docs/zen/) gateway is now one of the registered AI backends,
+  with an API key, an optional base URL and a free-text model field, and **Refresh Models** reading
+  the gateway's live listing at `{base_url}/v1/models` (which Zen serves unauthenticated, so the
+  list can be populated before a key is pasted). Its bridge does not come from Symfony: upstream
+  has released none for OpenCode, so it ships as `mage-os/library-ai-opencode-zen-platform`, built
+  on `symfony/ai-generic-platform`, and stays a `suggest` like every other optional bridge. Zen
+  serves only part of its catalogue from Chat Completions (DeepSeek, MiniMax, GLM, Kimi and the
+  free tier); `gpt-*`, `claude-*`, `gemini-*`, `grok-*`, `qwen*` and `jev-*` live behind other
+  endpoints with other request shapes and cannot be reached through this bridge, which is why the
+  curated model list names only the former.
+- **OpenCode Custom provider** (`opencode-custom`, `AiServices\OpenCodeCustom`): a self-hosted
+  `opencode serve` instance as an AI backend, with base URL (default `http://127.0.0.1:4096`),
+  username (default `opencode`), server password (stored encrypted under `api_key`), an optional
+  agent and a free-text `providerID/modelID` model. **Refresh Models** lists every model the server
+  has configured, from `GET /config/providers`. Its bridge, `mage-os/library-ai-opencode-custom-platform`,
+  speaks the server's session API rather than Chat Completions: one throw-away session per call,
+  created with every permission denied, and deleted afterwards. Tools offered by a consumer are
+  described in the prompt and the model's calls parsed back out, so a tool loop works unchanged;
+  the opencode agent's own tools stay off. No incremental streaming, and the universal
+  `max_tokens` / `temperature` / `top_p` / `stop` options are **dropped** through the new
+  `opencode_server` dialect, since the server's message endpoint accepts none of them and applies
+  its own limits. Token counts come from the server's own per-message accounting.
+- `OptionNormalizer` dialects can list universal options under a new `ignore` key: options the
+  provider has no equivalent for and that are removed without an error, instead of raising
+  `AiRequestNotSentException`. An unmapped option not listed there is still refused. Used by
+  `opencode_server`, where refusing made the provider unusable for any consumer that caps its
+  answers, including this module's own **Test Connection** (`max_tokens` = 16).
+- A stored `base_url`, `username` and `agent` are passed by name to any bridge factory that
+  declares a `baseUrl`, `username` or `agent` parameter (`Model\Client\ClientFactory::ROW_ARGUMENTS`),
+  when the row holds a non-empty value. A hosted provider behind a proxy or an in-house gateway
+  can so be reached without a bridge of its own. A parameter the provider already fills
+  positionally through `getPlatformArguments()` is never named a second time: LM Studio's first
+  parameter is itself spelled `baseUrl`, and naming it again is a fatal `Error`.
+
+### Added
 - `Model\Config\Source\ConfiguredService` and its `WithAutomatic` variant take a `serviceCodes`
   constructor argument. A consumer whose feature works with one provider only declares a virtual
   type with that argument set and points its `system.xml` field at it; the dropdown then lists

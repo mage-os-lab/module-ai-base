@@ -17,7 +17,8 @@ and a dashboard that shows what each module spends.
 ## What it provides
 
 - **Provider configuration.** OpenAI, Anthropic, Google Gemini, Azure OpenAI, DeepSeek, OpenRouter, Opper,
-  Hugging Face, Ollama, LM Studio and any OpenAI-compatible gateway. Add a provider more than once,
+  Hugging Face, Ollama, LM Studio, OpenCode Zen, a self-hosted OpenCode server and any
+  OpenAI-compatible gateway. Add a provider more than once,
   name each row, switch rows off, test the connection and refresh the model list from the form. API
   keys are encrypted at rest and never shown again.
 - **One client for every provider.** Chat, streaming, tool calls and reasoning through a single
@@ -39,6 +40,24 @@ bin/magento setup:upgrade
 
 Requires Magento 2.4.8+ or Mage-OS 1.1+, and PHP 8.2+. OpenAI and Anthropic work out of the box; every
 other provider needs its Symfony AI bridge package, which the admin form names when it's missing.
+
+Two bridges do not come from Symfony, which has released none for OpenCode: Mage-OS ships
+`mage-os/library-ai-opencode-zen-platform` (the hosted OpenCode Zen gateway) and
+`mage-os/library-ai-opencode-custom-platform` (a self-hosted `opencode serve` instance). They are
+optional like the rest, and the admin form names them the same way.
+
+**OpenCode Custom** talks to your own opencode server rather than a hosted API. Its credential is
+the server's password (`OPENCODE_SERVER_PASSWORD`), models are named `providerID/modelID` exactly
+as the server routes them (`anthropic/claude-sonnet-4-6`), and **Refresh Models** lists every model
+the server has configured. Every call opens a throw-away session with the agent's own tools
+switched off and all permissions denied, then deletes it. Tools your module offers still work: the
+bridge describes them in the prompt and parses the model's calls back out, with reliability
+depending on the model. The universal `max_tokens` / `temperature` / `top_p` / `stop` options are
+accepted but dropped, because the server applies its own limits. If Magento runs in Docker, start
+the server with `--hostname 0.0.0.0` and a password, and use `http://host.docker.internal:4096` as
+the base URL. Set **Agent** to a plain agent defined in the server's own config: the default agent
+injects opencode's own system prompt and the `AGENTS.md` of the directory the server runs in, which
+leaks into answers.
 The module only adds admin screens, so it works the same with Luma, Hyvä or a headless storefront.
 
 The client is built on [symfony/ai-platform](https://github.com/symfony/ai) 0.15, which is

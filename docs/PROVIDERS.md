@@ -99,7 +99,9 @@ Use snake_case. Established names — reuse them, several code paths key on them
 |---|---|
 | `api_key` | Credential (encrypted, masked in the form) |
 | `model` | Selected model; for Azure this doubles as the deployment name |
-| `base_url` | Local-runtime endpoint (Ollama, LM Studio); flagged as an endpoint |
+| `base_url` | Local-runtime endpoint (Ollama, LM Studio), a hosted provider's endpoint override (OpenCode Zen) or a self-hosted server's address (OpenCode Custom); flagged as an endpoint |
+| `username` | Login for a self-hosted server that has one (OpenCode Custom) |
+| `agent` | Which agent a self-hosted agent server should answer through (OpenCode Custom) |
 | `endpoint` | Hosted resource endpoint (Azure); flagged as an endpoint |
 | `api_version` | Optional API version override (Azure) |
 
@@ -186,6 +188,24 @@ the mapping is safe to ship even when your bridge package is not installed. `pac
 form tells an administrator to install when the bridge is missing; a provider with no released
 bridge omits it and is labelled unsupported instead.
 
+`factory` does **not** have to be a Symfony class, and `package` does not have to be a `symfony/*`
+package. Upstream releases one bridge per provider and has released none for OpenCode, so this
+module registers `MageOS\AiOpenCodeZenPlatform\Factory` from `mage-os/library-ai-opencode-zen-platform`
+(a bridge built on `symfony/ai-generic-platform`) and `MageOS\AiOpenCodeCustomPlatform\Factory`
+from `mage-os/library-ai-opencode-custom-platform` (a bridge that drives a self-hosted opencode
+server's session API, not an HTTP completion API at all) through this same entry, and everything
+that reads the registry treats them identically. Write your own the same way when a provider has
+no upstream bridge; the only contract is a static `createPlatform()` that returns a platform object.
+
+**Row fields.** If your factory declares a parameter named `baseUrl`, `username` or `agent`, the
+stored `base_url`, `username` or `agent` field on the service row is passed to it by name, when
+non-empty (`Model\Client\ClientFactory::ROW_ARGUMENTS`). That is how a hosted provider behind a
+proxy, or a gateway an organisation runs itself, is reached without a bridge of its own, and how a
+self-hosted server gets its login and agent. A parameter your provider already fills positionally
+through `getPlatformArguments()` is never named a second time: LM Studio's first parameter really
+is spelled `baseUrl`, and naming it again would raise *"Named parameter $baseUrl overwrites
+previous argument"*.
+
 `arguments` (optional) are fixed named parameters the factory receives on every call, filtered to
 the ones the installed bridge version declares. This is how a gateway reuses another provider's
 bridge with different constants instead of shipping a factory of its own: Opper runs the generic
@@ -202,7 +222,7 @@ being silently ignored.
 options (`max_tokens`, `temperature`, `top_p`, `stop`, `tool_choice`, `reasoning_effort`) are
 spelled on the wire — see [CONSUMING.md](CONSUMING.md#options). The shipped dialects are
 `openai_chat` (the `/v1/chat/completions` body most OpenAI-compatible providers use),
-`openai_responses`, `anthropic_messages`, `gemini` and `ollama`; declare your own alongside them
+`openai_responses`, `anthropic_messages`, `gemini`, `ollama` and `opencode_server`; declare your own alongside them
 on `Model\Client\OptionNormalizer` if your provider spells them differently:
 
 ```xml
@@ -240,6 +260,10 @@ on `Model\Client\OptionNormalizer` if your provider spells them differently:
                         </item>
                     </item>
                 </item>
+                <!-- options the provider has no equivalent for, dropped without an error -->
+                <item name="ignore" xsi:type="array">
+                    <item name="stop" xsi:type="string">stop</item>
+                </item>
             </item>
         </argument>
     </arguments>
@@ -248,11 +272,15 @@ on `Model\Client\OptionNormalizer` if your provider spells them differently:
 
 An option absent from `map`, or a canonical value absent from `values`, is treated as unsupported
 by that provider and raises a `LocalizedException` naming both, rather than being dropped on the
-way to the wire. The exception is `tool_choice: auto`, which every provider treats as its own
-default and so is a silent no-op wherever a dialect declares no translation for it at all. A value
-outside the canonical set (`auto`, `none`, `required`, `['tool' => '<name>']` for `tool_choice`;
-`none`, `low`, `medium`, `high` for `reasoning_effort`) is the provider's own and passes through
-as written. Declaring no dialect at all passes every option through untouched.
+way to the wire, unless the dialect lists the option under `ignore`, in which case it is removed
+silently. Use `ignore` only where losing the option cannot change the meaning of a call (a cap or a
+sampling setting), because consumers set these options without knowing which provider an
+administrator picked, and a refused one fails every call they make. `opencode_server` ignores all
+four. The other exception is `tool_choice: auto`, which every provider treats as its own default
+and so is a silent no-op wherever a dialect declares no translation for it at all. A value outside
+the canonical set (`auto`, `none`, `required`, `['tool' => '<name>']` for `tool_choice`; `none`,
+`low`, `medium`, `high` for `reasoning_effort`) is the provider's own and passes through as
+written. Declaring no dialect at all passes every option through untouched.
 
 ### Model-dependent values
 

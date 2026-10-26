@@ -26,6 +26,24 @@ use Symfony\Contracts\HttpClient\HttpClientInterface;
 class ClientFactory implements AiClientFactoryInterface
 {
     /**
+     * Stored row field => bridge factory parameter it is passed to by name, when declared.
+     *
+     * `base_url` is the one every provider with an endpoint field shares: a hosted provider behind
+     * a proxy, or a gateway an organisation runs itself, speaks its provider's wire format at an
+     * address of its own. `username` and `agent` are a self-hosted opencode server's login and the
+     * agent it should answer through; no Symfony bridge declares either, so they reach only a bridge
+     * that asks. A parameter the provider already fills positionally through
+     * {@see PlatformArgumentsProviderInterface} is never named a second time: LM Studio's first
+     * parameter is itself spelled `baseUrl`, and naming it again is a fatal "Named parameter
+     * $baseUrl overwrites previous argument".
+     */
+    private const ROW_ARGUMENTS = [
+        'base_url' => 'baseUrl',
+        'username' => 'username',
+        'agent'    => 'agent',
+    ];
+
+    /**
      * @param AiServiceSelectorInterface $serviceSelector
      * @param SymfonyAiClientFactory $clientFactory
      * @param BridgeRegistry $bridgeRegistry Service code => bridge factory and composer package
@@ -276,9 +294,10 @@ class ClientFactory implements AiClientFactoryInterface
         // catalogue: the ones that take their endpoint positionally are also the ones with a
         // free-text model field, which makes them the likeliest to hold a model no static
         // catalogue lists.
+        $positional = $this->platformArguments($code, $config);
         $platform = $factoryClass::createPlatform(
-            ...$this->platformArguments($code, $config),
-            ...$this->optionalArguments($factoryClass, $code, $config),
+            ...$positional,
+            ...$this->optionalArguments($factoryClass, $code, $config, count($positional)),
         );
 
         // The factory class comes from di.xml, so what it hands back is only ever as good as the
@@ -311,13 +330,21 @@ class ClientFactory implements AiClientFactoryInterface
      * @param string $factoryClass Bridge factory FQCN
      * @param string $code Service code
      * @param array<string,mixed> $config Stored service configuration
+     * @param int $positionalCount How many leading parameters the provider already fills
+     *        positionally; those are never named here as well
      * @return array<string,mixed> Argument name => value
      */
-    private function optionalArguments(string $factoryClass, string $code, #[\SensitiveParameter] array $config): array
-    {
+    private function optionalArguments(
+        string $factoryClass,
+        string $code,
+        #[\SensitiveParameter] array $config,
+        int $positionalCount
+    ): array {
         $accepted = [];
         foreach ((new \ReflectionMethod($factoryClass, 'createPlatform'))->getParameters() as $parameter) {
-            $accepted[$parameter->getName()] = true;
+            if ($parameter->getPosition() >= $positionalCount) {
+                $accepted[$parameter->getName()] = true;
+            }
         }
 
         $model = $config['model'] ?? null;
@@ -330,6 +357,34 @@ class ClientFactory implements AiClientFactoryInterface
         if ($catalog !== null && isset($accepted['modelCatalog'])) {
             $arguments['modelCatalog'] = $catalog;
         }
+
+        return $arguments + $this->rowArguments($accepted, $config);
+    }
+
+    /**
+     * The {@see ROW_ARGUMENTS} a bridge declares and the row holds a value for, by parameter name.
+     *
+     * Each is passed only when the factory declares it *and* the row holds a non-empty value, so a
+     * bridge keeps its own default for every provider whose form offers no such field, and rows
+     * saved before a field was added keep working. The base URL loses its trailing slash because
+     * bridges append their own path, and a doubled separator is a 404 that reads like an
+     * authentication failure.
+     *
+     * @param array<string,true> $accepted Parameter names the factory declares beyond the positional ones
+     * @param array<string,mixed> $config Stored service configuration
+     * @return array<string,string> Argument name => value
+     */
+    private function rowArguments(array $accepted, #[\SensitiveParameter] array $config): array
+    {
+        $arguments = [];
+        foreach (self::ROW_ARGUMENTS as $field => $parameter) {
+            $value = isset($accepted[$parameter]) ? trim($this->stringValue($config, $field)) : '';
+            if ($value === '') {
+                continue;
+            }
+            $arguments[$parameter] = $parameter === 'baseUrl' ? rtrim($value, '/') : $value;
+        }
+
         return $arguments;
     }
 
