@@ -93,10 +93,13 @@ of use without deleting its key.
 | Ollama | Base URL (default `http://localhost:11434`), Model (free text) |
 | LM Studio | Base URL (default `http://localhost:1234`), Model (free text) |
 | OpenAI-Compatible | Base URL, API Key, Model (free text) |
+| Opper | API Key, Model (free text) |
+| OpenCode Zen | API Key, Base URL (default `https://opencode.ai/zen`), Model (free text) |
+| OpenCode Custom | Base URL (default `http://127.0.0.1:4096`), Username (default `opencode`), Server Password, Agent, Model (free text) |
 
 API keys are encrypted and shown as `******` once saved. **Refresh Models** replaces a row's model
-suggestions with the provider's live list, for OpenAI, Anthropic, Gemini, OpenRouter, Ollama and LM
-Studio.
+suggestions with the provider's live list, for OpenAI, Anthropic, Gemini, OpenRouter, Opper, Ollama,
+LM Studio, OpenCode Zen and OpenCode Custom.
 
 ### Stores > Configuration > Mage-OS > AI Configuration > Usage Tracking
 
