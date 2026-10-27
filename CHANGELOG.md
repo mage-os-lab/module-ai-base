@@ -7,7 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.1.0] - 2026-10-27
+
 ### Added
+- **Opper provider** (`opper`, `AiServices\Opper`): the [Opper](https://opper.ai) gateway is now
+  one of the registered AI backends, with an API key and a free-text model field. The host is fixed
+  at `https://api.opper.ai`, so the row needs no URL. **Refresh Models** reads the catalogue scoped
+  to the API key from `/v3/compat/models`, without the embedding-only entries; there is no curated
+  fallback list, since that catalogue includes routes specific to the organisation. It needs no
+  bridge of its own: the `opper` entry on `Model\Client\BridgeRegistry` points the
+  `symfony/ai-generic-platform` factory at Opper's `/v3/compat` chat and embeddings paths through
+  constants in `etc/di.xml`.
 - **OpenCode Zen provider** (`opencode-zen`, `AiServices\OpenCode`): the
   [OpenCode Zen](https://opencode.ai/docs/zen/) gateway is now one of the registered AI backends,
   with an API key, an optional base URL and a free-text model field, and **Refresh Models** reading
@@ -42,8 +52,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   can so be reached without a bridge of its own. A parameter the provider already fills
   positionally through `getPlatformArguments()` is never named a second time: LM Studio's first
   parameter is itself spelled `baseUrl`, and naming it again is a fatal `Error`.
-
-### Added
 - `Model\Config\Source\ConfiguredService` and its `WithAutomatic` variant take a `serviceCodes`
   constructor argument. A consumer whose feature works with one provider only declares a virtual
   type with that argument set and points its `system.xml` field at it; the dropdown then lists
@@ -192,5 +200,6 @@ Since v0.0.1:
   `Model\Client\`, extend `AbstractAiService` instead of using `FieldFactoryTrait`, and replace
   `getData()` on stream chunks with `json_encode($chunk)`.
 
-[Unreleased]: https://github.com/mage-os-lab/module-ai-base/compare/v1.0.0...HEAD
+[Unreleased]: https://github.com/mage-os-lab/module-ai-base/compare/v1.1.0...HEAD
+[1.1.0]: https://github.com/mage-os-lab/module-ai-base/compare/v1.0.0...v1.1.0
 [1.0.0]: https://github.com/mage-os-lab/module-ai-base/compare/v0.0.1...v1.0.0
